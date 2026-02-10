@@ -10,7 +10,7 @@ variables:
 
 build-image:
   stage: build
-  image: docker:stable
+  image: docker:27u
   services:
     - name: docker:dind
       alias: docker
