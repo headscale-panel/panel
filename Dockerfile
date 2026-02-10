@@ -10,7 +10,6 @@ RUN corepack enable && corepack prepare pnpm@latest --activate
 WORKDIR /build
 
 COPY headscale-panel-frontend/package.json headscale-panel-frontend/pnpm-lock.yaml ./
-COPY headscale-panel-frontend/patches ./patches/
 RUN pnpm install --frozen-lockfile
 
 COPY headscale-panel-frontend/ .
