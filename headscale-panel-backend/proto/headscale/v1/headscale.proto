@@ -1,0 +1,140 @@
+syntax = "proto3";
+package headscale.v1;
+option go_package = "github.com/juanfont/headscale/gen/go/v1";
+
+
+import "headscale/v1/user.proto";
+import "headscale/v1/preauthkey.proto";
+import "headscale/v1/node.proto";
+import "headscale/v1/apikey.proto";
+import "headscale/v1/policy.proto";
+
+service HeadscaleService {
+  // --- User start ---
+  rpc CreateUser(CreateUserRequest) returns (CreateUserResponse) {
+  }
+
+  rpc RenameUser(RenameUserRequest) returns (RenameUserResponse) {
+  }
+
+  rpc DeleteUser(DeleteUserRequest) returns (DeleteUserResponse) {
+  }
+
+  rpc ListUsers(ListUsersRequest) returns (ListUsersResponse) {
+  }
+  // --- User end ---
+
+  // --- PreAuthKeys start ---
+  rpc CreatePreAuthKey(CreatePreAuthKeyRequest)
+      returns (CreatePreAuthKeyResponse) {
+  }
+
+  rpc ExpirePreAuthKey(ExpirePreAuthKeyRequest)
+      returns (ExpirePreAuthKeyResponse) {
+  }
+
+  rpc DeletePreAuthKey(DeletePreAuthKeyRequest)
+      returns (DeletePreAuthKeyResponse) {
+  }
+
+  rpc ListPreAuthKeys(ListPreAuthKeysRequest)
+      returns (ListPreAuthKeysResponse) {
+  }
+  // --- PreAuthKeys end ---
+
+  // --- Node start ---
+  rpc DebugCreateNode(DebugCreateNodeRequest)
+      returns (DebugCreateNodeResponse) {
+  }
+
+  rpc GetNode(GetNodeRequest) returns (GetNodeResponse) {
+  }
+
+  rpc SetTags(SetTagsRequest) returns (SetTagsResponse) {
+  }
+
+  rpc SetApprovedRoutes(SetApprovedRoutesRequest)
+      returns (SetApprovedRoutesResponse) {
+  }
+
+  rpc RegisterNode(RegisterNodeRequest) returns (RegisterNodeResponse) {
+  }
+
+  rpc DeleteNode(DeleteNodeRequest) returns (DeleteNodeResponse) {
+  }
+
+  rpc ExpireNode(ExpireNodeRequest) returns (ExpireNodeResponse) {
+  }
+
+  rpc RenameNode(RenameNodeRequest) returns (RenameNodeResponse) {
+  }
+
+  rpc ListNodes(ListNodesRequest) returns (ListNodesResponse) {
+  }
+
+  rpc BackfillNodeIPs(BackfillNodeIPsRequest)
+      returns (BackfillNodeIPsResponse) {
+  }
+
+  // --- Node end ---
+
+  // --- ApiKeys start ---
+  rpc CreateApiKey(CreateApiKeyRequest) returns (CreateApiKeyResponse) {
+  }
+
+  rpc ExpireApiKey(ExpireApiKeyRequest) returns (ExpireApiKeyResponse) {
+  }
+
+  rpc ListApiKeys(ListApiKeysRequest) returns (ListApiKeysResponse) {
+  }
+
+  rpc DeleteApiKey(DeleteApiKeyRequest) returns (DeleteApiKeyResponse) {
+  }
+  // --- ApiKeys end ---
+
+  // --- Policy start ---
+  rpc GetPolicy(GetPolicyRequest) returns (GetPolicyResponse) {
+  }
+
+  rpc SetPolicy(SetPolicyRequest) returns (SetPolicyResponse) {
+  }
+  // --- Policy end ---
+
+  // --- Health start ---
+  rpc Health(HealthRequest) returns (HealthResponse) {
+  }
+  // --- Health end ---
+
+  // Implement Tailscale API
+  // rpc GetDevice(GetDeviceRequest) returns(GetDeviceResponse) {
+  //     option(google.api.http) = {
+  //         get : "/api/v1/device/{id}"
+  //     };
+  // }
+
+  // rpc DeleteDevice(DeleteDeviceRequest) returns(DeleteDeviceResponse) {
+  //     option(google.api.http) = {
+  //         delete : "/api/v1/device/{id}"
+  //     };
+  // }
+
+  // rpc GetDeviceRoutes(GetDeviceRoutesRequest)
+  // returns(GetDeviceRoutesResponse) {
+  //     option(google.api.http) = {
+  //         get : "/api/v1/device/{id}/routes"
+  //     };
+  // }
+
+  // rpc EnableDeviceRoutes(EnableDeviceRoutesRequest)
+  // returns(EnableDeviceRoutesResponse) {
+  //     option(google.api.http) = {
+  //         post : "/api/v1/device/{id}/routes"
+  //     };
+  // }
+}
+
+message HealthRequest {}
+
+message HealthResponse {
+  bool database_connectivity = 1;
+}

@@ -1,0 +1,13 @@
+# Common ignore rules for Docker build context
+.git
+.DS_Store
+
+headscale-panel-frontend/node_modules
+headscale-panel-frontend/dist
+headscale-panel-frontend/.prettierrc
+headscale-panel-frontend/.prettierignore
+
+headscale-panel-backend/headscale-panel
+headscale-panel-backend/data.db
+headscale-panel-backend/.env
+headscale-panel-backend/headscale/

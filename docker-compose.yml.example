@@ -1,0 +1,99 @@
+# ============================================================
+# Headscale Panel - Docker Compose 配置示例
+# 复制为 docker-compose.yml 后修改配置即可使用
+# ============================================================
+#
+# 1. 镜像部署 (推荐):
+#    cp docker-compose.yml.example docker-compose.yml
+#    修改环境变量后: docker compose up -d
+#
+# 2. 本地构建:
+#    cp docker-compose.yml.example docker-compose.yml
+#    取消 build 注释并注释 image 行: docker compose up -d --build
+# ============================================================
+
+services:
+  # ─── Headscale Panel (管理面板) ───
+  panel:
+    # --- 镜像方式 (二选一) ---
+    image: headscale-panel:latest
+    # --- 本地构建方式 (二选一, 取消下面注释并注释上面 image) ---
+    # build:
+    #   context: .
+    #   dockerfile: Dockerfile
+
+    container_name: headscale-panel
+    restart: unless-stopped
+    networks:
+      - headscale-net
+    ports:
+      - "8080:8080"
+    environment:
+      # ── 系统配置 ──
+      - SYSTEM_PORT=:8080
+      - SYSTEM_RELEASE=true
+      # ── 数据库 ──
+      - DB_PATH=/app/data/data.db
+      # ── JWT ──
+      - JWT_SECRET=change-me-to-a-random-string
+      - JWT_EXPIRE=24
+      # ── Headscale gRPC 连接 ──
+      - HEADSCALE_GRPC_ADDR=headscale-server:50443
+      - HEADSCALE_INSECURE=true
+      - HEADSCALE_API_KEY=your-headscale-api-key
+      # ── 前端静态文件 ──
+      - FRONTEND_DIR=/app/frontend
+      # ── InfluxDB (可选, 不填则不启用指标收集) ──
+      # - INFLUXDB_URL=http://influxdb:8086
+      # - INFLUXDB_TOKEN=your-influxdb-token
+      # - INFLUXDB_ORG=headscale-panel
+      # - INFLUXDB_BUCKET=metrics
+    volumes:
+      # 持久化数据库
+      - ./panel:/app/data
+      # Docker socket (用于容器管理和 Setup 向导直接部署)
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      - headscale-server
+
+  # ─── Headscale 服务端 ───
+  headscale-server:
+    image: headscale/headscale:stable
+    container_name: headscale-server
+    restart: unless-stopped
+    networks:
+      - headscale-net
+    volumes:
+      - ./headscale/config:/etc/headscale
+      - ./headscale/data:/var/lib/headscale
+      - ./headscale/run:/var/run/headscale
+      - /usr/share/zoneinfo/Asia/Shanghai:/etc/localtime:ro
+    ports:
+      - "28080:8080"       # Headscale HTTP
+      - "28081:50443"      # Headscale gRPC
+    command: serve
+    depends_on:
+      - derp
+
+  # ─── DERP 中继服务器 ───
+  derp:
+    image: fredliang/derper
+    container_name: headscale-derp
+    restart: unless-stopped
+    networks:
+      - headscale-net
+    environment:
+      - DERP_DOMAIN=derp1.example.com    # 改为你的 DERP 域名
+      - DERP_ADDR=:6060
+      - DERP_CERT_MODE=letsencrypt       # 或 manual
+      - DERP_VERIFY_CLIENTS=false
+    ports:
+      - "26060:6060"       # DERP TCP
+      - "33478:3478/udp"   # STUN UDP
+    volumes:
+      - /var/run/tailscale:/var/run/tailscale
+      - /usr/share/zoneinfo/Asia/Shanghai:/etc/localtime:ro
+
+networks:
+  headscale-net:
+    driver: bridge
