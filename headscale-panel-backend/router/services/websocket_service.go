@@ -1,9 +1,16 @@
 package services
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
+	"fmt"
+	"headscale-panel/pkg/conf"
+	paneljwt "headscale-panel/pkg/utils/jwt"
 	"log"
 	"net/http"
+	"net/url"
+	"strings"
 	"sync"
 	"time"
 
@@ -15,7 +22,7 @@ var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
 	CheckOrigin: func(r *http.Request) bool {
-		return true // Allow all origins for development
+		return isOriginAllowed(r)
 	},
 }
 
@@ -66,14 +73,15 @@ type Notification struct {
 
 // Global hub instance
 var wsHub *Hub
+var wsInitOnce sync.Once
 
 // InitWebSocket initializes the WebSocket hub
 func InitWebSocket() {
 	wsHub = &Hub{
 		clients:    make(map[*Client]bool),
 		broadcast:  make(chan []byte, 256),
-		register:   make(chan *Client),
-		unregister: make(chan *Client),
+		register:   make(chan *Client, 256),
+		unregister: make(chan *Client, 256),
 	}
 	go wsHub.Run()
 	go startMetricsCollector()
@@ -81,7 +89,14 @@ func InitWebSocket() {
 
 // GetHub returns the global hub instance
 func GetHub() *Hub {
+	ensureWebSocketHub()
 	return wsHub
+}
+
+func ensureWebSocketHub() {
+	wsInitOnce.Do(func() {
+		InitWebSocket()
+	})
 }
 
 // Run starts the hub's main loop
@@ -95,25 +110,23 @@ func (h *Hub) Run() {
 			log.Printf("WebSocket client connected: %s", client.ID)
 
 		case client := <-h.unregister:
-			h.mu.Lock()
-			if _, ok := h.clients[client]; ok {
-				delete(h.clients, client)
-				close(client.Send)
-			}
-			h.mu.Unlock()
+			h.removeClient(client)
 			log.Printf("WebSocket client disconnected: %s", client.ID)
 
 		case message := <-h.broadcast:
 			h.mu.RLock()
+			var staleClients []*Client
 			for client := range h.clients {
 				select {
 				case client.Send <- message:
 				default:
-					close(client.Send)
-					delete(h.clients, client)
+					staleClients = append(staleClients, client)
 				}
 			}
 			h.mu.RUnlock()
+			for _, client := range staleClients {
+				h.enqueueUnregister(client)
+			}
 		}
 	}
 }
@@ -145,31 +158,60 @@ func (h *Hub) BroadcastToUser(userID string, msgType string, data interface{}) {
 	}
 
 	h.mu.RLock()
-	defer h.mu.RUnlock()
+	var staleClients []*Client
 
 	for client := range h.clients {
 		if client.UserID == userID {
 			select {
 			case client.Send <- jsonData:
 			default:
-				close(client.Send)
-				delete(h.clients, client)
+				staleClients = append(staleClients, client)
 			}
 		}
 	}
+	h.mu.RUnlock()
+
+	for _, client := range staleClients {
+		h.enqueueUnregister(client)
+	}
+}
+
+func (h *Hub) enqueueUnregister(client *Client) {
+	select {
+	case h.unregister <- client:
+	default:
+		h.removeClient(client)
+	}
+}
+
+func (h *Hub) removeClient(client *Client) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	if _, ok := h.clients[client]; !ok {
+		return
+	}
+
+	delete(h.clients, client)
+	close(client.Send)
 }
 
 // HandleWebSocket handles WebSocket connections
 func HandleWebSocket(c *gin.Context) {
-	// Get token from query parameter
-	token := c.Query("token")
+	ensureWebSocketHub()
+
+	token := extractWebSocketToken(c)
 	if token == "" {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Missing token"})
 		return
 	}
 
-	// TODO: Validate token and get user ID
-	userID := "user-1" // Placeholder
+	claims, err := paneljwt.ParseToken(token)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
+		return
+	}
+	userID := fmt.Sprintf("%d", claims.UserID)
 
 	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
@@ -189,6 +231,20 @@ func HandleWebSocket(c *gin.Context) {
 
 	go client.writePump()
 	go client.readPump()
+}
+
+func extractWebSocketToken(c *gin.Context) string {
+	token := strings.TrimSpace(c.Query("token"))
+	if token != "" {
+		return token
+	}
+
+	authHeader := strings.TrimSpace(c.GetHeader("Authorization"))
+	if strings.HasPrefix(strings.ToLower(authHeader), "bearer ") {
+		return strings.TrimSpace(authHeader[7:])
+	}
+
+	return ""
 }
 
 // writePump pumps messages from the hub to the WebSocket connection
@@ -275,16 +331,11 @@ func (c *Client) readPump() {
 
 // generateClientID generates a unique client ID
 func generateClientID() string {
-	return time.Now().Format("20060102150405") + "-" + randomString(8)
-}
-
-func randomString(n int) string {
-	const letters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-	b := make([]byte, n)
-	for i := range b {
-		b[i] = letters[time.Now().UnixNano()%int64(len(letters))]
+	buf := make([]byte, 16)
+	if _, err := rand.Read(buf); err != nil {
+		return fmt.Sprintf("ws-%d", time.Now().UnixNano())
 	}
-	return string(b)
+	return "ws-" + hex.EncodeToString(buf)
 }
 
 // startMetricsCollector starts a background goroutine to collect and broadcast metrics
@@ -350,4 +401,34 @@ func BroadcastACLUpdate(updateType string, data interface{}) {
 		"type": updateType,
 		"data": data,
 	})
+}
+
+func isOriginAllowed(r *http.Request) bool {
+	origin := strings.TrimSpace(r.Header.Get("Origin"))
+	if origin == "" {
+		// Non-browser clients may not send Origin.
+		return true
+	}
+
+	originURL, err := url.Parse(origin)
+	if err != nil || originURL.Host == "" {
+		return false
+	}
+
+	originHost := strings.ToLower(originURL.Host)
+	requestHost := strings.ToLower(strings.TrimSpace(r.Host))
+	if requestHost != "" && originHost == requestHost {
+		return true
+	}
+
+	baseURL := strings.TrimSpace(conf.Conf.System.BaseURL)
+	if baseURL != "" {
+		if base, err := url.Parse(baseURL); err == nil {
+			if strings.EqualFold(originHost, strings.ToLower(base.Host)) {
+				return true
+			}
+		}
+	}
+
+	return false
 }

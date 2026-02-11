@@ -3,6 +3,7 @@ package influxdb
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
@@ -16,6 +17,7 @@ var (
 	WriteAPI api.WriteAPI
 	QueryAPI api.QueryAPI
 	bucket   string
+	idRegex  = regexp.MustCompile(`^[0-9]{1,20}$`)
 )
 
 type Config struct {
@@ -83,6 +85,17 @@ func WriteDeviceStatus(userID, machineID, machineName, ipAddress string, online 
 		return
 	}
 
+	normalizedUserID, err := normalizeNumericID("user_id", userID, true)
+	if err != nil {
+		logrus.WithError(err).Warn("Skip writing device status due to invalid user_id")
+		return
+	}
+	normalizedMachineID, err := normalizeNumericID("machine_id", machineID, true)
+	if err != nil {
+		logrus.WithError(err).Warn("Skip writing device status due to invalid machine_id")
+		return
+	}
+
 	status := "offline"
 	if online {
 		status = "online"
@@ -91,8 +104,8 @@ func WriteDeviceStatus(userID, machineID, machineName, ipAddress string, online 
 	p := influxdb2.NewPoint(
 		"device_status",
 		map[string]string{
-			"user_id":      userID,
-			"machine_id":   machineID,
+			"user_id":      normalizedUserID,
+			"machine_id":   normalizedMachineID,
 			"machine_name": machineName,
 		},
 		map[string]interface{}{
@@ -112,10 +125,16 @@ func WriteDeviceTraffic(machineID string, rxBytes, txBytes uint64) {
 		return
 	}
 
+	normalizedMachineID, err := normalizeNumericID("machine_id", machineID, true)
+	if err != nil {
+		logrus.WithError(err).Warn("Skip writing device traffic due to invalid machine_id")
+		return
+	}
+
 	p := influxdb2.NewPoint(
 		"device_traffic",
 		map[string]string{
-			"machine_id": machineID,
+			"machine_id": normalizedMachineID,
 		},
 		map[string]interface{}{
 			"rx_bytes": rxBytes,
@@ -129,13 +148,33 @@ func WriteDeviceTraffic(machineID string, rxBytes, txBytes uint64) {
 
 // QueryOnlineDuration queries the total online duration for a user or device
 func QueryOnlineDuration(ctx context.Context, userID, machineID string, start, end time.Time) (time.Duration, error) {
+	var err error
+	normalizedUserID := ""
+	normalizedMachineID := ""
+
+	if strings.TrimSpace(userID) != "" {
+		normalizedUserID, err = normalizeNumericID("user_id", userID, true)
+		if err != nil {
+			return 0, err
+		}
+	}
+	if strings.TrimSpace(machineID) != "" {
+		normalizedMachineID, err = normalizeNumericID("machine_id", machineID, true)
+		if err != nil {
+			return 0, err
+		}
+	}
+	if normalizedUserID == "" && normalizedMachineID == "" {
+		return 0, fmt.Errorf("either user_id or machine_id is required")
+	}
+
 	if QueryAPI == nil {
 		return 0, fmt.Errorf("InfluxDB not configured")
 	}
 
-	filter := fmt.Sprintf(`r["user_id"] == %s`, fluxStringLiteral(userID))
-	if machineID != "" {
-		filter = fmt.Sprintf(`r["machine_id"] == %s`, fluxStringLiteral(machineID))
+	filter := fmt.Sprintf(`r["user_id"] == %s`, fluxStringLiteral(normalizedUserID))
+	if normalizedMachineID != "" {
+		filter = fmt.Sprintf(`r["machine_id"] == %s`, fluxStringLiteral(normalizedMachineID))
 	}
 
 	query := fmt.Sprintf(`
@@ -171,6 +210,11 @@ func QueryOnlineDuration(ctx context.Context, userID, machineID string, start, e
 
 // GetDeviceStatusHistory gets device status history
 func GetDeviceStatusHistory(ctx context.Context, machineID string, start, end time.Time) ([]map[string]interface{}, error) {
+	normalizedMachineID, err := normalizeNumericID("machine_id", machineID, true)
+	if err != nil {
+		return nil, err
+	}
+
 	if QueryAPI == nil {
 		return nil, fmt.Errorf("InfluxDB not configured")
 	}
@@ -181,7 +225,7 @@ func GetDeviceStatusHistory(ctx context.Context, machineID string, start, end ti
 			|> filter(fn: (r) => r["_measurement"] == "device_status")
 			|> filter(fn: (r) => r["machine_id"] == %s)
 			|> filter(fn: (r) => r["_field"] == "status")
-	`, fluxStringLiteral(bucket), start.Format(time.RFC3339), end.Format(time.RFC3339), fluxStringLiteral(machineID))
+	`, fluxStringLiteral(bucket), start.Format(time.RFC3339), end.Format(time.RFC3339), fluxStringLiteral(normalizedMachineID))
 
 	result, err := QueryAPI.Query(ctx, query)
 	if err != nil {
@@ -214,4 +258,20 @@ func fluxStringLiteral(input string) string {
 		"\t", " ",
 	)
 	return fmt.Sprintf("\"%s\"", replacer.Replace(input))
+}
+
+func normalizeNumericID(field, value string, required bool) (string, error) {
+	normalized := strings.TrimSpace(value)
+	if normalized == "" {
+		if required {
+			return "", fmt.Errorf("%s is required", field)
+		}
+		return "", nil
+	}
+
+	if !idRegex.MatchString(normalized) {
+		return "", fmt.Errorf("invalid %s format", field)
+	}
+
+	return normalized, nil
 }
