@@ -63,10 +63,10 @@ func InitRouter() *gin.Engine {
 			auth.POST("/user/totp/enable", userController.EnableTOTP)
 
 			resourceController := controllers.NewResourceController()
-			auth.GET("/resources", resourceController.List)
-			auth.POST("/resources", resourceController.Create)
-			auth.PUT("/resources", resourceController.Update)
-			auth.DELETE("/resources", resourceController.Delete)
+			auth.GET("/resources", middleware.PermissionMiddleware("resource:list"), resourceController.List)
+			auth.POST("/resources", middleware.PermissionMiddleware("resource:create"), resourceController.Create)
+			auth.PUT("/resources", middleware.PermissionMiddleware("resource:update"), resourceController.Update)
+			auth.DELETE("/resources", middleware.PermissionMiddleware("resource:delete"), resourceController.Delete)
 
 			dashboardController := controllers.NewDashboardController()
 			auth.GET("/dashboard/overview", dashboardController.Overview)
@@ -148,13 +148,13 @@ func InitRouter() *gin.Engine {
 
 			dockerService, _ := services.NewDockerService()
 			dockerController := controllers.NewDockerController(dockerService)
-			auth.GET("/docker/containers", middleware.PermissionMiddleware("docker:container:list"), dockerController.ListContainers)
-			auth.GET("/docker/containers/:name", middleware.PermissionMiddleware("docker:container:get"), dockerController.GetContainer)
-			auth.POST("/docker/containers/:name/start", middleware.PermissionMiddleware("docker:container:start"), dockerController.StartContainer)
-			auth.POST("/docker/containers/:name/stop", middleware.PermissionMiddleware("docker:container:stop"), dockerController.StopContainer)
-			auth.POST("/docker/containers/:name/restart", middleware.PermissionMiddleware("docker:container:restart"), dockerController.RestartContainer)
-			auth.GET("/docker/containers/:name/logs", middleware.PermissionMiddleware("docker:container:logs"), dockerController.GetContainerLogs)
-			auth.POST("/docker/deploy", middleware.PermissionMiddleware("docker:container:deploy"), dockerController.DeployContainer)
+			auth.GET("/docker/containers", middleware.AdminOnlyMiddleware(), middleware.PermissionMiddleware("docker:container:list"), dockerController.ListContainers)
+			auth.GET("/docker/containers/:name", middleware.AdminOnlyMiddleware(), middleware.PermissionMiddleware("docker:container:get"), dockerController.GetContainer)
+			auth.POST("/docker/containers/:name/start", middleware.AdminOnlyMiddleware(), middleware.PermissionMiddleware("docker:container:start"), dockerController.StartContainer)
+			auth.POST("/docker/containers/:name/stop", middleware.AdminOnlyMiddleware(), middleware.PermissionMiddleware("docker:container:stop"), dockerController.StopContainer)
+			auth.POST("/docker/containers/:name/restart", middleware.AdminOnlyMiddleware(), middleware.PermissionMiddleware("docker:container:restart"), dockerController.RestartContainer)
+			auth.GET("/docker/containers/:name/logs", middleware.AdminOnlyMiddleware(), middleware.PermissionMiddleware("docker:container:logs"), dockerController.GetContainerLogs)
+			auth.POST("/docker/deploy", middleware.AdminOnlyMiddleware(), middleware.PermissionMiddleware("docker:container:deploy"), dockerController.DeployContainer)
 
 			headscaleConfigController := controllers.NewHeadscaleConfigController()
 			auth.GET("/headscale/config", middleware.PermissionMiddleware("headscale:config:view"), headscaleConfigController.Get)
@@ -181,7 +181,7 @@ func InitRouter() *gin.Engine {
 			auth.POST("/dns/sync", middleware.PermissionMiddleware("dns:sync"), dnsController.Sync)
 			auth.POST("/dns/import", middleware.PermissionMiddleware("dns:import"), dnsController.Import)
 			auth.GET("/dns/file", middleware.PermissionMiddleware("dns:file:get"), dnsController.GetFile)
-			auth.GET("/docker/containers/:name/stats", middleware.PermissionMiddleware("docker:container:stats"), dockerController.GetContainerStats)
+			auth.GET("/docker/containers/:name/stats", middleware.AdminOnlyMiddleware(), middleware.PermissionMiddleware("docker:container:stats"), dockerController.GetContainerStats)
 		}
 	}
 

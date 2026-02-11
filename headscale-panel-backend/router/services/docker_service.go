@@ -4,7 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"headscale-panel/pkg/utils/serializer"
 	"io"
+	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -22,8 +26,90 @@ type DockerService struct {
 }
 
 func (s *DockerService) requirePermission(actorUserID uint, permission string) error {
+	if err := RequireAdmin(actorUserID); err != nil {
+		return err
+	}
+
 	return RequirePermission(actorUserID, permission)
 }
+
+type deployImagePolicy struct {
+	AllowedContainerPorts map[string]struct{}
+	AllowedHostPathPrefix []string
+	AllowedContainerPaths map[string]struct{}
+	AllowedEnvKeys        map[string]struct{}
+	AllowedCommands       [][]string
+}
+
+var (
+	containerNamePattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,62}$`)
+	envKeyPattern        = regexp.MustCompile(`^[A-Z_][A-Z0-9_]*$`)
+
+	allowedNetworks = map[string]struct{}{
+		"private": {},
+	}
+
+	allowedRestartPolicies = map[string]container.RestartPolicyMode{
+		"unless-stopped": container.RestartPolicyUnlessStopped,
+		"always":         container.RestartPolicyAlways,
+		"no":             container.RestartPolicyDisabled,
+	}
+
+	deployPolicies = map[string]deployImagePolicy{
+		"headscale/headscale:stable": {
+			AllowedContainerPorts: setOf("8080/tcp", "50443/tcp"),
+			AllowedHostPathPrefix: []string{
+				"./headscale/config",
+				"./headscale/data",
+				"./headscale/run",
+				"/usr/share/zoneinfo/",
+			},
+			AllowedContainerPaths: setOf(
+				"/etc/headscale",
+				"/var/lib/headscale",
+				"/var/run/headscale",
+				"/etc/localtime",
+			),
+			AllowedEnvKeys:  map[string]struct{}{},
+			AllowedCommands: [][]string{{"serve"}},
+		},
+		"headscale/headscale:latest": {
+			AllowedContainerPorts: setOf("8080/tcp", "50443/tcp"),
+			AllowedHostPathPrefix: []string{
+				"./headscale/config",
+				"./headscale/data",
+				"./headscale/run",
+				"/usr/share/zoneinfo/",
+			},
+			AllowedContainerPaths: setOf(
+				"/etc/headscale",
+				"/var/lib/headscale",
+				"/var/run/headscale",
+				"/etc/localtime",
+			),
+			AllowedEnvKeys:  map[string]struct{}{},
+			AllowedCommands: [][]string{{"serve"}},
+		},
+		"fredliang/derper": {
+			AllowedContainerPorts: setOf("6060/tcp", "3478/udp"),
+			AllowedHostPathPrefix: []string{
+				"/var/run/tailscale",
+				"/usr/share/zoneinfo/",
+			},
+			AllowedContainerPaths: setOf(
+				"/var/run/tailscale",
+				"/etc/localtime",
+			),
+			AllowedEnvKeys: setOf(
+				"DERP_DOMAIN",
+				"DERP_ADDR",
+				"DERP_CERT_MODE",
+				"DERP_VERIFY_CLIENTS",
+			),
+			AllowedCommands: nil,
+		},
+	}
+)
 
 type ContainerInfo struct {
 	ID      string            `json:"id"`
@@ -399,6 +485,12 @@ func (s *DockerService) deployContainer(req DeployRequest) ([]DeployProgress, er
 	ctx := context.Background()
 	var progress []DeployProgress
 
+	policy, normalizedReq, err := validateAndNormalizeDeployRequest(req)
+	if err != nil {
+		return progress, err
+	}
+	req = normalizedReq
+
 	// 1. Pull image
 	pullProgress, err := s.PullImage(req.Image)
 	progress = append(progress, pullProgress...)
@@ -427,35 +519,49 @@ func (s *DockerService) deployContainer(req DeployRequest) ([]DeployProgress, er
 	exposedPorts := nat.PortSet{}
 	portBindings := nat.PortMap{}
 	for hostPort, containerPort := range req.Ports {
-		// Parse protocol from hostPort if present (e.g. "33478/udp")
-		proto := "tcp"
-		cleanHostPort := hostPort
-		if parts := strings.SplitN(hostPort, "/", 2); len(parts) == 2 {
-			cleanHostPort = parts[0]
-			proto = parts[1]
+		hostNum, proto, err := parsePortMappingKey(hostPort)
+		if err != nil {
+			return progress, err
 		}
-		cPort := nat.Port(containerPort + "/" + proto)
+		containerNum, containerProto, err := parseContainerPort(containerPort, proto)
+		if err != nil {
+			return progress, err
+		}
+		if containerProto != proto {
+			return progress, fmt.Errorf("container port protocol mismatch: host=%s container=%s", hostPort, containerPort)
+		}
+
+		portKey := fmt.Sprintf("%d/%s", containerNum, containerProto)
+		if _, ok := policy.AllowedContainerPorts[portKey]; !ok {
+			return progress, fmt.Errorf("container port not allowed: %s", portKey)
+		}
+
+		cPort := nat.Port(portKey)
 		exposedPorts[cPort] = struct{}{}
-		portBindings[cPort] = []nat.PortBinding{{HostPort: cleanHostPort}}
+		portBindings[cPort] = []nat.PortBinding{{HostPort: strconv.Itoa(hostNum)}}
 	}
 
 	mounts := make([]mount.Mount, 0, len(req.Volumes))
 	for hostPath, containerPath := range req.Volumes {
+		targetPath, readOnly, err := parseContainerMountTarget(containerPath)
+		if err != nil {
+			return progress, err
+		}
+
 		mounts = append(mounts, mount.Mount{
 			Type:     mount.TypeBind,
 			Source:   hostPath,
-			Target:   containerPath,
-			ReadOnly: strings.HasSuffix(containerPath, ":ro"),
+			Target:   targetPath,
+			ReadOnly: readOnly,
 		})
 	}
 
 	// Determine restart policy
-	restartPolicy := container.RestartPolicy{Name: container.RestartPolicyUnlessStopped}
-	if req.RestartPolicy == "always" {
-		restartPolicy.Name = container.RestartPolicyAlways
-	} else if req.RestartPolicy == "no" || req.RestartPolicy == "" {
-		restartPolicy.Name = container.RestartPolicyUnlessStopped
+	restartMode, ok := allowedRestartPolicies[req.RestartPolicy]
+	if !ok {
+		restartMode = container.RestartPolicyUnlessStopped
 	}
+	restartPolicy := container.RestartPolicy{Name: restartMode}
 
 	containerConfig := &container.Config{
 		Image:        req.Image,
@@ -506,6 +612,337 @@ func formatPorts(ports []types.Port) []string {
 		} else {
 			result = append(result, fmt.Sprintf("%d/%s", port.PrivatePort, port.Type))
 		}
+	}
+	return result
+}
+
+func validateAndNormalizeDeployRequest(req DeployRequest) (deployImagePolicy, DeployRequest, error) {
+	req.Image = strings.TrimSpace(req.Image)
+	policy, ok := deployPolicies[req.Image]
+	if !ok {
+		return deployImagePolicy{}, req, serializer.NewError(serializer.CodeParamErr, "illegal image", nil)
+	}
+
+	req.ContainerName = strings.TrimSpace(req.ContainerName)
+	if !containerNamePattern.MatchString(req.ContainerName) {
+		return deployImagePolicy{}, req, serializer.NewError(serializer.CodeParamErr, "illegal container name", nil)
+	}
+
+	req.NetworkName = strings.TrimSpace(req.NetworkName)
+	if req.NetworkName != "" {
+		if _, ok := allowedNetworks[req.NetworkName]; !ok {
+			return deployImagePolicy{}, req, serializer.NewError(serializer.CodeParamErr, "illegal network", nil)
+		}
+	}
+
+	restartPolicy := strings.ToLower(strings.TrimSpace(req.RestartPolicy))
+	if restartPolicy == "" {
+		restartPolicy = "unless-stopped"
+	}
+	if _, ok := allowedRestartPolicies[restartPolicy]; !ok {
+		return deployImagePolicy{}, req, serializer.NewError(serializer.CodeParamErr, "illegal restart policy", nil)
+	}
+	req.RestartPolicy = restartPolicy
+
+	normalizedEnv, err := normalizeAndValidateEnv(req.Env, policy)
+	if err != nil {
+		return deployImagePolicy{}, req, err
+	}
+	req.Env = normalizedEnv
+
+	if err := validatePorts(req.Ports, policy); err != nil {
+		return deployImagePolicy{}, req, err
+	}
+
+	normalizedVolumes, err := normalizeAndValidateVolumes(req.Volumes, policy)
+	if err != nil {
+		return deployImagePolicy{}, req, err
+	}
+	req.Volumes = normalizedVolumes
+
+	if err := validateCommand(req.Command, policy); err != nil {
+		return deployImagePolicy{}, req, err
+	}
+
+	return policy, req, nil
+}
+
+func normalizeAndValidateEnv(env map[string]string, policy deployImagePolicy) (map[string]string, error) {
+	if len(env) == 0 {
+		return map[string]string{}, nil
+	}
+
+	normalized := make(map[string]string, len(env))
+	for key, value := range env {
+		normalizedKey := strings.TrimSpace(strings.ToUpper(key))
+		if !envKeyPattern.MatchString(normalizedKey) {
+			return nil, serializer.NewError(serializer.CodeParamErr, "illegal env key", nil)
+		}
+		if _, ok := policy.AllowedEnvKeys[normalizedKey]; !ok {
+			return nil, serializer.NewError(serializer.CodeParamErr, "env key not allowed", nil)
+		}
+		if strings.ContainsAny(value, "\x00\r\n") {
+			return nil, serializer.NewError(serializer.CodeParamErr, "illegal env value", nil)
+		}
+		normalized[normalizedKey] = value
+	}
+
+	return normalized, nil
+}
+
+func validatePorts(ports map[string]string, policy deployImagePolicy) error {
+	for hostPortKey, containerPortValue := range ports {
+		hostPort, proto, err := parsePortMappingKey(hostPortKey)
+		if err != nil {
+			return err
+		}
+
+		containerPort, containerProto, err := parseContainerPort(containerPortValue, proto)
+		if err != nil {
+			return err
+		}
+		if containerProto != proto {
+			return serializer.NewError(serializer.CodeParamErr, "protocol mismatch between host and container ports", nil)
+		}
+
+		portKey := fmt.Sprintf("%d/%s", containerPort, containerProto)
+		if _, ok := policy.AllowedContainerPorts[portKey]; !ok {
+			return serializer.NewError(serializer.CodeParamErr, "container port not allowed", nil)
+		}
+
+		if hostPort < 1 || hostPort > 65535 {
+			return serializer.NewError(serializer.CodeParamErr, "host port out of range", nil)
+		}
+	}
+
+	return nil
+}
+
+func parsePortMappingKey(value string) (int, string, error) {
+	raw := strings.ToLower(strings.TrimSpace(value))
+	parts := strings.Split(raw, "/")
+	if len(parts) > 2 {
+		return 0, "", serializer.NewError(serializer.CodeParamErr, "illegal host port format", nil)
+	}
+
+	port, err := strconv.Atoi(strings.TrimSpace(parts[0]))
+	if err != nil || port < 1 || port > 65535 {
+		return 0, "", serializer.NewError(serializer.CodeParamErr, "illegal host port", nil)
+	}
+
+	proto := "tcp"
+	if len(parts) == 2 {
+		proto = strings.TrimSpace(parts[1])
+	}
+	if proto != "tcp" && proto != "udp" {
+		return 0, "", serializer.NewError(serializer.CodeParamErr, "illegal port protocol", nil)
+	}
+
+	return port, proto, nil
+}
+
+func parseContainerPort(value, defaultProto string) (int, string, error) {
+	raw := strings.ToLower(strings.TrimSpace(value))
+	parts := strings.Split(raw, "/")
+	if len(parts) > 2 {
+		return 0, "", serializer.NewError(serializer.CodeParamErr, "illegal container port format", nil)
+	}
+
+	port, err := strconv.Atoi(strings.TrimSpace(parts[0]))
+	if err != nil || port < 1 || port > 65535 {
+		return 0, "", serializer.NewError(serializer.CodeParamErr, "illegal container port", nil)
+	}
+
+	proto := defaultProto
+	if len(parts) == 2 {
+		proto = strings.TrimSpace(parts[1])
+	}
+	if proto != "tcp" && proto != "udp" {
+		return 0, "", serializer.NewError(serializer.CodeParamErr, "illegal container port protocol", nil)
+	}
+
+	return port, proto, nil
+}
+
+func normalizeAndValidateVolumes(volumes map[string]string, policy deployImagePolicy) (map[string]string, error) {
+	normalized := make(map[string]string, len(volumes))
+
+	for hostPath, containerPath := range volumes {
+		hostClean, err := normalizeHostMountPath(hostPath)
+		if err != nil {
+			return nil, err
+		}
+		if isDangerousHostPath(hostClean) {
+			return nil, serializer.NewError(serializer.CodeParamErr, "dangerous host mount is forbidden", nil)
+		}
+		if !isAllowedHostPath(hostClean, policy.AllowedHostPathPrefix) {
+			return nil, serializer.NewError(serializer.CodeParamErr, "host mount path not allowed", nil)
+		}
+
+		targetPath, readOnly, err := parseContainerMountTarget(containerPath)
+		if err != nil {
+			return nil, err
+		}
+		if _, ok := policy.AllowedContainerPaths[targetPath]; !ok {
+			return nil, serializer.NewError(serializer.CodeParamErr, "container mount path not allowed", nil)
+		}
+
+		if readOnly {
+			normalized[hostClean] = targetPath + ":ro"
+		} else {
+			normalized[hostClean] = targetPath
+		}
+	}
+
+	return normalized, nil
+}
+
+func normalizeHostMountPath(hostPath string) (string, error) {
+	raw := strings.TrimSpace(hostPath)
+	if raw == "" {
+		return "", serializer.NewError(serializer.CodeParamErr, "empty host mount path", nil)
+	}
+
+	if strings.Contains(raw, "\x00") {
+		return "", serializer.NewError(serializer.CodeParamErr, "illegal host mount path", nil)
+	}
+
+	cleaned := filepath.Clean(raw)
+	if cleaned == "." || cleaned == "" {
+		return "", serializer.NewError(serializer.CodeParamErr, "illegal host mount path", nil)
+	}
+
+	if strings.HasPrefix(cleaned, "..") || strings.Contains(cleaned, "/../") {
+		return "", serializer.NewError(serializer.CodeParamErr, "path traversal is not allowed", nil)
+	}
+
+	return cleaned, nil
+}
+
+func parseContainerMountTarget(raw string) (string, bool, error) {
+	value := strings.TrimSpace(raw)
+	if value == "" {
+		return "", false, serializer.NewError(serializer.CodeParamErr, "empty container mount path", nil)
+	}
+
+	readOnly := false
+	if strings.HasSuffix(strings.ToLower(value), ":ro") {
+		readOnly = true
+		value = strings.TrimSpace(value[:len(value)-3])
+	}
+	if strings.Contains(value, ":") {
+		return "", false, serializer.NewError(serializer.CodeParamErr, "illegal container mount options", nil)
+	}
+
+	target := filepath.Clean(value)
+	if !strings.HasPrefix(target, "/") {
+		return "", false, serializer.NewError(serializer.CodeParamErr, "container mount path must be absolute", nil)
+	}
+
+	return target, readOnly, nil
+}
+
+func isDangerousHostPath(path string) bool {
+	if path == "/" {
+		return true
+	}
+	if path == "/var/run/docker.sock" {
+		return true
+	}
+
+	dangerousPrefixes := []string{
+		"/proc",
+		"/sys",
+		"/dev",
+		"/boot",
+		"/root",
+		"/etc",
+		"/bin",
+		"/sbin",
+		"/lib",
+		"/lib64",
+	}
+	for _, prefix := range dangerousPrefixes {
+		if path == prefix || strings.HasPrefix(path, prefix+"/") {
+			return true
+		}
+	}
+	return false
+}
+
+func isAllowedHostPath(path string, prefixes []string) bool {
+	normalizedPath := normalizeRelativePath(path)
+
+	for _, allowedPrefix := range prefixes {
+		prefix := strings.TrimSpace(allowedPrefix)
+		if prefix == "" {
+			continue
+		}
+		if strings.HasPrefix(prefix, "/") {
+			cleanPrefix := filepath.Clean(prefix)
+			if path == cleanPrefix || strings.HasPrefix(path, cleanPrefix+"/") {
+				return true
+			}
+			continue
+		}
+
+		normalizedPrefix := normalizeRelativePath(prefix)
+		if normalizedPath == normalizedPrefix || strings.HasPrefix(normalizedPath, normalizedPrefix+"/") {
+			return true
+		}
+	}
+
+	return false
+}
+
+func normalizeRelativePath(path string) string {
+	cleaned := filepath.Clean(strings.TrimSpace(path))
+	return strings.TrimPrefix(cleaned, "./")
+}
+
+func validateCommand(command []string, policy deployImagePolicy) error {
+	if len(command) == 0 {
+		return nil
+	}
+
+	normalized := make([]string, 0, len(command))
+	for _, c := range command {
+		part := strings.TrimSpace(c)
+		if part == "" {
+			continue
+		}
+		normalized = append(normalized, part)
+	}
+
+	if len(normalized) == 0 {
+		return nil
+	}
+
+	for _, allowed := range policy.AllowedCommands {
+		if equalStringSlice(normalized, allowed) {
+			return nil
+		}
+	}
+
+	return serializer.NewError(serializer.CodeParamErr, "command not allowed", nil)
+}
+
+func equalStringSlice(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func setOf(values ...string) map[string]struct{} {
+	result := make(map[string]struct{}, len(values))
+	for _, v := range values {
+		result[v] = struct{}{}
 	}
 	return result
 }

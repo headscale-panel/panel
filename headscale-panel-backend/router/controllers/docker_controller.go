@@ -16,8 +16,20 @@ func NewDockerController(dockerService *services.DockerService) *DockerControlle
 	return &DockerController{dockerService: dockerService}
 }
 
+func (c *DockerController) ensureService(ctx *gin.Context) bool {
+	if c.dockerService == nil {
+		serializer.Fail(ctx, serializer.NewError(serializer.CodeInternalError, "Docker service not available", nil))
+		return false
+	}
+	return true
+}
+
 // GetContainer gets information about a container
 func (c *DockerController) GetContainer(ctx *gin.Context) {
+	if !c.ensureService(ctx) {
+		return
+	}
+
 	containerName := ctx.Param("name")
 	userID := ctx.GetUint("userID")
 
@@ -32,6 +44,10 @@ func (c *DockerController) GetContainer(ctx *gin.Context) {
 
 // StartContainer starts a container
 func (c *DockerController) StartContainer(ctx *gin.Context) {
+	if !c.ensureService(ctx) {
+		return
+	}
+
 	containerName := ctx.Param("name")
 	userID := ctx.GetUint("userID")
 
@@ -45,6 +61,10 @@ func (c *DockerController) StartContainer(ctx *gin.Context) {
 
 // StopContainer stops a container
 func (c *DockerController) StopContainer(ctx *gin.Context) {
+	if !c.ensureService(ctx) {
+		return
+	}
+
 	containerName := ctx.Param("name")
 	userID := ctx.GetUint("userID")
 
@@ -58,6 +78,10 @@ func (c *DockerController) StopContainer(ctx *gin.Context) {
 
 // RestartContainer restarts a container
 func (c *DockerController) RestartContainer(ctx *gin.Context) {
+	if !c.ensureService(ctx) {
+		return
+	}
+
 	containerName := ctx.Param("name")
 	userID := ctx.GetUint("userID")
 
@@ -71,6 +95,10 @@ func (c *DockerController) RestartContainer(ctx *gin.Context) {
 
 // GetContainerLogs gets logs from a container
 func (c *DockerController) GetContainerLogs(ctx *gin.Context) {
+	if !c.ensureService(ctx) {
+		return
+	}
+
 	containerName := ctx.Param("name")
 	tailStr := ctx.DefaultQuery("tail", "100")
 	userID := ctx.GetUint("userID")
@@ -91,6 +119,10 @@ func (c *DockerController) GetContainerLogs(ctx *gin.Context) {
 
 // GetContainerStats gets resource usage statistics for a container
 func (c *DockerController) GetContainerStats(ctx *gin.Context) {
+	if !c.ensureService(ctx) {
+		return
+	}
+
 	containerName := ctx.Param("name")
 	userID := ctx.GetUint("userID")
 
@@ -105,6 +137,10 @@ func (c *DockerController) GetContainerStats(ctx *gin.Context) {
 
 // ListContainers lists all containers
 func (c *DockerController) ListContainers(ctx *gin.Context) {
+	if !c.ensureService(ctx) {
+		return
+	}
+
 	userID := ctx.GetUint("userID")
 	containers, err := c.dockerService.ListContainers(userID)
 	if err != nil {
@@ -117,21 +153,20 @@ func (c *DockerController) ListContainers(ctx *gin.Context) {
 
 // DeployContainer creates and starts a new container
 func (c *DockerController) DeployContainer(ctx *gin.Context) {
+	if !c.ensureService(ctx) {
+		return
+	}
+
 	var req services.DeployRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {
 		serializer.Fail(ctx, serializer.ErrBind)
 		return
 	}
 
-	if c.dockerService == nil {
-		serializer.Fail(ctx, serializer.NewError(500, "Docker service not available", nil))
-		return
-	}
-
 	userID := ctx.GetUint("userID")
 	progress, err := c.dockerService.DeployContainer(userID, req)
 	if err != nil {
-		serializer.Fail(ctx, serializer.NewError(500, err.Error(), nil))
+		serializer.Fail(ctx, err)
 		return
 	}
 

@@ -37,7 +37,8 @@ func (r *ResourceController) List(c *gin.Context) {
 		return
 	}
 
-	list, total, err := services.ResourceService.List(&req)
+	userID := c.GetUint("userID")
+	list, total, err := services.ResourceService.List(userID, &req)
 	if err != nil {
 		serializer.Fail(c, err)
 		return

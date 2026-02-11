@@ -200,6 +200,21 @@ export default function Setup() {
     }).catch(() => setLoading(false));
   }, [setLocation]);
 
+  const fetchSetupDeployToken = useCallback(async (): Promise<string> => {
+    const status = await api.get('/setup/status') as any;
+    if (status?.initialized) {
+      throw new Error('system already initialized');
+    }
+    if (!status?.setup_window_open) {
+      throw new Error('setup window closed');
+    }
+    const token = String(status?.deploy_token || '');
+    if (!token) {
+      throw new Error('missing setup deploy token');
+    }
+    return token;
+  }, []);
+
   const handleCreateAdmin = async () => {
     if (!adminForm.username || !adminForm.password) {
       toast.error(t.users.requiredFields);
@@ -268,7 +283,12 @@ export default function Setup() {
     setLog([{ step: 'start', message: `${t.setup.deployStarting} ${req.image} ...` }]);
 
     try {
-      const data = await api.post('/setup/deploy', req) as any;
+      const setupDeployToken = await fetchSetupDeployToken();
+      const data = await api.post('/setup/deploy', req, {
+        headers: {
+          'X-Setup-Deploy-Token': setupDeployToken,
+        },
+      }) as any;
       const progress: ProgressLine[] = data?.progress || [];
       setLog((prev) => [...prev, ...progress]);
       setStatus('success');
@@ -278,7 +298,7 @@ export default function Setup() {
       setStatus('error');
       toast.error(t.setup.deployFailed);
     }
-  }, [hsCfg, dpCfg, t]);
+  }, [hsCfg, dpCfg, t, fetchSetupDeployToken]);
 
   const copyToClipboard = useCallback((text: string) => {
     navigator.clipboard.writeText(text);

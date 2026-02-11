@@ -18,10 +18,25 @@ func NewSetupController() *SetupController {
 func (s *SetupController) GetStatus(ctx *gin.Context) {
 	var count int64
 	model.DB.Model(&model.User{}).Count(&count)
-	serializer.Success(ctx, gin.H{
-		"initialized": count > 0,
-		"user_count":  count,
-	})
+	initialized := count > 0
+	windowOpen := services.SetupGuardService.IsWindowOpen(initialized)
+
+	resp := gin.H{
+		"initialized":           initialized,
+		"user_count":            count,
+		"setup_window_open":     windowOpen,
+		"setup_window_deadline": services.SetupGuardService.WindowDeadline().UTC().Format("2006-01-02T15:04:05Z"),
+	}
+
+	if windowOpen {
+		token, expiresAt, err := services.SetupGuardService.IssueDeployToken(initialized, ctx.ClientIP(), ctx.GetHeader("User-Agent"))
+		if err == nil {
+			resp["deploy_token"] = token
+			resp["deploy_token_expires_at"] = expiresAt.UTC().Format("2006-01-02T15:04:05Z")
+		}
+	}
+
+	serializer.Success(ctx, resp)
 }
 
 // InitializeRequest is the payload for the first-time setup.
@@ -66,6 +81,8 @@ func (s *SetupController) Initialize(ctx *gin.Context) {
 		return
 	}
 
+	services.SetupGuardService.RevokeAllTokens()
+
 	serializer.Success(ctx, gin.H{
 		"message": "Admin user created successfully",
 		"user": gin.H{
@@ -84,6 +101,12 @@ func (s *SetupController) DeployContainer(ctx *gin.Context) {
 	model.DB.Model(&model.User{}).Count(&count)
 	if count > 0 {
 		serializer.Fail(ctx, serializer.NewError(403, "system already initialized, use authenticated docker API instead", nil))
+		return
+	}
+
+	setupDeployToken := ctx.GetHeader("X-Setup-Deploy-Token")
+	if err := services.SetupGuardService.ValidateAndConsumeDeployToken(false, setupDeployToken, ctx.ClientIP(), ctx.GetHeader("User-Agent")); err != nil {
+		serializer.Fail(ctx, err)
 		return
 	}
 
