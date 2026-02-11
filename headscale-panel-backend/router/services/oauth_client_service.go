@@ -6,13 +6,28 @@ import (
 	"headscale-panel/model"
 	"headscale-panel/pkg/utils/serializer"
 	"strings"
+	"time"
 )
 
 type oauthClientService struct{}
 
 var OauthClientService = &oauthClientService{}
 
-func (s *oauthClientService) List(actorUserID uint, page, pageSize int) ([]model.OauthClient, int64, error) {
+type OauthClientView struct {
+	ID           uint      `json:"id"`
+	ClientID     string    `json:"client_id"`
+	RedirectURIs string    `json:"redirect_uris"`
+	Name         string    `json:"name"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
+}
+
+type OauthClientCreated struct {
+	Client       OauthClientView `json:"client"`
+	ClientSecret string          `json:"client_secret"`
+}
+
+func (s *oauthClientService) List(actorUserID uint, page, pageSize int) ([]OauthClientView, int64, error) {
 	if err := RequirePermission(actorUserID, "system:oauth_client:list"); err != nil {
 		return nil, 0, err
 	}
@@ -29,10 +44,15 @@ func (s *oauthClientService) List(actorUserID uint, page, pageSize int) ([]model
 		return nil, 0, serializer.ErrDatabase.WithError(err)
 	}
 
-	return clients, total, nil
+	result := make([]OauthClientView, 0, len(clients))
+	for _, client := range clients {
+		result = append(result, toOauthClientView(client))
+	}
+
+	return result, total, nil
 }
 
-func (s *oauthClientService) Create(actorUserID uint, name, redirectURIs string) (*model.OauthClient, error) {
+func (s *oauthClientService) Create(actorUserID uint, name, redirectURIs string) (*OauthClientCreated, error) {
 	if err := RequirePermission(actorUserID, "system:oauth_client:create"); err != nil {
 		return nil, err
 	}
@@ -66,7 +86,10 @@ func (s *oauthClientService) Create(actorUserID uint, name, redirectURIs string)
 		return nil, serializer.ErrDatabase.WithError(err)
 	}
 
-	return client, nil
+	return &OauthClientCreated{
+		Client:       toOauthClientView(*client),
+		ClientSecret: clientSecret,
+	}, nil
 }
 
 func (s *oauthClientService) Update(actorUserID uint, id uint, name, redirectURIs string) error {
@@ -136,4 +159,15 @@ func generateRandomString(length int) (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(bytes), nil
+}
+
+func toOauthClientView(client model.OauthClient) OauthClientView {
+	return OauthClientView{
+		ID:           client.ID,
+		ClientID:     client.ClientID,
+		RedirectURIs: client.RedirectURIs,
+		Name:         client.Name,
+		CreatedAt:    client.CreatedAt,
+		UpdatedAt:    client.UpdatedAt,
+	}
 }

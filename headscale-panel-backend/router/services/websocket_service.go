@@ -328,7 +328,7 @@ func (c *Client) writePump() {
 // readPump pumps messages from the WebSocket connection to the hub
 func (c *Client) readPump() {
 	defer func() {
-		c.Hub.unregister <- c
+		c.Hub.enqueueUnregister(c)
 		c.Conn.Close()
 	}()
 

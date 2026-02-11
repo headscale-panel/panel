@@ -64,11 +64,14 @@ func (s *oidcService) Init() error {
 
 func (s *oidcService) GenerateAuthCode(userID uint, clientID, redirectURI, nonce, scope string) (string, error) {
 	code := make([]byte, 32)
-	rand.Read(code)
+	if _, err := rand.Read(code); err != nil {
+		return "", fmt.Errorf("failed to generate auth code: %w", err)
+	}
 	codeStr := base64.URLEncoding.EncodeToString(code)
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.cleanupExpiredCodesLocked(time.Now())
 	s.codes[codeStr] = authCodeData{
 		UserID:      userID,
 		ClientID:    clientID,
@@ -91,6 +94,7 @@ func (s *oidcService) ExchangeCode(code, clientID, clientSecret string) (string,
 	}
 
 	s.mu.Lock()
+	s.cleanupExpiredCodesLocked(time.Now())
 	data, ok := s.codes[code]
 	if ok {
 		delete(s.codes, code) // Consume code
@@ -347,6 +351,14 @@ func (s *oidcService) ValidateRedirectURI(clientID, redirectURI string) bool {
 		}
 	}
 	return false
+}
+
+func (s *oidcService) cleanupExpiredCodesLocked(now time.Time) {
+	for code, data := range s.codes {
+		if !now.Before(data.ExpiresAt) {
+			delete(s.codes, code)
+		}
+	}
 }
 
 func isInsecureOIDCClientSecret(secret string) bool {

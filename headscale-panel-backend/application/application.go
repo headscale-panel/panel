@@ -24,7 +24,7 @@ type Server struct {
 	server *http.Server
 }
 
-func NewServer() *Server {
+func NewServer() (*Server, error) {
 	confPath, err := filepath.Abs(".env")
 	if err != nil {
 		logrus.WithError(err).Warn("无法获取配置文件路径，使用默认配置")
@@ -51,14 +51,14 @@ func NewServer() *Server {
 	}
 
 	if err := services.OIDCService.Init(); err != nil {
-		logrus.WithError(err).Error("Failed to init OIDC service")
+		return nil, err
 	}
 
 	r := router.InitRouter()
 
 	return &Server{
 		router: r,
-	}
+	}, nil
 }
 
 func (s *Server) Run() {

@@ -34,6 +34,14 @@ func (s *userService) Register(req *RegisterRequest) error {
 }
 
 func (s *userService) RegisterWithContext(ctx context.Context, req *RegisterRequest) error {
+	canRegister, err := SetupStateService.CanRegister()
+	if err != nil {
+		return err
+	}
+	if !canRegister {
+		return serializer.NewError(serializer.CodeNoPermissionErr, "registration is disabled before initialization", nil)
+	}
+
 	var userCount int64
 	if err := model.DB.Model(&model.User{}).Count(&userCount).Error; err != nil {
 		return serializer.ErrDatabase.WithError(err)
@@ -63,7 +71,7 @@ func (s *userService) RegisterWithContext(ctx context.Context, req *RegisterRequ
 	queryCtx, cancel := withServiceTimeout(ctx)
 	defer cancel()
 
-	_, err := headscale.GlobalClient.Service.CreateUser(queryCtx, &v1.CreateUserRequest{
+	_, err = headscale.GlobalClient.Service.CreateUser(queryCtx, &v1.CreateUserRequest{
 		Name: req.Username,
 	})
 	if err != nil {

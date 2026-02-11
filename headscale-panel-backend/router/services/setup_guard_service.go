@@ -6,22 +6,24 @@ import (
 	"encoding/base64"
 	"fmt"
 	"headscale-panel/pkg/utils/serializer"
-	"os"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
 )
 
+const (
+	setupTokenPurposeInit   = "init"
+	setupTokenPurposeDeploy = "deploy"
+)
+
 type setupGuardService struct {
-	mu           sync.Mutex
-	bootTime     time.Time
-	setupWindow  time.Duration
-	tokenTTL     time.Duration
-	deployTokens map[string]setupDeployToken
+	mu          sync.Mutex
+	tokenTTL    time.Duration
+	setupTokens map[string]setupTokenMeta
 }
 
-type setupDeployToken struct {
+type setupTokenMeta struct {
+	Purpose       string
 	ExpiresAt     time.Time
 	ClientIP      string
 	UserAgentHash string
@@ -30,34 +32,36 @@ type setupDeployToken struct {
 var SetupGuardService = newSetupGuardService()
 
 func newSetupGuardService() *setupGuardService {
-	windowMinutes := 30
-	if raw := strings.TrimSpace(os.Getenv("SETUP_WINDOW_MINUTES")); raw != "" {
-		if v, err := strconv.Atoi(raw); err == nil && v > 0 && v <= 240 {
-			windowMinutes = v
-		}
-	}
-
 	return &setupGuardService{
-		bootTime:     time.Now(),
-		setupWindow:  time.Duration(windowMinutes) * time.Minute,
-		tokenTTL:     2 * time.Minute,
-		deployTokens: make(map[string]setupDeployToken),
+		tokenTTL:    2 * time.Minute,
+		setupTokens: make(map[string]setupTokenMeta),
 	}
 }
 
-func (s *setupGuardService) IsWindowOpen(initialized bool) bool {
-	if initialized {
-		return false
-	}
-	return time.Since(s.bootTime) <= s.setupWindow
+func (s *setupGuardService) IssueInitToken(windowOpen bool, clientIP, userAgent string) (string, time.Time, error) {
+	return s.issueToken(windowOpen, setupTokenPurposeInit, clientIP, userAgent)
 }
 
-func (s *setupGuardService) WindowDeadline() time.Time {
-	return s.bootTime.Add(s.setupWindow)
+func (s *setupGuardService) IssueDeployToken(windowOpen bool, clientIP, userAgent string) (string, time.Time, error) {
+	return s.issueToken(windowOpen, setupTokenPurposeDeploy, clientIP, userAgent)
 }
 
-func (s *setupGuardService) IssueDeployToken(initialized bool, clientIP, userAgent string) (string, time.Time, error) {
-	if !s.IsWindowOpen(initialized) {
+func (s *setupGuardService) ValidateAndConsumeInitToken(windowOpen bool, token, clientIP, userAgent string) error {
+	return s.validateAndConsumeToken(windowOpen, setupTokenPurposeInit, token, clientIP, userAgent)
+}
+
+func (s *setupGuardService) ValidateAndConsumeDeployToken(windowOpen bool, token, clientIP, userAgent string) error {
+	return s.validateAndConsumeToken(windowOpen, setupTokenPurposeDeploy, token, clientIP, userAgent)
+}
+
+func (s *setupGuardService) RevokeAllTokens() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.setupTokens = make(map[string]setupTokenMeta)
+}
+
+func (s *setupGuardService) issueToken(windowOpen bool, purpose, clientIP, userAgent string) (string, time.Time, error) {
+	if !windowOpen {
 		return "", time.Time{}, serializer.NewError(serializer.CodeNoPermissionErr, "setup window closed", nil)
 	}
 
@@ -73,7 +77,8 @@ func (s *setupGuardService) IssueDeployToken(initialized bool, clientIP, userAge
 	defer s.mu.Unlock()
 	s.cleanupExpiredLocked(now)
 
-	s.deployTokens[token] = setupDeployToken{
+	s.setupTokens[token] = setupTokenMeta{
+		Purpose:       purpose,
 		ExpiresAt:     expiresAt,
 		ClientIP:      normalizeClientIP(clientIP),
 		UserAgentHash: hashUserAgent(userAgent),
@@ -82,52 +87,48 @@ func (s *setupGuardService) IssueDeployToken(initialized bool, clientIP, userAge
 	return token, expiresAt, nil
 }
 
-func (s *setupGuardService) ValidateAndConsumeDeployToken(initialized bool, token, clientIP, userAgent string) error {
-	if !s.IsWindowOpen(initialized) {
+func (s *setupGuardService) validateAndConsumeToken(windowOpen bool, purpose, token, clientIP, userAgent string) error {
+	if !windowOpen {
 		return serializer.NewError(serializer.CodeNoPermissionErr, "setup window closed", nil)
 	}
 
 	token = strings.TrimSpace(token)
 	if token == "" {
-		return serializer.NewError(serializer.CodeNoPermissionErr, "missing setup deploy token", nil)
+		return serializer.NewError(serializer.CodeNoPermissionErr, "missing setup token", nil)
 	}
 
 	now := time.Now()
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.cleanupExpiredLocked(now)
 
-	meta, ok := s.deployTokens[token]
+	meta, ok := s.setupTokens[token]
 	if !ok {
-		return serializer.NewError(serializer.CodeNoPermissionErr, "invalid or expired setup deploy token", nil)
+		return serializer.NewError(serializer.CodeNoPermissionErr, "invalid or expired setup token", nil)
 	}
+	delete(s.setupTokens, token)
 
-	delete(s.deployTokens, token)
-
-	if now.After(meta.ExpiresAt) {
-		return serializer.NewError(serializer.CodeNoPermissionErr, "setup deploy token expired", nil)
+	if meta.Purpose != purpose {
+		return serializer.NewError(serializer.CodeNoPermissionErr, "invalid setup token purpose", nil)
 	}
-
+	if !now.Before(meta.ExpiresAt) {
+		return serializer.NewError(serializer.CodeNoPermissionErr, "setup token expired", nil)
+	}
 	if meta.ClientIP != normalizeClientIP(clientIP) {
-		return serializer.NewError(serializer.CodeNoPermissionErr, "setup deploy token client mismatch", nil)
+		return serializer.NewError(serializer.CodeNoPermissionErr, "setup token client mismatch", nil)
 	}
 	if meta.UserAgentHash != hashUserAgent(userAgent) {
-		return serializer.NewError(serializer.CodeNoPermissionErr, "setup deploy token agent mismatch", nil)
+		return serializer.NewError(serializer.CodeNoPermissionErr, "setup token agent mismatch", nil)
 	}
 
 	return nil
 }
 
-func (s *setupGuardService) RevokeAllTokens() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.deployTokens = make(map[string]setupDeployToken)
-}
-
 func (s *setupGuardService) cleanupExpiredLocked(now time.Time) {
-	for token, meta := range s.deployTokens {
-		if now.After(meta.ExpiresAt) {
-			delete(s.deployTokens, token)
+	for token, meta := range s.setupTokens {
+		if !now.Before(meta.ExpiresAt) {
+			delete(s.setupTokens, token)
 		}
 	}
 }

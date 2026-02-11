@@ -6,7 +6,8 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"net/http"
+	"headscale-panel/pkg/conf"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -105,23 +106,11 @@ func (a *AuthController) OIDCLogin(c *gin.Context) {
 		scopes = []string{"openid", "profile", "email"}
 	}
 
-	// Derive redirect_uri from the request origin
-	origin := c.GetHeader("Origin")
-	if origin == "" {
-		referer := c.GetHeader("Referer")
-		if referer != "" {
-			// Extract scheme + host from Referer
-			parts := strings.SplitN(referer, "//", 2)
-			if len(parts) == 2 {
-				hostPart := strings.SplitN(parts[1], "/", 2)
-				origin = parts[0] + "//" + hostPart[0]
-			}
-		}
+	redirectURI, err := oidcRedirectURI()
+	if err != nil {
+		serializer.Fail(c, serializer.NewError(serializer.CodeInternalError, "invalid OIDC redirect base URL", err))
+		return
 	}
-	if origin == "" {
-		origin = fmt.Sprintf("%s://%s", schemeFromRequest(c), c.Request.Host)
-	}
-	redirectURI := origin + "/login"
 
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 15*time.Second)
 	defer cancel()
@@ -195,22 +184,11 @@ func (a *AuthController) OIDCCallback(c *gin.Context) {
 		scopes = []string{"openid", "profile", "email"}
 	}
 
-	// Reconstruct redirect_uri
-	origin := c.GetHeader("Origin")
-	if origin == "" {
-		referer := c.GetHeader("Referer")
-		if referer != "" {
-			parts := strings.SplitN(referer, "//", 2)
-			if len(parts) == 2 {
-				hostPart := strings.SplitN(parts[1], "/", 2)
-				origin = parts[0] + "//" + hostPart[0]
-			}
-		}
+	redirectURI, err := oidcRedirectURI()
+	if err != nil {
+		serializer.Fail(c, serializer.NewError(serializer.CodeInternalError, "invalid OIDC redirect base URL", err))
+		return
 	}
-	if origin == "" {
-		origin = fmt.Sprintf("%s://%s", schemeFromRequest(c), c.Request.Host)
-	}
-	redirectURI := origin + "/login"
 
 	oauthCfg := oauth2.Config{
 		ClientID:     hsConfig.OIDC.ClientID,
@@ -302,7 +280,9 @@ func findOrCreateOIDCUser(sub, email, name, preferredUsername, picture string) (
 			updates["profile_pic_url"] = picture
 		}
 		if len(updates) > 0 {
-			model.DB.Model(&user).Updates(updates)
+			if err := model.DB.Model(&user).Updates(updates).Error; err != nil {
+				return nil, fmt.Errorf("failed to update oidc user profile: %w", err)
+			}
 		}
 		return &user, nil
 	}
@@ -317,13 +297,17 @@ func findOrCreateOIDCUser(sub, email, name, preferredUsername, picture string) (
 			First(&user).Error
 		if err == nil {
 			// Link the OIDC identity to the existing account
-			model.DB.Model(&user).Updates(map[string]interface{}{
+			if err := model.DB.Model(&user).Updates(map[string]interface{}{
 				"provider":        "oidc",
 				"provider_id":     sub,
 				"profile_pic_url": picture,
-			})
+			}).Error; err != nil {
+				return nil, fmt.Errorf("failed to link oidc account: %w", err)
+			}
 			if name != "" && user.DisplayName == "" {
-				model.DB.Model(&user).Update("display_name", name)
+				if err := model.DB.Model(&user).Update("display_name", name).Error; err != nil {
+					return nil, fmt.Errorf("failed to update display name: %w", err)
+				}
 			}
 			return &user, nil
 		}
@@ -337,7 +321,10 @@ func findOrCreateOIDCUser(sub, email, name, preferredUsername, picture string) (
 	username := deriveUsername(preferredUsername, name, email, sub)
 
 	// Ensure username uniqueness
-	username = ensureUniqueUsername(username)
+	username, err = ensureUniqueUsername(username)
+	if err != nil {
+		return nil, err
+	}
 
 	// Look up the "User" group (default group for OIDC users)
 	var userGroup model.Group
@@ -361,7 +348,9 @@ func findOrCreateOIDCUser(sub, email, name, preferredUsername, picture string) (
 	}
 
 	// Reload with group
-	model.DB.Preload("Group").First(&newUser, newUser.ID)
+	if err := model.DB.Preload("Group").First(&newUser, newUser.ID).Error; err != nil {
+		return nil, fmt.Errorf("failed to reload created user: %w", err)
+	}
 	return &newUser, nil
 }
 
@@ -402,34 +391,36 @@ func sanitizeUsername(s string) string {
 }
 
 // ensureUniqueUsername appends a numeric suffix if the username is already taken.
-func ensureUniqueUsername(base string) string {
+func ensureUniqueUsername(base string) (string, error) {
 	candidate := base
 	for i := 1; ; i++ {
 		var count int64
-		model.DB.Model(&model.User{}).Where("username = ?", candidate).Count(&count)
+		if err := model.DB.Model(&model.User{}).Where("username = ?", candidate).Count(&count).Error; err != nil {
+			return "", fmt.Errorf("failed to check username uniqueness: %w", err)
+		}
 		if count == 0 {
-			return candidate
+			return candidate, nil
 		}
 		candidate = fmt.Sprintf("%s_%d", base, i)
 	}
 }
 
-// schemeFromRequest infers the URL scheme from the request.
-func schemeFromRequest(c *gin.Context) string {
-	if c.Request.TLS != nil {
-		return "https"
+func oidcRedirectURI() (string, error) {
+	baseURL := strings.TrimSpace(conf.Conf.System.BaseURL)
+	if baseURL == "" {
+		return "", errors.New("system.base_url is empty")
 	}
-	if proto := c.GetHeader("X-Forwarded-Proto"); proto != "" {
-		return proto
+
+	parsed, err := url.Parse(baseURL)
+	if err != nil {
+		return "", fmt.Errorf("invalid system.base_url: %w", err)
 	}
-	if c.Request.URL.Scheme != "" {
-		return c.Request.URL.Scheme
+	if parsed.Scheme == "" || parsed.Host == "" {
+		return "", errors.New("system.base_url must be absolute")
 	}
-	return "http"
+
+	return strings.TrimRight(baseURL, "/") + "/login", nil
 }
 
 // Ensure the controller satisfies any interface at compile time (optional guard).
 var _ = (*AuthController)(nil)
-
-// Suppress unused import warnings — the http package is used implicitly via oauth2.
-var _ = http.StatusOK

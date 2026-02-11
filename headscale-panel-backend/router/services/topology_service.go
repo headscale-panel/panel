@@ -55,11 +55,15 @@ type TopologyResponse struct {
 }
 
 // GetTopology generates network topology data in frontend-expected format
-func (s *topologyService) GetTopology() (*TopologyResponse, error) {
-	return s.GetTopologyWithContext(context.Background())
+func (s *topologyService) GetTopology(actorUserID uint) (*TopologyResponse, error) {
+	return s.GetTopologyWithContext(context.Background(), actorUserID)
 }
 
-func (s *topologyService) GetTopologyWithContext(ctx context.Context) (*TopologyResponse, error) {
+func (s *topologyService) GetTopologyWithContext(ctx context.Context, actorUserID uint) (*TopologyResponse, error) {
+	if err := RequirePermission(actorUserID, "topology:view"); err != nil {
+		return nil, err
+	}
+
 	queryCtx, cancel := withServiceTimeout(ctx)
 	defer cancel()
 
@@ -133,11 +137,15 @@ func (s *topologyService) GetTopologyWithContext(ctx context.Context) (*Topology
 }
 
 // GetACLMatrix generates ACL connectivity matrix
-func (s *topologyService) GetACLMatrix() (map[string]map[string]string, error) {
-	return s.GetACLMatrixWithContext(context.Background())
+func (s *topologyService) GetACLMatrix(actorUserID uint) (map[string]map[string]string, error) {
+	return s.GetACLMatrixWithContext(context.Background(), actorUserID)
 }
 
-func (s *topologyService) GetACLMatrixWithContext(ctx context.Context) (map[string]map[string]string, error) {
+func (s *topologyService) GetACLMatrixWithContext(ctx context.Context, actorUserID uint) (map[string]map[string]string, error) {
+	if err := RequirePermission(actorUserID, "topology:acl_matrix:view"); err != nil {
+		return nil, err
+	}
+
 	queryCtx, cancel := withServiceTimeout(ctx)
 	defer cancel()
 
@@ -169,12 +177,16 @@ func (s *topologyService) GetACLMatrixWithContext(ctx context.Context) (map[stri
 }
 
 // GetTopologyWithACL generates topology with full ACL information
-func (s *topologyService) GetTopologyWithACL() (*TopologyResponse, error) {
-	return s.GetTopologyWithACLContext(context.Background())
+func (s *topologyService) GetTopologyWithACL(actorUserID uint) (*TopologyResponse, error) {
+	return s.GetTopologyWithACLContext(context.Background(), actorUserID)
 }
 
-func (s *topologyService) GetTopologyWithACLContext(ctx context.Context) (*TopologyResponse, error) {
-	topology, err := s.GetTopologyWithContext(ctx)
+func (s *topologyService) GetTopologyWithACLContext(ctx context.Context, actorUserID uint) (*TopologyResponse, error) {
+	if err := RequirePermission(actorUserID, "topology:with_acl:view"); err != nil {
+		return nil, err
+	}
+
+	topology, err := s.GetTopologyWithContext(ctx, actorUserID)
 	if err != nil {
 		return nil, err
 	}

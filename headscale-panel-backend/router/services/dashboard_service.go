@@ -26,11 +26,15 @@ type DashboardTopologyNode struct {
 	Info     interface{}              `json:"info,omitempty"`
 }
 
-func (s *dashboardService) GetOverview() (*OverviewResponse, error) {
-	return s.GetOverviewWithContext(context.Background())
+func (s *dashboardService) GetOverview(actorUserID uint) (*OverviewResponse, error) {
+	return s.GetOverviewWithContext(context.Background(), actorUserID)
 }
 
-func (s *dashboardService) GetOverviewWithContext(ctx context.Context) (*OverviewResponse, error) {
+func (s *dashboardService) GetOverviewWithContext(ctx context.Context, actorUserID uint) (*OverviewResponse, error) {
+	if err := RequirePermission(actorUserID, "dashboard:view"); err != nil {
+		return nil, err
+	}
+
 	var userCount, groupCount, resourceCount int64
 	if err := model.DB.Model(&model.User{}).Count(&userCount).Error; err != nil {
 		return nil, err
@@ -67,11 +71,15 @@ func (s *dashboardService) GetOverviewWithContext(ctx context.Context) (*Overvie
 	}, nil
 }
 
-func (s *dashboardService) GetTopology() (*DashboardTopologyNode, error) {
-	return s.GetTopologyWithContext(context.Background())
+func (s *dashboardService) GetTopology(actorUserID uint) (*DashboardTopologyNode, error) {
+	return s.GetTopologyWithContext(context.Background(), actorUserID)
 }
 
-func (s *dashboardService) GetTopologyWithContext(ctx context.Context) (*DashboardTopologyNode, error) {
+func (s *dashboardService) GetTopologyWithContext(ctx context.Context, actorUserID uint) (*DashboardTopologyNode, error) {
+	if err := RequirePermission(actorUserID, "dashboard:view"); err != nil {
+		return nil, err
+	}
+
 	// Root: Headscale Server
 	root := &DashboardTopologyNode{
 		Name:     "Headscale Server",

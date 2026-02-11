@@ -22,7 +22,7 @@ func (c *HeadscaleConfigController) Get(ctx *gin.Context) {
 		return
 	}
 
-	serializer.Success(ctx, config)
+	serializer.Success(ctx, services.HeadscaleConfigService.RedactSecrets(config))
 }
 
 // Update saves the Headscale configuration to the config.yaml file
@@ -34,7 +34,14 @@ func (c *HeadscaleConfigController) Update(ctx *gin.Context) {
 	}
 
 	userID := ctx.GetUint("userID")
-	if err := services.HeadscaleConfigService.SaveConfigWithAuth(userID, &config); err != nil {
+	currentConfig, err := services.HeadscaleConfigService.GetConfig()
+	if err != nil {
+		serializer.Fail(ctx, err)
+		return
+	}
+
+	merged := services.HeadscaleConfigService.MergePreservedSecrets(&config, currentConfig)
+	if err := services.HeadscaleConfigService.SaveConfigWithAuth(userID, merged); err != nil {
 		serializer.Fail(ctx, err)
 		return
 	}
@@ -51,7 +58,14 @@ func (c *HeadscaleConfigController) Preview(ctx *gin.Context) {
 	}
 
 	userID := ctx.GetUint("userID")
-	yamlStr, err := services.HeadscaleConfigService.PreviewConfigWithAuth(userID, &config)
+	currentConfig, err := services.HeadscaleConfigService.GetConfig()
+	if err != nil {
+		serializer.Fail(ctx, err)
+		return
+	}
+	merged := services.HeadscaleConfigService.MergePreservedSecrets(&config, currentConfig)
+
+	yamlStr, err := services.HeadscaleConfigService.PreviewConfigWithAuth(userID, merged)
 	if err != nil {
 		serializer.Fail(ctx, err)
 		return

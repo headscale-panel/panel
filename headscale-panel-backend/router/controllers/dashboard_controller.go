@@ -14,7 +14,8 @@ func NewDashboardController() *DashboardController {
 }
 
 func (d *DashboardController) Overview(c *gin.Context) {
-	data, err := services.DashboardService.GetOverviewWithContext(c.Request.Context())
+	userID := c.GetUint("userID")
+	data, err := services.DashboardService.GetOverviewWithContext(c.Request.Context(), userID)
 	if err != nil {
 		serializer.Fail(c, err)
 		return
@@ -23,7 +24,8 @@ func (d *DashboardController) Overview(c *gin.Context) {
 }
 
 func (d *DashboardController) Topology(c *gin.Context) {
-	data, err := services.DashboardService.GetTopologyWithContext(c.Request.Context())
+	userID := c.GetUint("userID")
+	data, err := services.DashboardService.GetTopologyWithContext(c.Request.Context(), userID)
 	if err != nil {
 		serializer.Fail(c, err)
 		return

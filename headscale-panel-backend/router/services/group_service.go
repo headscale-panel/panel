@@ -85,7 +85,9 @@ func (s *groupService) Delete(actorUserID uint, id uint) error {
 	}
 
 	var count int64
-	model.DB.Model(&model.User{}).Where("group_id = ?", id).Count(&count)
+	if err := model.DB.Model(&model.User{}).Where("group_id = ?", id).Count(&count).Error; err != nil {
+		return serializer.ErrDatabase.WithError(err)
+	}
 	if count > 0 {
 		return serializer.ErrGroupHasUsers
 	}

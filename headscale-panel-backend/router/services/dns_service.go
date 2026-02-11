@@ -2,12 +2,15 @@ package services
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"headscale-panel/model"
 	"headscale-panel/pkg/conf"
 	"headscale-panel/pkg/utils/serializer"
 	"os"
 	"path/filepath"
+
+	"gorm.io/gorm"
 )
 
 type dnsService struct{}
@@ -129,7 +132,9 @@ func (s *dnsService) Update(actorUserID uint, req *UpdateDNSRecordRequest) (*mod
 	}
 
 	// 重新获取更新后的记录
-	model.DB.First(&record, req.ID)
+	if err := model.DB.First(&record, req.ID).Error; err != nil {
+		return nil, serializer.ErrDatabase.WithError(err)
+	}
 
 	// 同步到文件
 	if err := s.SyncToFile(actorUserID); err != nil {
@@ -255,15 +260,23 @@ func (s *dnsService) ImportFromFile(actorUserID uint) (int, error) {
 		if result.Error == nil {
 			// 已存在，更新
 			existing.Value = r.Value
-			model.DB.Save(&existing)
+			if err := model.DB.Save(&existing).Error; err != nil {
+				return imported, serializer.ErrDatabase.WithError(err)
+			}
 		} else {
+			if !errors.Is(result.Error, gorm.ErrRecordNotFound) {
+				return imported, serializer.ErrDatabase.WithError(result.Error)
+			}
+
 			// 不存在，创建
 			newRecord := model.DNSRecord{
 				Name:  r.Name,
 				Type:  r.Type,
 				Value: r.Value,
 			}
-			model.DB.Create(&newRecord)
+			if err := model.DB.Create(&newRecord).Error; err != nil {
+				return imported, serializer.ErrDatabase.WithError(err)
+			}
 			imported++
 		}
 	}

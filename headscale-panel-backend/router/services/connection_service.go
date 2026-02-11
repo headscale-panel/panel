@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"fmt"
+	"headscale-panel/model"
 	"headscale-panel/pkg/conf"
 	"headscale-panel/pkg/headscale"
 	v1 "headscale-panel/pkg/proto/headscale/v1"
@@ -201,7 +202,18 @@ func (s *connectionService) GeneratePreAuthKeyWithContext(ctx context.Context, a
 	queryCtx, cancel := withServiceTimeout(ctx)
 	defer cancel()
 
-	targetName := fmt.Sprintf("user-%d", userID)
+	var panelUser model.User
+	if err := model.DB.First(&panelUser, userID).Error; err != nil {
+		return "", fmt.Errorf("panel user not found: %w", err)
+	}
+
+	targetName := strings.TrimSpace(panelUser.HeadscaleName)
+	if targetName == "" {
+		targetName = strings.TrimSpace(panelUser.Username)
+	}
+	if targetName == "" {
+		return "", fmt.Errorf("panel user %d has no headscale identifier", userID)
+	}
 
 	// List users to find the ID
 	users, err := headscale.GlobalClient.Service.ListUsers(queryCtx, &v1.ListUsersRequest{})

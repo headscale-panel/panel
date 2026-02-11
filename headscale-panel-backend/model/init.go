@@ -1,6 +1,7 @@
 package model
 
 import (
+	"errors"
 	"fmt"
 	"headscale-panel/pkg/conf"
 	"log"
@@ -27,6 +28,7 @@ func Init() {
 		&OauthClient{},
 		&ACLPolicy{},
 		&DNSRecord{},
+		&SetupState{},
 	)
 	if err != nil {
 		log.Fatalf("models.AutoMigrate err: %v", err)
@@ -124,6 +126,16 @@ func initDefaultData() {
 		{Name: "查看容器日志", Code: "docker:container:logs", Type: "button"},
 		{Name: "查看容器监控", Code: "docker:container:stats", Type: "button"},
 		{Name: "部署容器", Code: "docker:container:deploy", Type: "button"},
+
+		{Name: "查看在线时长", Code: "metrics:online_duration:view", Type: "button"},
+		{Name: "查看在线时长统计", Code: "metrics:online_duration_stats:view", Type: "button"},
+		{Name: "查看设备状态", Code: "metrics:device_status:view", Type: "button"},
+		{Name: "查看设备状态历史", Code: "metrics:device_status_history:view", Type: "button"},
+		{Name: "查看流量统计", Code: "metrics:traffic:view", Type: "button"},
+
+		{Name: "查看拓扑", Code: "topology:view", Type: "button"},
+		{Name: "查看拓扑 ACL", Code: "topology:with_acl:view", Type: "button"},
+		{Name: "查看拓扑 ACL 矩阵", Code: "topology:acl_matrix:view", Type: "button"},
 	}
 
 	for _, p := range permissions {
@@ -171,5 +183,25 @@ func initDefaultData() {
 	var userCount int64
 	if err := DB.Model(&User{}).Count(&userCount).Error; err == nil && userCount == 0 {
 		log.Println("No users found. Create the first admin via /api/v1/setup/init")
+	}
+
+	initSetupStateRecord()
+}
+
+func initSetupStateRecord() {
+	var state SetupState
+	err := DB.First(&state, 1).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		state = SetupState{
+			ID:    1,
+			State: SetupStateUninitialized,
+		}
+		if err := DB.Create(&state).Error; err != nil {
+			log.Fatalf("failed to initialize setup state: %v", err)
+		}
+		return
+	}
+	if err != nil {
+		log.Fatalf("failed to load setup state: %v", err)
 	}
 }

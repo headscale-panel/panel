@@ -36,7 +36,9 @@ func (s *systemService) CreateUser(actorUserID uint, username, password, email s
 	}
 
 	var count int64
-	model.DB.Model(&model.User{}).Where("username = ?", username).Count(&count)
+	if err := model.DB.Model(&model.User{}).Where("username = ?", username).Count(&count).Error; err != nil {
+		return serializer.ErrDatabase.WithError(err)
+	}
 	if count > 0 {
 		return serializer.ErrUserNameExisted
 	}
@@ -93,58 +95,20 @@ func (s *systemService) DeleteUser(actorUserID uint, id uint) error {
 // Group Management
 // Deprecated: Use GroupService instead
 func (s *systemService) ListGroups() ([]model.Group, error) {
-	var groups []model.Group
-	if err := model.DB.Preload("Permissions").Find(&groups).Error; err != nil {
-		return nil, serializer.ErrDatabase.WithError(err)
-	}
-	return groups, nil
+	return nil, serializer.NewError(serializer.CodeForbidden, "deprecated system group API is disabled; use GroupService", nil)
 }
 
 // Deprecated: Use GroupService instead
 func (s *systemService) CreateGroup(name string, permissionIDs []uint) error {
-	var permissions []model.Permission
-	if len(permissionIDs) > 0 {
-		model.DB.Find(&permissions, permissionIDs)
-	}
-
-	group := model.Group{
-		Name:        name,
-		Permissions: permissions,
-	}
-	if err := model.DB.Create(&group).Error; err != nil {
-		return serializer.ErrDatabase.WithError(err)
-	}
-	return nil
+	return serializer.NewError(serializer.CodeForbidden, "deprecated system group API is disabled; use GroupService", nil)
 }
 
 // Deprecated: Use GroupService instead
 func (s *systemService) UpdateGroup(id uint, name string, permissionIDs []uint) error {
-	var group model.Group
-	if err := model.DB.First(&group, id).Error; err != nil {
-		return serializer.ErrDatabase.WithError(err)
-	}
-
-	var permissions []model.Permission
-	if len(permissionIDs) > 0 {
-		model.DB.Find(&permissions, permissionIDs)
-	}
-
-	group.Name = name
-	if err := model.DB.Model(&group).Association("Permissions").Replace(permissions); err != nil {
-		return serializer.ErrDatabase.WithError(err)
-	}
-
-	if err := model.DB.Save(&group).Error; err != nil {
-		return serializer.ErrDatabase.WithError(err)
-	}
-	return nil
+	return serializer.NewError(serializer.CodeForbidden, "deprecated system group API is disabled; use GroupService", nil)
 }
 
 // Deprecated: Use PermissionService instead
 func (s *systemService) ListPermissions() ([]model.Permission, error) {
-	var permissions []model.Permission
-	if err := model.DB.Find(&permissions).Error; err != nil {
-		return nil, serializer.ErrDatabase.WithError(err)
-	}
-	return permissions, nil
+	return nil, serializer.NewError(serializer.CodeForbidden, "deprecated permission API is disabled; use PermissionService", nil)
 }

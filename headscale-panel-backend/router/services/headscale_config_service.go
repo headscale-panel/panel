@@ -13,6 +13,8 @@ type headscaleConfigService struct{}
 
 var HeadscaleConfigService = new(headscaleConfigService)
 
+const redactedSecretPlaceholder = "******"
+
 // HeadscaleConfigFile represents the full Headscale config.yaml structure
 type HeadscaleConfigFile struct {
 	ServerURL                      string         `json:"server_url" yaml:"server_url"`
@@ -214,7 +216,7 @@ func (s *headscaleConfigService) SaveConfig(config *HeadscaleConfigFile) error {
 		return fmt.Errorf("YAML 序列化失败: %w", err)
 	}
 
-	if err := os.WriteFile(filePath, data, 0644); err != nil {
+	if err := os.WriteFile(filePath, data, 0600); err != nil {
 		return fmt.Errorf("写入配置文件失败: %w", err)
 	}
 
@@ -256,6 +258,42 @@ func (s *headscaleConfigService) getConfigPath() string {
 		return conf.Conf.Headscale.ConfigPath
 	}
 	return "./headscale/config.yaml"
+}
+
+func (s *headscaleConfigService) RedactSecrets(config *HeadscaleConfigFile) *HeadscaleConfigFile {
+	if config == nil {
+		return nil
+	}
+
+	copyCfg := *config
+	if copyCfg.OIDC.ClientSecret != "" {
+		copyCfg.OIDC.ClientSecret = redactedSecretPlaceholder
+	}
+	if copyCfg.Database.Postgres.Pass != "" {
+		copyCfg.Database.Postgres.Pass = redactedSecretPlaceholder
+	}
+
+	return &copyCfg
+}
+
+func (s *headscaleConfigService) MergePreservedSecrets(incoming, current *HeadscaleConfigFile) *HeadscaleConfigFile {
+	if incoming == nil {
+		return nil
+	}
+
+	merged := *incoming
+	if current == nil {
+		return &merged
+	}
+
+	if incoming.OIDC.ClientSecret == redactedSecretPlaceholder {
+		merged.OIDC.ClientSecret = current.OIDC.ClientSecret
+	}
+	if incoming.Database.Postgres.Pass == redactedSecretPlaceholder {
+		merged.Database.Postgres.Pass = current.Database.Postgres.Pass
+	}
+
+	return &merged
 }
 
 func (s *headscaleConfigService) defaultConfig() *HeadscaleConfigFile {

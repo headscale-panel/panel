@@ -69,8 +69,8 @@ func InitRouter() *gin.Engine {
 			auth.DELETE("/resources", middleware.PermissionMiddleware("resource:delete"), resourceController.Delete)
 
 			dashboardController := controllers.NewDashboardController()
-			auth.GET("/dashboard/overview", dashboardController.Overview)
-			auth.GET("/dashboard/topology", dashboardController.Topology)
+			auth.GET("/dashboard/overview", middleware.PermissionMiddleware("dashboard:view"), dashboardController.Overview)
+			auth.GET("/dashboard/topology", middleware.PermissionMiddleware("dashboard:view"), dashboardController.Topology)
 
 			systemController := controllers.NewSystemController()
 			auth.GET("/system/users", middleware.PermissionMiddleware("system:user:list"), systemController.ListUsers)
@@ -131,16 +131,16 @@ func InitRouter() *gin.Engine {
 			auth.POST("/routes/disable", middleware.PermissionMiddleware("headscale:route:disable"), routeController.DisableRoute)
 
 			metricsController := &controllers.MetricsController{}
-			auth.GET("/metrics/online-duration", metricsController.GetOnlineDuration)
-			auth.GET("/metrics/online-duration-stats", metricsController.GetOnlineDurationStats)
-			auth.GET("/metrics/device-status", metricsController.GetDeviceStatus)
-			auth.GET("/metrics/device-status-history", metricsController.GetDeviceStatusHistory)
-			auth.GET("/metrics/traffic", metricsController.GetTrafficStats)
+			auth.GET("/metrics/online-duration", middleware.PermissionMiddleware("metrics:online_duration:view"), metricsController.GetOnlineDuration)
+			auth.GET("/metrics/online-duration-stats", middleware.PermissionMiddleware("metrics:online_duration_stats:view"), metricsController.GetOnlineDurationStats)
+			auth.GET("/metrics/device-status", middleware.PermissionMiddleware("metrics:device_status:view"), metricsController.GetDeviceStatus)
+			auth.GET("/metrics/device-status-history", middleware.PermissionMiddleware("metrics:device_status_history:view"), metricsController.GetDeviceStatusHistory)
+			auth.GET("/metrics/traffic", middleware.PermissionMiddleware("metrics:traffic:view"), metricsController.GetTrafficStats)
 
 			topologyController := &controllers.TopologyController{}
-			auth.GET("/topology", topologyController.GetTopology)
-			auth.GET("/topology/with-acl", topologyController.GetTopologyWithACL)
-			auth.GET("/topology/acl-matrix", topologyController.GetACLMatrix)
+			auth.GET("/topology", middleware.PermissionMiddleware("topology:view"), topologyController.GetTopology)
+			auth.GET("/topology/with-acl", middleware.PermissionMiddleware("topology:with_acl:view"), topologyController.GetTopologyWithACL)
+			auth.GET("/topology/acl-matrix", middleware.PermissionMiddleware("topology:acl_matrix:view"), topologyController.GetACLMatrix)
 
 			connectionController := &controllers.ConnectionController{}
 			auth.POST("/connection/generate", middleware.PermissionMiddleware("headscale:machine:list"), connectionController.GenerateConnectionCommands)

@@ -2,7 +2,9 @@ package model
 
 import (
 	"headscale-panel/pkg/utils/password"
+	"strings"
 
+	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )
 
@@ -28,11 +30,7 @@ type User struct {
 
 // BeforeSave encrypts the password before saving to the database
 func (u *User) BeforeSave(tx *gorm.DB) (err error) {
-	// 只有当密码字段被修改且不是空时才加密
-	// 注意：这里简单处理，实际更新密码时需要小心
-	// 如果是更新操作且密码未变（通常不会传空密码进来更新），则不处理
-	// 这里假设业务层只在需要修改密码时才设置 Password 字段
-	if u.Password != "" && len(u.Password) < 60 {
+	if u.Password != "" && !isBcryptHash(u.Password) {
 		encrypted, err := password.Encrypt(u.Password)
 		if err != nil {
 			return err
@@ -44,4 +42,12 @@ func (u *User) BeforeSave(tx *gorm.DB) (err error) {
 
 func (u *User) CheckPassword(pwd string) bool {
 	return password.Compare(u.Password, pwd)
+}
+
+func isBcryptHash(value string) bool {
+	if !strings.HasPrefix(value, "$2") {
+		return false
+	}
+	_, err := bcrypt.Cost([]byte(value))
+	return err == nil
 }
