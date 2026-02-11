@@ -74,12 +74,16 @@ func (s *oauthClientService) Create(actorUserID uint, name, redirectURIs string)
 	if err != nil {
 		return nil, err
 	}
+	hashedSecret, err := hashOAuthClientSecret(clientSecret)
+	if err != nil {
+		return nil, serializer.NewError(serializer.CodeInternalError, "failed to secure client secret", err)
+	}
 
 	client := &model.OauthClient{
-		Name:         trimmedName,
-		ClientID:     clientID,
-		ClientSecret: clientSecret,
-		RedirectURIs: normalizedRedirectURIs,
+		Name:             trimmedName,
+		ClientID:         clientID,
+		ClientSecretHash: hashedSecret,
+		RedirectURIs:     normalizedRedirectURIs,
 	}
 
 	if err := model.DB.Create(client).Error; err != nil {
@@ -144,8 +148,13 @@ func (s *oauthClientService) RegenerateSecret(actorUserID uint, id uint) (string
 	if err != nil {
 		return "", err
 	}
+	hashedSecret, err := hashOAuthClientSecret(newSecret)
+	if err != nil {
+		return "", serializer.NewError(serializer.CodeInternalError, "failed to secure client secret", err)
+	}
 
-	client.ClientSecret = newSecret
+	client.ClientSecretHash = hashedSecret
+	client.ClientSecret = ""
 	if err := model.DB.Save(&client).Error; err != nil {
 		return "", serializer.ErrDatabase.WithError(err)
 	}

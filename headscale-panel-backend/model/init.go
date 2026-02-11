@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"headscale-panel/pkg/conf"
 	"log"
+	"strings"
 
 	"github.com/glebarez/sqlite"
+	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )
 
@@ -32,6 +34,10 @@ func Init() {
 	)
 	if err != nil {
 		log.Fatalf("models.AutoMigrate err: %v", err)
+	}
+
+	if err := migrateLegacyOauthClientSecrets(); err != nil {
+		log.Fatalf("failed to migrate oauth client secrets: %v", err)
 	}
 
 	initDefaultData()
@@ -204,4 +210,41 @@ func initSetupStateRecord() {
 	if err != nil {
 		log.Fatalf("failed to load setup state: %v", err)
 	}
+}
+
+func migrateLegacyOauthClientSecrets() error {
+	var clients []OauthClient
+	if err := DB.
+		Where("(client_secret_hash IS NULL OR client_secret_hash = '') AND client_secret IS NOT NULL AND client_secret <> ''").
+		Find(&clients).Error; err != nil {
+		return fmt.Errorf("query legacy oauth clients failed: %w", err)
+	}
+
+	for _, client := range clients {
+		legacySecret := strings.TrimSpace(client.ClientSecret)
+		if legacySecret == "" {
+			continue
+		}
+
+		normalizedSecret := strings.ToLower(legacySecret)
+		if normalizedSecret == "headscale-secret" {
+			return fmt.Errorf("oidc client %q uses insecure default secret; rotate before startup", client.ClientID)
+		}
+
+		hashedSecret, err := bcrypt.GenerateFromPassword([]byte(legacySecret), bcrypt.DefaultCost)
+		if err != nil {
+			return fmt.Errorf("hash oauth secret for client %q failed: %w", client.ClientID, err)
+		}
+
+		if err := DB.Model(&OauthClient{}).
+			Where("id = ?", client.ID).
+			Updates(map[string]interface{}{
+				"client_secret_hash": string(hashedSecret),
+				"client_secret":      "",
+			}).Error; err != nil {
+			return fmt.Errorf("persist oauth secret hash for client %q failed: %w", client.ClientID, err)
+		}
+	}
+
+	return nil
 }

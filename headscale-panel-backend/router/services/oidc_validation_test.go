@@ -1,6 +1,9 @@
 package services
 
-import "testing"
+import (
+	"headscale-panel/model"
+	"testing"
+)
 
 func TestNormalizeRedirectURIs(t *testing.T) {
 	tests := []struct {
@@ -68,6 +71,55 @@ func TestValidateRedirectURI(t *testing.T) {
 			}
 			if !tt.wantErr && err != nil {
 				t.Fatalf("expected nil error, got %v", err)
+			}
+		})
+	}
+}
+
+func TestIsSafeOIDCClient(t *testing.T) {
+	tests := []struct {
+		name   string
+		client model.OauthClient
+		want   bool
+	}{
+		{
+			name: "hash secret with valid redirect",
+			client: model.OauthClient{
+				ClientSecretHash: "$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy",
+				RedirectURIs:     "https://example.com/callback",
+			},
+			want: true,
+		},
+		{
+			name: "legacy insecure secret rejected",
+			client: model.OauthClient{
+				ClientSecret: "headscale-secret",
+				RedirectURIs: "https://example.com/callback",
+			},
+			want: false,
+		},
+		{
+			name: "missing secret rejected",
+			client: model.OauthClient{
+				RedirectURIs: "https://example.com/callback",
+			},
+			want: false,
+		},
+		{
+			name: "invalid redirect rejected",
+			client: model.OauthClient{
+				ClientSecretHash: "hashed",
+				RedirectURIs:     "https://*.example.com/callback",
+			},
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := isSafeOIDCClient(tt.client)
+			if got != tt.want {
+				t.Fatalf("unexpected safe result: got %v, want %v", got, tt.want)
 			}
 		})
 	}

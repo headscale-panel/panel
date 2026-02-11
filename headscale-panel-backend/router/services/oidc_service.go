@@ -50,12 +50,13 @@ func (s *oidcService) Init() error {
 	if err := model.DB.Find(&clients).Error; err != nil {
 		return err
 	}
-	for _, client := range clients {
-		if isInsecureOIDCClientSecret(client.ClientSecret) {
-			return fmt.Errorf("oidc client %q uses insecure client secret; rotate it", client.ClientID)
+	for i := range clients {
+		client := &clients[i]
+		if err := migrateLegacyOAuthClientSecret(client); err != nil {
+			return fmt.Errorf("oidc client %q secret migration failed: %w", client.ClientID, err)
 		}
-		if _, err := normalizeRedirectURIs(client.RedirectURIs); err != nil {
-			return fmt.Errorf("oidc client %q has invalid redirect_uris: %w", client.ClientID, err)
+		if !isSafeOIDCClient(*client) {
+			return fmt.Errorf("oidc client %q has insecure secret or invalid redirect_uris", client.ClientID)
 		}
 	}
 
@@ -86,7 +87,11 @@ func (s *oidcService) GenerateAuthCode(userID uint, clientID, redirectURI, nonce
 // ExchangeCode validates an authorization code and returns id_token, access_token, refresh_token.
 func (s *oidcService) ExchangeCode(code, clientID, clientSecret string) (string, string, string, error) {
 	var client model.OauthClient
-	if err := model.DB.Where("client_id = ? AND client_secret = ?", clientID, clientSecret).First(&client).Error; err != nil {
+	if err := model.DB.Where("client_id = ?", clientID).First(&client).Error; err != nil {
+		return "", "", "", errors.New("invalid client")
+	}
+	validSecret, err := verifyOAuthClientSecret(&client, clientSecret)
+	if err != nil || !validSecret {
 		return "", "", "", errors.New("invalid client")
 	}
 	if !isSafeOIDCClient(client) {
@@ -141,7 +146,11 @@ func (s *oidcService) ExchangeCode(code, clientID, clientSecret string) (string,
 // RefreshTokens validates a refresh token and returns new id_token, access_token, refresh_token.
 func (s *oidcService) RefreshTokens(refreshTokenStr, clientID, clientSecret string) (string, string, string, error) {
 	var client model.OauthClient
-	if err := model.DB.Where("client_id = ? AND client_secret = ?", clientID, clientSecret).First(&client).Error; err != nil {
+	if err := model.DB.Where("client_id = ?", clientID).First(&client).Error; err != nil {
+		return "", "", "", errors.New("invalid client")
+	}
+	validSecret, err := verifyOAuthClientSecret(&client, clientSecret)
+	if err != nil || !validSecret {
 		return "", "", "", errors.New("invalid client")
 	}
 	if !isSafeOIDCClient(client) {
@@ -367,7 +376,13 @@ func isInsecureOIDCClientSecret(secret string) bool {
 }
 
 func isSafeOIDCClient(client model.OauthClient) bool {
-	if isInsecureOIDCClientSecret(client.ClientSecret) {
+	if strings.TrimSpace(client.ClientSecretHash) == "" {
+		legacySecret := strings.TrimSpace(client.ClientSecret)
+		if legacySecret == "" || isInsecureOIDCClientSecret(legacySecret) {
+			return false
+		}
+	}
+	if strings.TrimSpace(client.ClientSecretHash) == "" && strings.TrimSpace(client.ClientSecret) == "" {
 		return false
 	}
 	_, err := normalizeRedirectURIs(client.RedirectURIs)
