@@ -22,7 +22,8 @@ func (c *DNSController) List(ctx *gin.Context) {
 		return
 	}
 
-	records, total, err := services.DNSService.List(&req)
+	userID := ctx.GetUint("userID")
+	records, total, err := services.DNSService.List(userID, &req)
 	if err != nil {
 		serializer.Fail(ctx, err)
 		return
@@ -42,7 +43,8 @@ func (c *DNSController) Create(ctx *gin.Context) {
 		return
 	}
 
-	record, err := services.DNSService.Create(&req)
+	userID := ctx.GetUint("userID")
+	record, err := services.DNSService.Create(userID, &req)
 	if err != nil {
 		serializer.Fail(ctx, err)
 		return
@@ -59,7 +61,8 @@ func (c *DNSController) Update(ctx *gin.Context) {
 		return
 	}
 
-	record, err := services.DNSService.Update(&req)
+	userID := ctx.GetUint("userID")
+	record, err := services.DNSService.Update(userID, &req)
 	if err != nil {
 		serializer.Fail(ctx, err)
 		return
@@ -77,7 +80,8 @@ func (c *DNSController) Delete(ctx *gin.Context) {
 		return
 	}
 
-	if err := services.DNSService.Delete(uint(id)); err != nil {
+	userID := ctx.GetUint("userID")
+	if err := services.DNSService.Delete(userID, uint(id)); err != nil {
 		serializer.Fail(ctx, err)
 		return
 	}
@@ -94,7 +98,8 @@ func (c *DNSController) Get(ctx *gin.Context) {
 		return
 	}
 
-	record, err := services.DNSService.Get(uint(id))
+	userID := ctx.GetUint("userID")
+	record, err := services.DNSService.Get(userID, uint(id))
 	if err != nil {
 		serializer.Fail(ctx, err)
 		return
@@ -105,7 +110,8 @@ func (c *DNSController) Get(ctx *gin.Context) {
 
 // Sync 同步 DNS 记录到文件
 func (c *DNSController) Sync(ctx *gin.Context) {
-	if err := services.DNSService.SyncToFile(); err != nil {
+	userID := ctx.GetUint("userID")
+	if err := services.DNSService.SyncToFile(userID); err != nil {
 		serializer.Fail(ctx, err)
 		return
 	}
@@ -115,7 +121,8 @@ func (c *DNSController) Sync(ctx *gin.Context) {
 
 // Import 从文件导入 DNS 记录
 func (c *DNSController) Import(ctx *gin.Context) {
-	imported, err := services.DNSService.ImportFromFile()
+	userID := ctx.GetUint("userID")
+	imported, err := services.DNSService.ImportFromFile(userID)
 	if err != nil {
 		serializer.Fail(ctx, err)
 		return
@@ -129,7 +136,8 @@ func (c *DNSController) Import(ctx *gin.Context) {
 
 // GetFile 获取文件中的 DNS 记录
 func (c *DNSController) GetFile(ctx *gin.Context) {
-	records, err := services.DNSService.GetExtraRecordsFromFile()
+	userID := ctx.GetUint("userID")
+	records, err := services.DNSService.GetExtraRecordsFromFile(userID)
 	if err != nil {
 		serializer.Fail(ctx, err)
 		return

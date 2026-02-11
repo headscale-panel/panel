@@ -19,8 +19,9 @@ func NewDockerController(dockerService *services.DockerService) *DockerControlle
 // GetContainer gets information about a container
 func (c *DockerController) GetContainer(ctx *gin.Context) {
 	containerName := ctx.Param("name")
+	userID := ctx.GetUint("userID")
 
-	container, err := c.dockerService.GetContainer(containerName)
+	container, err := c.dockerService.GetContainer(userID, containerName)
 	if err != nil {
 		serializer.Fail(ctx, err)
 		return
@@ -32,8 +33,9 @@ func (c *DockerController) GetContainer(ctx *gin.Context) {
 // StartContainer starts a container
 func (c *DockerController) StartContainer(ctx *gin.Context) {
 	containerName := ctx.Param("name")
+	userID := ctx.GetUint("userID")
 
-	if err := c.dockerService.StartContainer(containerName); err != nil {
+	if err := c.dockerService.StartContainer(userID, containerName); err != nil {
 		serializer.Fail(ctx, err)
 		return
 	}
@@ -44,8 +46,9 @@ func (c *DockerController) StartContainer(ctx *gin.Context) {
 // StopContainer stops a container
 func (c *DockerController) StopContainer(ctx *gin.Context) {
 	containerName := ctx.Param("name")
+	userID := ctx.GetUint("userID")
 
-	if err := c.dockerService.StopContainer(containerName); err != nil {
+	if err := c.dockerService.StopContainer(userID, containerName); err != nil {
 		serializer.Fail(ctx, err)
 		return
 	}
@@ -56,8 +59,9 @@ func (c *DockerController) StopContainer(ctx *gin.Context) {
 // RestartContainer restarts a container
 func (c *DockerController) RestartContainer(ctx *gin.Context) {
 	containerName := ctx.Param("name")
+	userID := ctx.GetUint("userID")
 
-	if err := c.dockerService.RestartContainer(containerName); err != nil {
+	if err := c.dockerService.RestartContainer(userID, containerName); err != nil {
 		serializer.Fail(ctx, err)
 		return
 	}
@@ -69,13 +73,14 @@ func (c *DockerController) RestartContainer(ctx *gin.Context) {
 func (c *DockerController) GetContainerLogs(ctx *gin.Context) {
 	containerName := ctx.Param("name")
 	tailStr := ctx.DefaultQuery("tail", "100")
+	userID := ctx.GetUint("userID")
 
 	tail, err := strconv.Atoi(tailStr)
 	if err != nil {
 		tail = 100
 	}
 
-	logs, err := c.dockerService.GetContainerLogs(containerName, tail)
+	logs, err := c.dockerService.GetContainerLogs(userID, containerName, tail)
 	if err != nil {
 		serializer.Fail(ctx, err)
 		return
@@ -87,8 +92,9 @@ func (c *DockerController) GetContainerLogs(ctx *gin.Context) {
 // GetContainerStats gets resource usage statistics for a container
 func (c *DockerController) GetContainerStats(ctx *gin.Context) {
 	containerName := ctx.Param("name")
+	userID := ctx.GetUint("userID")
 
-	stats, err := c.dockerService.GetContainerStats(containerName)
+	stats, err := c.dockerService.GetContainerStats(userID, containerName)
 	if err != nil {
 		serializer.Fail(ctx, err)
 		return
@@ -99,7 +105,8 @@ func (c *DockerController) GetContainerStats(ctx *gin.Context) {
 
 // ListContainers lists all containers
 func (c *DockerController) ListContainers(ctx *gin.Context) {
-	containers, err := c.dockerService.ListContainers()
+	userID := ctx.GetUint("userID")
+	containers, err := c.dockerService.ListContainers(userID)
 	if err != nil {
 		serializer.Fail(ctx, err)
 		return
@@ -121,7 +128,8 @@ func (c *DockerController) DeployContainer(ctx *gin.Context) {
 		return
 	}
 
-	progress, err := c.dockerService.DeployContainer(req)
+	userID := ctx.GetUint("userID")
+	progress, err := c.dockerService.DeployContainer(userID, req)
 	if err != nil {
 		serializer.Fail(ctx, serializer.NewError(500, err.Error(), nil))
 		return

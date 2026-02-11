@@ -65,7 +65,11 @@ type HeadscaleAuthKey struct {
 }
 
 // ListHeadscaleUsers fetches users directly from Headscale via gRPC
-func (s *headscaleService) ListHeadscaleUsers() ([]HeadscaleUser, error) {
+func (s *headscaleService) ListHeadscaleUsers(actorUserID uint) ([]HeadscaleUser, error) {
+	if err := RequirePermission(actorUserID, "headscale:user:list"); err != nil {
+		return nil, err
+	}
+
 	ctx := context.Background()
 	resp, err := headscale.GlobalClient.Service.ListUsers(ctx, &v1.ListUsersRequest{})
 	if err != nil {
@@ -92,7 +96,11 @@ func (s *headscaleService) ListHeadscaleUsers() ([]HeadscaleUser, error) {
 }
 
 // ListMachines fetches machines directly from Headscale via gRPC with in-memory pagination/filtering
-func (s *headscaleService) ListMachines(page, pageSize int, userFilter string, statusFilter string) ([]HeadscaleMachine, int64, error) {
+func (s *headscaleService) ListMachines(actorUserID uint, page, pageSize int, userFilter string, statusFilter string) ([]HeadscaleMachine, int64, error) {
+	if err := RequirePermission(actorUserID, "headscale:machine:list"); err != nil {
+		return nil, 0, err
+	}
+
 	ctx := context.Background()
 	resp, err := headscale.GlobalClient.Service.ListNodes(ctx, &v1.ListNodesRequest{})
 	if err != nil {
@@ -151,7 +159,11 @@ func (s *headscaleService) ListMachines(page, pageSize int, userFilter string, s
 }
 
 // GetMachine fetches a single machine by ID from Headscale
-func (s *headscaleService) GetMachine(nodeID uint64) (*HeadscaleMachine, error) {
+func (s *headscaleService) GetMachine(actorUserID uint, nodeID uint64) (*HeadscaleMachine, error) {
+	if err := RequirePermission(actorUserID, "headscale:machine:get"); err != nil {
+		return nil, err
+	}
+
 	ctx := context.Background()
 	resp, err := headscale.GlobalClient.Service.GetNode(ctx, &v1.GetNodeRequest{
 		NodeId: nodeID,
@@ -164,7 +176,11 @@ func (s *headscaleService) GetMachine(nodeID uint64) (*HeadscaleMachine, error) 
 }
 
 // GetAccessibleMachines fetches machines from Headscale, optionally filtering by user
-func (s *headscaleService) GetAccessibleMachines(userID uint, canAccessAll bool) ([]HeadscaleMachine, error) {
+func (s *headscaleService) GetAccessibleMachines(actorUserID uint, userID uint, canAccessAll bool) ([]HeadscaleMachine, error) {
+	if err := RequirePermission(actorUserID, "headscale:acl:access"); err != nil {
+		return nil, err
+	}
+
 	ctx := context.Background()
 	resp, err := headscale.GlobalClient.Service.ListNodes(ctx, &v1.ListNodesRequest{})
 	if err != nil {
@@ -191,7 +207,11 @@ func (s *headscaleService) GetAccessibleMachines(userID uint, canAccessAll bool)
 }
 
 // RenameMachine renames a node in Headscale
-func (s *headscaleService) RenameMachine(nodeID uint64, newName string) (*HeadscaleMachine, error) {
+func (s *headscaleService) RenameMachine(actorUserID uint, nodeID uint64, newName string) (*HeadscaleMachine, error) {
+	if err := RequirePermission(actorUserID, "headscale:machine:update"); err != nil {
+		return nil, err
+	}
+
 	ctx := context.Background()
 	resp, err := headscale.GlobalClient.Service.RenameNode(ctx, &v1.RenameNodeRequest{
 		NodeId:  nodeID,
@@ -205,7 +225,11 @@ func (s *headscaleService) RenameMachine(nodeID uint64, newName string) (*Headsc
 }
 
 // DeleteMachine deletes a node from Headscale
-func (s *headscaleService) DeleteMachine(nodeID uint64) error {
+func (s *headscaleService) DeleteMachine(actorUserID uint, nodeID uint64) error {
+	if err := RequirePermission(actorUserID, "headscale:machine:delete"); err != nil {
+		return err
+	}
+
 	ctx := context.Background()
 	_, err := headscale.GlobalClient.Service.DeleteNode(ctx, &v1.DeleteNodeRequest{
 		NodeId: nodeID,
@@ -217,7 +241,11 @@ func (s *headscaleService) DeleteMachine(nodeID uint64) error {
 }
 
 // ExpireMachine expires a node in Headscale
-func (s *headscaleService) ExpireMachine(nodeID uint64) (*HeadscaleMachine, error) {
+func (s *headscaleService) ExpireMachine(actorUserID uint, nodeID uint64) (*HeadscaleMachine, error) {
+	if err := RequirePermission(actorUserID, "headscale:machine:expire"); err != nil {
+		return nil, err
+	}
+
 	ctx := context.Background()
 	resp, err := headscale.GlobalClient.Service.ExpireNode(ctx, &v1.ExpireNodeRequest{
 		NodeId: nodeID,
@@ -230,7 +258,11 @@ func (s *headscaleService) ExpireMachine(nodeID uint64) (*HeadscaleMachine, erro
 }
 
 // SetMachineTags sets tags on a node in Headscale
-func (s *headscaleService) SetMachineTags(nodeID uint64, tags []string) (*HeadscaleMachine, error) {
+func (s *headscaleService) SetMachineTags(actorUserID uint, nodeID uint64, tags []string) (*HeadscaleMachine, error) {
+	if err := RequirePermission(actorUserID, "headscale:machine:tags"); err != nil {
+		return nil, err
+	}
+
 	ctx := context.Background()
 	resp, err := headscale.GlobalClient.Service.SetTags(ctx, &v1.SetTagsRequest{
 		NodeId: nodeID,
@@ -244,7 +276,11 @@ func (s *headscaleService) SetMachineTags(nodeID uint64, tags []string) (*Headsc
 }
 
 // CreateUser creates a user in Headscale
-func (s *headscaleService) CreateUser(name string) (*HeadscaleUser, error) {
+func (s *headscaleService) CreateUser(actorUserID uint, name string) (*HeadscaleUser, error) {
+	if err := RequirePermission(actorUserID, "headscale:user:create"); err != nil {
+		return nil, err
+	}
+
 	ctx := context.Background()
 	resp, err := headscale.GlobalClient.Service.CreateUser(ctx, &v1.CreateUserRequest{
 		Name: name,
@@ -263,7 +299,11 @@ func (s *headscaleService) CreateUser(name string) (*HeadscaleUser, error) {
 }
 
 // RenameUser renames a user in Headscale
-func (s *headscaleService) RenameUser(oldID uint64, newName string) (*HeadscaleUser, error) {
+func (s *headscaleService) RenameUser(actorUserID uint, oldID uint64, newName string) (*HeadscaleUser, error) {
+	if err := RequirePermission(actorUserID, "headscale:user:update"); err != nil {
+		return nil, err
+	}
+
 	ctx := context.Background()
 	resp, err := headscale.GlobalClient.Service.RenameUser(ctx, &v1.RenameUserRequest{
 		OldId:   oldID,
@@ -280,7 +320,11 @@ func (s *headscaleService) RenameUser(oldID uint64, newName string) (*HeadscaleU
 }
 
 // DeleteUser deletes a user in Headscale
-func (s *headscaleService) DeleteUser(id uint64) error {
+func (s *headscaleService) DeleteUser(actorUserID uint, id uint64) error {
+	if err := RequirePermission(actorUserID, "headscale:user:delete"); err != nil {
+		return err
+	}
+
 	ctx := context.Background()
 	_, err := headscale.GlobalClient.Service.DeleteUser(ctx, &v1.DeleteUserRequest{
 		Id: id,
@@ -292,7 +336,11 @@ func (s *headscaleService) DeleteUser(id uint64) error {
 }
 
 // GetPreAuthKeys gets pre-auth keys for a user
-func (s *headscaleService) GetPreAuthKeys(userID uint64) (interface{}, error) {
+func (s *headscaleService) GetPreAuthKeys(actorUserID uint, userID uint64) (interface{}, error) {
+	if err := RequirePermission(actorUserID, "headscale:preauthkey:list"); err != nil {
+		return nil, err
+	}
+
 	ctx := context.Background()
 	resp, err := headscale.GlobalClient.Service.ListPreAuthKeys(ctx, &v1.ListPreAuthKeysRequest{
 		User: userID,
@@ -304,7 +352,11 @@ func (s *headscaleService) GetPreAuthKeys(userID uint64) (interface{}, error) {
 }
 
 // CreatePreAuthKey creates a pre-auth key for a user
-func (s *headscaleService) CreatePreAuthKey(userID uint64, reusable, ephemeral bool, expiration string) (interface{}, error) {
+func (s *headscaleService) CreatePreAuthKey(actorUserID uint, userID uint64, reusable, ephemeral bool, expiration string) (interface{}, error) {
+	if err := RequirePermission(actorUserID, "headscale:preauthkey:create"); err != nil {
+		return nil, err
+	}
+
 	ctx := context.Background()
 	req := &v1.CreatePreAuthKeyRequest{
 		User:      userID,
@@ -325,7 +377,11 @@ func (s *headscaleService) CreatePreAuthKey(userID uint64, reusable, ephemeral b
 }
 
 // ExpirePreAuthKey expires a pre-auth key
-func (s *headscaleService) ExpirePreAuthKey(userID uint64, key string) error {
+func (s *headscaleService) ExpirePreAuthKey(actorUserID uint, userID uint64, key string) error {
+	if err := RequirePermission(actorUserID, "headscale:preauthkey:expire"); err != nil {
+		return err
+	}
+
 	ctx := context.Background()
 	_, err := headscale.GlobalClient.Service.ExpirePreAuthKey(ctx, &v1.ExpirePreAuthKeyRequest{
 		User: userID,

@@ -15,7 +15,8 @@ func NewHeadscaleConfigController() *HeadscaleConfigController {
 
 // Get returns the current Headscale configuration
 func (c *HeadscaleConfigController) Get(ctx *gin.Context) {
-	config, err := services.HeadscaleConfigService.GetConfig()
+	userID := ctx.GetUint("userID")
+	config, err := services.HeadscaleConfigService.GetConfigWithAuth(userID)
 	if err != nil {
 		serializer.Fail(ctx, err)
 		return
@@ -32,7 +33,8 @@ func (c *HeadscaleConfigController) Update(ctx *gin.Context) {
 		return
 	}
 
-	if err := services.HeadscaleConfigService.SaveConfig(&config); err != nil {
+	userID := ctx.GetUint("userID")
+	if err := services.HeadscaleConfigService.SaveConfigWithAuth(userID, &config); err != nil {
 		serializer.Fail(ctx, err)
 		return
 	}
@@ -48,7 +50,8 @@ func (c *HeadscaleConfigController) Preview(ctx *gin.Context) {
 		return
 	}
 
-	yamlStr, err := services.HeadscaleConfigService.PreviewConfig(&config)
+	userID := ctx.GetUint("userID")
+	yamlStr, err := services.HeadscaleConfigService.PreviewConfigWithAuth(userID, &config)
 	if err != nil {
 		serializer.Fail(ctx, err)
 		return

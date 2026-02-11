@@ -16,7 +16,11 @@ type aclService struct{}
 var ACLService = &aclService{}
 
 // GetPolicy retrieves the current ACL policy from Headscale
-func (s *aclService) GetPolicy() (*model.ACLPolicyStructure, error) {
+func (s *aclService) GetPolicy(actorUserID uint) (*model.ACLPolicyStructure, error) {
+	if err := RequirePermission(actorUserID, "headscale:acl:view"); err != nil {
+		return nil, err
+	}
+
 	ctx := context.Background()
 	resp, err := headscale.GlobalClient.Service.GetPolicy(ctx, &v1.GetPolicyRequest{})
 	if err != nil {
@@ -32,7 +36,11 @@ func (s *aclService) GetPolicy() (*model.ACLPolicyStructure, error) {
 }
 
 // UpdatePolicy updates the ACL policy in Headscale
-func (s *aclService) UpdatePolicy(policy *model.ACLPolicyStructure) error {
+func (s *aclService) UpdatePolicy(actorUserID uint, policy *model.ACLPolicyStructure) error {
+	if err := RequirePermission(actorUserID, "headscale:acl:update"); err != nil {
+		return err
+	}
+
 	policyBytes, err := json.MarshalIndent(policy, "", "  ")
 	if err != nil {
 		return err
@@ -46,7 +54,11 @@ func (s *aclService) UpdatePolicy(policy *model.ACLPolicyStructure) error {
 }
 
 // SetPolicyRaw sets the ACL policy from raw JSON string
-func (s *aclService) SetPolicyRaw(policyJSON string) error {
+func (s *aclService) SetPolicyRaw(actorUserID uint, policyJSON string) error {
+	if err := RequirePermission(actorUserID, "headscale:acl:update"); err != nil {
+		return err
+	}
+
 	ctx := context.Background()
 	_, err := headscale.GlobalClient.Service.SetPolicy(ctx, &v1.SetPolicyRequest{
 		Policy: policyJSON,
@@ -55,8 +67,8 @@ func (s *aclService) SetPolicyRaw(policyJSON string) error {
 }
 
 // GetParsedRules returns ACL rules with resolved groups and hosts for frontend display
-func (s *aclService) GetParsedRules() ([]model.ParsedACLRule, error) {
-	policy, err := s.GetPolicy()
+func (s *aclService) GetParsedRules(actorUserID uint) ([]model.ParsedACLRule, error) {
+	policy, err := s.GetPolicy(actorUserID)
 	if err != nil {
 		return nil, err
 	}
@@ -139,9 +151,13 @@ func (s *aclService) resolveDestinations(destinations []string, hosts map[string
 }
 
 // SyncResourcesAsHosts syncs all resources to ACL hosts
-func (s *aclService) SyncResourcesAsHosts() error {
+func (s *aclService) SyncResourcesAsHosts(actorUserID uint) error {
+	if err := RequirePermission(actorUserID, "headscale:acl:sync"); err != nil {
+		return err
+	}
+
 	// Get current policy
-	policy, err := s.GetPolicy()
+	policy, err := s.GetPolicy(actorUserID)
 	if err != nil {
 		return err
 	}
@@ -160,12 +176,16 @@ func (s *aclService) SyncResourcesAsHosts() error {
 		policy.Hosts[name] = ip
 	}
 
-	return s.UpdatePolicy(policy)
+	return s.UpdatePolicy(actorUserID, policy)
 }
 
 // AddRule adds a new ACL rule
-func (s *aclService) AddRule(name string, sources []string, destinations []string, action string) error {
-	policy, err := s.GetPolicy()
+func (s *aclService) AddRule(actorUserID uint, name string, sources []string, destinations []string, action string) error {
+	if err := RequirePermission(actorUserID, "headscale:acl:update"); err != nil {
+		return err
+	}
+
+	policy, err := s.GetPolicy(actorUserID)
 	if err != nil {
 		return err
 	}
@@ -181,12 +201,16 @@ func (s *aclService) AddRule(name string, sources []string, destinations []strin
 	}
 
 	policy.ACLs = append(policy.ACLs, newRule)
-	return s.UpdatePolicy(policy)
+	return s.UpdatePolicy(actorUserID, policy)
 }
 
 // UpdateRule updates an existing ACL rule by index
-func (s *aclService) UpdateRuleByIndex(index int, name string, sources []string, destinations []string, action string) error {
-	policy, err := s.GetPolicy()
+func (s *aclService) UpdateRuleByIndex(actorUserID uint, index int, name string, sources []string, destinations []string, action string) error {
+	if err := RequirePermission(actorUserID, "headscale:acl:update"); err != nil {
+		return err
+	}
+
+	policy, err := s.GetPolicy(actorUserID)
 	if err != nil {
 		return err
 	}
@@ -205,12 +229,16 @@ func (s *aclService) UpdateRuleByIndex(index int, name string, sources []string,
 		Dst:    destinations,
 	}
 
-	return s.UpdatePolicy(policy)
+	return s.UpdatePolicy(actorUserID, policy)
 }
 
 // DeleteRuleByIndex deletes an ACL rule by index
-func (s *aclService) DeleteRuleByIndex(index int) error {
-	policy, err := s.GetPolicy()
+func (s *aclService) DeleteRuleByIndex(actorUserID uint, index int) error {
+	if err := RequirePermission(actorUserID, "headscale:acl:update"); err != nil {
+		return err
+	}
+
+	policy, err := s.GetPolicy(actorUserID)
 	if err != nil {
 		return err
 	}
@@ -220,14 +248,18 @@ func (s *aclService) DeleteRuleByIndex(index int) error {
 	}
 
 	policy.ACLs = append(policy.ACLs[:index], policy.ACLs[index+1:]...)
-	return s.UpdatePolicy(policy)
+	return s.UpdatePolicy(actorUserID, policy)
 }
 
 // ACL Policy Management (Version history)
 
-func (s *aclService) Generate(userID uint) (*model.ACLPolicy, error) {
+func (s *aclService) Generate(actorUserID uint) (*model.ACLPolicy, error) {
+	if err := RequirePermission(actorUserID, "headscale:acl:generate"); err != nil {
+		return nil, err
+	}
+
 	// Get current policy from Headscale
-	policy, err := s.GetPolicy()
+	policy, err := s.GetPolicy(actorUserID)
 	if err != nil {
 		return nil, err
 	}
@@ -276,7 +308,7 @@ func (s *aclService) Generate(userID uint) (*model.ACLPolicy, error) {
 	aclPolicy := &model.ACLPolicy{
 		Version:   newVersion,
 		Content:   string(contentBytes),
-		CreatedBy: userID,
+		CreatedBy: actorUserID,
 	}
 
 	if err := model.DB.Create(aclPolicy).Error; err != nil {
@@ -286,7 +318,11 @@ func (s *aclService) Generate(userID uint) (*model.ACLPolicy, error) {
 	return aclPolicy, nil
 }
 
-func (s *aclService) ListPolicies(page, pageSize int) ([]model.ACLPolicy, int64, error) {
+func (s *aclService) ListPolicies(actorUserID uint, page, pageSize int) ([]model.ACLPolicy, int64, error) {
+	if err := RequirePermission(actorUserID, "headscale:acl:history:list"); err != nil {
+		return nil, 0, err
+	}
+
 	var policies []model.ACLPolicy
 	var total int64
 
@@ -302,11 +338,15 @@ func (s *aclService) ListPolicies(page, pageSize int) ([]model.ACLPolicy, int64,
 	return policies, total, nil
 }
 
-func (s *aclService) Apply(id uint) error {
+func (s *aclService) Apply(actorUserID uint, id uint) error {
+	if err := RequirePermission(actorUserID, "headscale:acl:apply"); err != nil {
+		return err
+	}
+
 	var policy model.ACLPolicy
 	if err := model.DB.First(&policy, id).Error; err != nil {
 		return serializer.ErrDatabase
 	}
 
-	return s.SetPolicyRaw(policy.Content)
+	return s.SetPolicyRaw(actorUserID, policy.Content)
 }

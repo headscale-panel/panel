@@ -18,7 +18,8 @@ func (c *RouteController) ListRoutes(ctx *gin.Context) {
 	userFilter := ctx.Query("user_id")
 	machineID := ctx.Query("machine_id")
 
-	routes, total, err := services.RouteService.ListRoutes(page, pageSize, userFilter, machineID)
+	userID := ctx.GetUint("userID")
+	routes, total, err := services.RouteService.ListRoutes(userID, page, pageSize, userFilter, machineID)
 	if err != nil {
 		serializer.Fail(ctx, err)
 		return
@@ -44,7 +45,8 @@ func (c *RouteController) EnableRoute(ctx *gin.Context) {
 		return
 	}
 
-	if err := services.RouteService.EnableRoute(req.MachineID, req.Destination); err != nil {
+	userID := ctx.GetUint("userID")
+	if err := services.RouteService.EnableRoute(userID, req.MachineID, req.Destination); err != nil {
 		serializer.Fail(ctx, err)
 		return
 	}
@@ -64,7 +66,8 @@ func (c *RouteController) DisableRoute(ctx *gin.Context) {
 		return
 	}
 
-	if err := services.RouteService.DisableRoute(req.MachineID, req.Destination); err != nil {
+	userID := ctx.GetUint("userID")
+	if err := services.RouteService.DisableRoute(userID, req.MachineID, req.Destination); err != nil {
 		serializer.Fail(ctx, err)
 		return
 	}

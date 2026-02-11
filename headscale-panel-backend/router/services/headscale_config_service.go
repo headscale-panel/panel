@@ -230,6 +230,27 @@ func (s *headscaleConfigService) PreviewConfig(config *HeadscaleConfigFile) (str
 	return string(data), nil
 }
 
+func (s *headscaleConfigService) GetConfigWithAuth(actorUserID uint) (*HeadscaleConfigFile, error) {
+	if err := RequirePermission(actorUserID, "headscale:config:view"); err != nil {
+		return nil, err
+	}
+	return s.GetConfig()
+}
+
+func (s *headscaleConfigService) SaveConfigWithAuth(actorUserID uint, config *HeadscaleConfigFile) error {
+	if err := RequirePermission(actorUserID, "headscale:config:update"); err != nil {
+		return err
+	}
+	return s.SaveConfig(config)
+}
+
+func (s *headscaleConfigService) PreviewConfigWithAuth(actorUserID uint, config *HeadscaleConfigFile) (string, error) {
+	if err := RequirePermission(actorUserID, "headscale:config:update"); err != nil {
+		return "", err
+	}
+	return s.PreviewConfig(config)
+}
+
 func (s *headscaleConfigService) getConfigPath() string {
 	if conf.Conf.Headscale.ConfigPath != "" {
 		return conf.Conf.Headscale.ConfigPath

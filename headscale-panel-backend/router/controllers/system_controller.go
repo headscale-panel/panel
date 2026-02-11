@@ -20,7 +20,8 @@ func (s *SystemController) ListUsers(c *gin.Context) {
 		return
 	}
 
-	users, total, err := services.SystemService.ListUsers(req.Page, req.PageSize)
+	userID := c.GetUint("userID")
+	users, total, err := services.SystemService.ListUsers(userID, req.Page, req.PageSize)
 	if err != nil {
 		serializer.Fail(c, err)
 		return
@@ -47,7 +48,8 @@ func (s *SystemController) CreateUser(c *gin.Context) {
 		return
 	}
 
-	if err := services.SystemService.CreateUser(req.Username, req.Password, req.Email, req.GroupID, req.DisplayName); err != nil {
+	userID := c.GetUint("userID")
+	if err := services.SystemService.CreateUser(userID, req.Username, req.Password, req.Email, req.GroupID, req.DisplayName); err != nil {
 		serializer.Fail(c, err)
 		return
 	}
@@ -69,7 +71,8 @@ func (s *SystemController) UpdateUser(c *gin.Context) {
 		return
 	}
 
-	if err := services.SystemService.UpdateUser(req.ID, req.Email, req.GroupID, req.Password, req.DisplayName); err != nil {
+	userID := c.GetUint("userID")
+	if err := services.SystemService.UpdateUser(userID, req.ID, req.Email, req.GroupID, req.Password, req.DisplayName); err != nil {
 		serializer.Fail(c, err)
 		return
 	}
@@ -87,7 +90,8 @@ func (s *SystemController) DeleteUser(c *gin.Context) {
 		return
 	}
 
-	if err := services.SystemService.DeleteUser(req.ID); err != nil {
+	userID := c.GetUint("userID")
+	if err := services.SystemService.DeleteUser(userID, req.ID); err != nil {
 		serializer.Fail(c, err)
 		return
 	}
@@ -101,7 +105,8 @@ func (s *SystemController) ListGroups(c *gin.Context) {
 		return
 	}
 
-	groups, total, err := services.GroupService.List(req.Page, req.PageSize)
+	userID := c.GetUint("userID")
+	groups, total, err := services.GroupService.List(userID, req.Page, req.PageSize)
 	if err != nil {
 		serializer.Fail(c, err)
 		return
@@ -124,7 +129,8 @@ func (s *SystemController) CreateGroup(c *gin.Context) {
 		return
 	}
 
-	group, err := services.GroupService.Create(req.Name, req.PermissionIDs)
+	userID := c.GetUint("userID")
+	group, err := services.GroupService.Create(userID, req.Name, req.PermissionIDs)
 	if err != nil {
 		serializer.Fail(c, err)
 		return
@@ -145,7 +151,8 @@ func (s *SystemController) UpdateGroup(c *gin.Context) {
 		return
 	}
 
-	if err := services.GroupService.Update(req.ID, req.Name, req.PermissionIDs); err != nil {
+	userID := c.GetUint("userID")
+	if err := services.GroupService.Update(userID, req.ID, req.Name, req.PermissionIDs); err != nil {
 		serializer.Fail(c, err)
 		return
 	}
@@ -163,7 +170,8 @@ func (s *SystemController) DeleteGroup(c *gin.Context) {
 		return
 	}
 
-	if err := services.GroupService.Delete(req.ID); err != nil {
+	userID := c.GetUint("userID")
+	if err := services.GroupService.Delete(userID, req.ID); err != nil {
 		serializer.Fail(c, err)
 		return
 	}
@@ -182,7 +190,8 @@ func (s *SystemController) UpdateGroupPermissions(c *gin.Context) {
 		return
 	}
 
-	if err := services.GroupService.UpdatePermissions(req.ID, req.PermissionIDs); err != nil {
+	userID := c.GetUint("userID")
+	if err := services.GroupService.UpdatePermissions(userID, req.ID, req.PermissionIDs); err != nil {
 		serializer.Fail(c, err)
 		return
 	}
@@ -196,7 +205,8 @@ func (s *SystemController) AddGroupPermissions(c *gin.Context) {
 		return
 	}
 
-	if err := services.GroupService.AddPermissions(req.ID, req.PermissionIDs); err != nil {
+	userID := c.GetUint("userID")
+	if err := services.GroupService.AddPermissions(userID, req.ID, req.PermissionIDs); err != nil {
 		serializer.Fail(c, err)
 		return
 	}
@@ -210,7 +220,8 @@ func (s *SystemController) RemoveGroupPermissions(c *gin.Context) {
 		return
 	}
 
-	if err := services.GroupService.RemovePermissions(req.ID, req.PermissionIDs); err != nil {
+	userID := c.GetUint("userID")
+	if err := services.GroupService.RemovePermissions(userID, req.ID, req.PermissionIDs); err != nil {
 		serializer.Fail(c, err)
 		return
 	}
@@ -218,7 +229,8 @@ func (s *SystemController) RemoveGroupPermissions(c *gin.Context) {
 }
 
 func (s *SystemController) ListPermissions(c *gin.Context) {
-	permissions, err := services.PermissionService.GetAllPermissions()
+	userID := c.GetUint("userID")
+	permissions, err := services.PermissionService.GetAllPermissions(userID)
 	if err != nil {
 		serializer.Fail(c, err)
 		return

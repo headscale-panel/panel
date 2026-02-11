@@ -10,7 +10,11 @@ type systemService struct{}
 var SystemService = new(systemService)
 
 // User Management
-func (s *systemService) ListUsers(page, pageSize int) ([]model.User, int64, error) {
+func (s *systemService) ListUsers(actorUserID uint, page, pageSize int) ([]model.User, int64, error) {
+	if err := RequirePermission(actorUserID, "system:user:list"); err != nil {
+		return nil, 0, err
+	}
+
 	var users []model.User
 	var total int64
 
@@ -26,7 +30,11 @@ func (s *systemService) ListUsers(page, pageSize int) ([]model.User, int64, erro
 	return users, total, nil
 }
 
-func (s *systemService) CreateUser(username, password, email string, groupID uint, displayName string) error {
+func (s *systemService) CreateUser(actorUserID uint, username, password, email string, groupID uint, displayName string) error {
+	if err := RequirePermission(actorUserID, "system:user:create"); err != nil {
+		return err
+	}
+
 	var count int64
 	model.DB.Model(&model.User{}).Where("username = ?", username).Count(&count)
 	if count > 0 {
@@ -48,7 +56,11 @@ func (s *systemService) CreateUser(username, password, email string, groupID uin
 	return nil
 }
 
-func (s *systemService) UpdateUser(id uint, email string, groupID uint, password string, displayName string) error {
+func (s *systemService) UpdateUser(actorUserID uint, id uint, email string, groupID uint, password string, displayName string) error {
+	if err := RequirePermission(actorUserID, "system:user:update"); err != nil {
+		return err
+	}
+
 	var user model.User
 	if err := model.DB.First(&user, id).Error; err != nil {
 		return serializer.ErrDatabase
@@ -67,7 +79,11 @@ func (s *systemService) UpdateUser(id uint, email string, groupID uint, password
 	return nil
 }
 
-func (s *systemService) DeleteUser(id uint) error {
+func (s *systemService) DeleteUser(actorUserID uint, id uint) error {
+	if err := RequirePermission(actorUserID, "system:user:delete"); err != nil {
+		return err
+	}
+
 	if err := model.DB.Delete(&model.User{}, id).Error; err != nil {
 		return serializer.ErrDatabase
 	}

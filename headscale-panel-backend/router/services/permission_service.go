@@ -9,7 +9,11 @@ type permissionService struct{}
 
 var PermissionService = &permissionService{}
 
-func (s *permissionService) List(page, pageSize int) ([]model.Permission, int64, error) {
+func (s *permissionService) List(actorUserID uint, page, pageSize int) ([]model.Permission, int64, error) {
+	if err := RequirePermission(actorUserID, "system:permission:list"); err != nil {
+		return nil, 0, err
+	}
+
 	var permissions []model.Permission
 	var total int64
 
@@ -25,7 +29,11 @@ func (s *permissionService) List(page, pageSize int) ([]model.Permission, int64,
 	return permissions, total, nil
 }
 
-func (s *permissionService) Create(name, code, pType string) (*model.Permission, error) {
+func (s *permissionService) Create(actorUserID uint, name, code, pType string) (*model.Permission, error) {
+	if err := RequirePermission(actorUserID, "system:permission:create"); err != nil {
+		return nil, err
+	}
+
 	perm := &model.Permission{
 		Name: name,
 		Code: code,
@@ -37,7 +45,11 @@ func (s *permissionService) Create(name, code, pType string) (*model.Permission,
 	return perm, nil
 }
 
-func (s *permissionService) Update(id uint, name, code, pType string) error {
+func (s *permissionService) Update(actorUserID uint, id uint, name, code, pType string) error {
+	if err := RequirePermission(actorUserID, "system:permission:update"); err != nil {
+		return err
+	}
+
 	var perm model.Permission
 	if err := model.DB.First(&perm, id).Error; err != nil {
 		return serializer.ErrDatabase
@@ -48,11 +60,19 @@ func (s *permissionService) Update(id uint, name, code, pType string) error {
 	return model.DB.Save(&perm).Error
 }
 
-func (s *permissionService) Delete(id uint) error {
+func (s *permissionService) Delete(actorUserID uint, id uint) error {
+	if err := RequirePermission(actorUserID, "system:permission:delete"); err != nil {
+		return err
+	}
+
 	return model.DB.Delete(&model.Permission{}, id).Error
 }
 
-func (s *permissionService) GetAllPermissions() ([]model.Permission, error) {
+func (s *permissionService) GetAllPermissions(actorUserID uint) ([]model.Permission, error) {
+	if err := RequirePermission(actorUserID, "system:permission:list"); err != nil {
+		return nil, err
+	}
+
 	var permissions []model.Permission
 	if err := model.DB.Find(&permissions).Error; err != nil {
 		return nil, serializer.ErrDatabase

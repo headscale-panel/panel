@@ -21,6 +21,10 @@ type DockerService struct {
 	client *client.Client
 }
 
+func (s *DockerService) requirePermission(actorUserID uint, permission string) error {
+	return RequirePermission(actorUserID, permission)
+}
+
 type ContainerInfo struct {
 	ID      string            `json:"id"`
 	Name    string            `json:"name"`
@@ -51,7 +55,39 @@ func NewDockerService() (*DockerService, error) {
 }
 
 // GetContainer gets information about a specific container
-func (s *DockerService) GetContainer(containerName string) (*ContainerInfo, error) {
+func (s *DockerService) GetContainer(actorUserID uint, containerName string) (*ContainerInfo, error) {
+	if err := s.requirePermission(actorUserID, "docker:container:get"); err != nil {
+		return nil, err
+	}
+
+	ctx := context.Background()
+
+	containers, err := s.client.ContainerList(ctx, container.ListOptions{All: true})
+	if err != nil {
+		return nil, fmt.Errorf("failed to list containers: %w", err)
+	}
+
+	for _, c := range containers {
+		for _, name := range c.Names {
+			if name == "/"+containerName || name == containerName {
+				return &ContainerInfo{
+					ID:      c.ID[:12],
+					Name:    name,
+					Image:   c.Image,
+					Status:  c.Status,
+					State:   c.State,
+					Created: time.Unix(c.Created, 0),
+					Ports:   formatPorts(c.Ports),
+					Labels:  c.Labels,
+				}, nil
+			}
+		}
+	}
+
+	return nil, fmt.Errorf("container not found: %s", containerName)
+}
+
+func (s *DockerService) getContainerByName(containerName string) (*ContainerInfo, error) {
 	ctx := context.Background()
 
 	containers, err := s.client.ContainerList(ctx, container.ListOptions{All: true})
@@ -80,10 +116,14 @@ func (s *DockerService) GetContainer(containerName string) (*ContainerInfo, erro
 }
 
 // StartContainer starts a container
-func (s *DockerService) StartContainer(containerName string) error {
+func (s *DockerService) StartContainer(actorUserID uint, containerName string) error {
+	if err := s.requirePermission(actorUserID, "docker:container:start"); err != nil {
+		return err
+	}
+
 	ctx := context.Background()
 
-	containerObj, err := s.GetContainer(containerName)
+	containerObj, err := s.getContainerByName(containerName)
 	if err != nil {
 		return err
 	}
@@ -92,10 +132,14 @@ func (s *DockerService) StartContainer(containerName string) error {
 }
 
 // StopContainer stops a container
-func (s *DockerService) StopContainer(containerName string) error {
+func (s *DockerService) StopContainer(actorUserID uint, containerName string) error {
+	if err := s.requirePermission(actorUserID, "docker:container:stop"); err != nil {
+		return err
+	}
+
 	ctx := context.Background()
 
-	containerObj, err := s.GetContainer(containerName)
+	containerObj, err := s.getContainerByName(containerName)
 	if err != nil {
 		return err
 	}
@@ -105,10 +149,14 @@ func (s *DockerService) StopContainer(containerName string) error {
 }
 
 // RestartContainer restarts a container
-func (s *DockerService) RestartContainer(containerName string) error {
+func (s *DockerService) RestartContainer(actorUserID uint, containerName string) error {
+	if err := s.requirePermission(actorUserID, "docker:container:restart"); err != nil {
+		return err
+	}
+
 	ctx := context.Background()
 
-	containerObj, err := s.GetContainer(containerName)
+	containerObj, err := s.getContainerByName(containerName)
 	if err != nil {
 		return err
 	}
@@ -118,10 +166,14 @@ func (s *DockerService) RestartContainer(containerName string) error {
 }
 
 // GetContainerLogs gets logs from a container
-func (s *DockerService) GetContainerLogs(containerName string, tail int) (string, error) {
+func (s *DockerService) GetContainerLogs(actorUserID uint, containerName string, tail int) (string, error) {
+	if err := s.requirePermission(actorUserID, "docker:container:logs"); err != nil {
+		return "", err
+	}
+
 	ctx := context.Background()
 
-	containerObj, err := s.GetContainer(containerName)
+	containerObj, err := s.getContainerByName(containerName)
 	if err != nil {
 		return "", err
 	}
@@ -148,10 +200,14 @@ func (s *DockerService) GetContainerLogs(containerName string, tail int) (string
 }
 
 // GetContainerStats gets resource usage statistics for a container
-func (s *DockerService) GetContainerStats(containerName string) (*ContainerStats, error) {
+func (s *DockerService) GetContainerStats(actorUserID uint, containerName string) (*ContainerStats, error) {
+	if err := s.requirePermission(actorUserID, "docker:container:stats"); err != nil {
+		return nil, err
+	}
+
 	ctx := context.Background()
 
-	container, err := s.GetContainer(containerName)
+	container, err := s.getContainerByName(containerName)
 	if err != nil {
 		return nil, err
 	}
@@ -199,7 +255,11 @@ func (s *DockerService) GetContainerStats(containerName string) (*ContainerStats
 }
 
 // ListContainers lists all containers
-func (s *DockerService) ListContainers() ([]*ContainerInfo, error) {
+func (s *DockerService) ListContainers(actorUserID uint) ([]*ContainerInfo, error) {
+	if err := s.requirePermission(actorUserID, "docker:container:list"); err != nil {
+		return nil, err
+	}
+
 	ctx := context.Background()
 
 	containers, err := s.client.ContainerList(ctx, container.ListOptions{All: true})
@@ -313,7 +373,7 @@ func (s *DockerService) EnsureNetwork(networkName string) error {
 // RemoveContainer force-removes a container by name (ignores if not found).
 func (s *DockerService) RemoveContainer(containerName string) error {
 	ctx := context.Background()
-	c, err := s.GetContainer(containerName)
+	c, err := s.getContainerByName(containerName)
 	if err != nil {
 		return nil // not found, OK
 	}
@@ -321,7 +381,21 @@ func (s *DockerService) RemoveContainer(containerName string) error {
 }
 
 // DeployContainer creates and starts a container based on DeployRequest.
-func (s *DockerService) DeployContainer(req DeployRequest) ([]DeployProgress, error) {
+func (s *DockerService) DeployContainer(actorUserID uint, req DeployRequest) ([]DeployProgress, error) {
+	if err := s.requirePermission(actorUserID, "docker:container:deploy"); err != nil {
+		return nil, err
+	}
+
+	return s.deployContainer(req)
+}
+
+// DeployContainerUnsafe deploys a container without auth checks.
+// This is only for setup flow before any user account exists.
+func (s *DockerService) DeployContainerUnsafe(req DeployRequest) ([]DeployProgress, error) {
+	return s.deployContainer(req)
+}
+
+func (s *DockerService) deployContainer(req DeployRequest) ([]DeployProgress, error) {
 	ctx := context.Background()
 	var progress []DeployProgress
 

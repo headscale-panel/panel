@@ -110,7 +110,7 @@ func (s *SetupController) DeployContainer(ctx *gin.Context) {
 		return
 	}
 
-	progress, err := dockerService.DeployContainer(req)
+	progress, err := dockerService.DeployContainerUnsafe(req)
 	if err != nil {
 		serializer.Fail(ctx, serializer.NewError(500, err.Error(), nil))
 		return

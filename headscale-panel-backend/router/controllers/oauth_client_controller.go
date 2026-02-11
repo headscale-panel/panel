@@ -18,7 +18,8 @@ func (c *OauthClientController) List(ctx *gin.Context) {
 	page, _ := strconv.Atoi(ctx.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(ctx.DefaultQuery("page_size", "10"))
 
-	clients, total, err := services.OauthClientService.List(page, pageSize)
+	userID := ctx.GetUint("userID")
+	clients, total, err := services.OauthClientService.List(userID, page, pageSize)
 	if err != nil {
 		serializer.Fail(ctx, serializer.ErrDatabase)
 		return
@@ -42,7 +43,8 @@ func (c *OauthClientController) Create(ctx *gin.Context) {
 		return
 	}
 
-	client, err := services.OauthClientService.Create(req.Name, req.RedirectURIs)
+	userID := ctx.GetUint("userID")
+	client, err := services.OauthClientService.Create(userID, req.Name, req.RedirectURIs)
 	if err != nil {
 		serializer.Fail(ctx, serializer.ErrDatabase)
 		return
@@ -64,7 +66,8 @@ func (c *OauthClientController) Update(ctx *gin.Context) {
 		return
 	}
 
-	if err := services.OauthClientService.Update(req.ID, req.Name, req.RedirectURIs); err != nil {
+	userID := ctx.GetUint("userID")
+	if err := services.OauthClientService.Update(userID, req.ID, req.Name, req.RedirectURIs); err != nil {
 		serializer.Fail(ctx, err)
 		return
 	}
@@ -80,7 +83,8 @@ func (c *OauthClientController) Delete(ctx *gin.Context) {
 		return
 	}
 
-	if err := services.OauthClientService.Delete(uint(id)); err != nil {
+	userID := ctx.GetUint("userID")
+	if err := services.OauthClientService.Delete(userID, uint(id)); err != nil {
 		serializer.Fail(ctx, err)
 		return
 	}
@@ -99,7 +103,8 @@ func (c *OauthClientController) RegenerateSecret(ctx *gin.Context) {
 		return
 	}
 
-	secret, err := services.OauthClientService.RegenerateSecret(req.ID)
+	userID := ctx.GetUint("userID")
+	secret, err := services.OauthClientService.RegenerateSecret(userID, req.ID)
 	if err != nil {
 		serializer.Fail(ctx, err)
 		return

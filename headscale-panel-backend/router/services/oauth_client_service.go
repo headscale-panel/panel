@@ -11,7 +11,11 @@ type oauthClientService struct{}
 
 var OauthClientService = &oauthClientService{}
 
-func (s *oauthClientService) List(page, pageSize int) ([]model.OauthClient, int64, error) {
+func (s *oauthClientService) List(actorUserID uint, page, pageSize int) ([]model.OauthClient, int64, error) {
+	if err := RequirePermission(actorUserID, "system:oauth_client:list"); err != nil {
+		return nil, 0, err
+	}
+
 	var clients []model.OauthClient
 	var total int64
 
@@ -27,7 +31,11 @@ func (s *oauthClientService) List(page, pageSize int) ([]model.OauthClient, int6
 	return clients, total, nil
 }
 
-func (s *oauthClientService) Create(name, redirectURIs string) (*model.OauthClient, error) {
+func (s *oauthClientService) Create(actorUserID uint, name, redirectURIs string) (*model.OauthClient, error) {
+	if err := RequirePermission(actorUserID, "system:oauth_client:create"); err != nil {
+		return nil, err
+	}
+
 	clientID, err := generateRandomString(16)
 	if err != nil {
 		return nil, err
@@ -51,7 +59,11 @@ func (s *oauthClientService) Create(name, redirectURIs string) (*model.OauthClie
 	return client, nil
 }
 
-func (s *oauthClientService) Update(id uint, name, redirectURIs string) error {
+func (s *oauthClientService) Update(actorUserID uint, id uint, name, redirectURIs string) error {
+	if err := RequirePermission(actorUserID, "system:oauth_client:update"); err != nil {
+		return err
+	}
+
 	var client model.OauthClient
 	if err := model.DB.First(&client, id).Error; err != nil {
 		return serializer.ErrUserNotFound // Reuse or create ErrClientNotFound
@@ -62,11 +74,19 @@ func (s *oauthClientService) Update(id uint, name, redirectURIs string) error {
 	return model.DB.Save(&client).Error
 }
 
-func (s *oauthClientService) Delete(id uint) error {
+func (s *oauthClientService) Delete(actorUserID uint, id uint) error {
+	if err := RequirePermission(actorUserID, "system:oauth_client:delete"); err != nil {
+		return err
+	}
+
 	return model.DB.Delete(&model.OauthClient{}, id).Error
 }
 
-func (s *oauthClientService) RegenerateSecret(id uint) (string, error) {
+func (s *oauthClientService) RegenerateSecret(actorUserID uint, id uint) (string, error) {
+	if err := RequirePermission(actorUserID, "system:oauth_client:secret"); err != nil {
+		return "", err
+	}
+
 	var client model.OauthClient
 	if err := model.DB.First(&client, id).Error; err != nil {
 		return "", serializer.ErrUserNotFound

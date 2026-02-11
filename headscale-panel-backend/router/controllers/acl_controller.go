@@ -17,7 +17,8 @@ func NewACLController() *ACLController {
 
 // GetPolicy retrieves the current ACL policy from Headscale
 func (c *ACLController) GetPolicy(ctx *gin.Context) {
-	policy, err := services.ACLService.GetPolicy()
+	userID := ctx.GetUint("userID")
+	policy, err := services.ACLService.GetPolicy(userID)
 	if err != nil {
 		serializer.Fail(ctx, err)
 		return
@@ -33,7 +34,8 @@ func (c *ACLController) UpdatePolicy(ctx *gin.Context) {
 		return
 	}
 
-	if err := services.ACLService.UpdatePolicy(&policy); err != nil {
+	userID := ctx.GetUint("userID")
+	if err := services.ACLService.UpdatePolicy(userID, &policy); err != nil {
 		serializer.Fail(ctx, err)
 		return
 	}
@@ -52,7 +54,8 @@ func (c *ACLController) SetPolicyRaw(ctx *gin.Context) {
 		return
 	}
 
-	if err := services.ACLService.SetPolicyRaw(req.Policy); err != nil {
+	userID := ctx.GetUint("userID")
+	if err := services.ACLService.SetPolicyRaw(userID, req.Policy); err != nil {
 		serializer.Fail(ctx, err)
 		return
 	}
@@ -61,7 +64,8 @@ func (c *ACLController) SetPolicyRaw(ctx *gin.Context) {
 
 // GetParsedRules returns ACL rules with resolved groups and hosts
 func (c *ACLController) GetParsedRules(ctx *gin.Context) {
-	rules, err := services.ACLService.GetParsedRules()
+	userID := ctx.GetUint("userID")
+	rules, err := services.ACLService.GetParsedRules(userID)
 	if err != nil {
 		serializer.Fail(ctx, err)
 		return
@@ -71,7 +75,8 @@ func (c *ACLController) GetParsedRules(ctx *gin.Context) {
 
 // SyncResourcesAsHosts syncs all resources to ACL hosts
 func (c *ACLController) SyncResourcesAsHosts(ctx *gin.Context) {
-	if err := services.ACLService.SyncResourcesAsHosts(); err != nil {
+	userID := ctx.GetUint("userID")
+	if err := services.ACLService.SyncResourcesAsHosts(userID); err != nil {
 		serializer.Fail(ctx, err)
 		return
 	}
@@ -93,7 +98,8 @@ func (c *ACLController) AddRule(ctx *gin.Context) {
 		return
 	}
 
-	if err := services.ACLService.AddRule(req.Name, req.Sources, req.Destinations, req.Action); err != nil {
+	userID := ctx.GetUint("userID")
+	if err := services.ACLService.AddRule(userID, req.Name, req.Sources, req.Destinations, req.Action); err != nil {
 		serializer.Fail(ctx, err)
 		return
 	}
@@ -116,7 +122,8 @@ func (c *ACLController) UpdateRuleByIndex(ctx *gin.Context) {
 		return
 	}
 
-	if err := services.ACLService.UpdateRuleByIndex(req.Index, req.Name, req.Sources, req.Destinations, req.Action); err != nil {
+	userID := ctx.GetUint("userID")
+	if err := services.ACLService.UpdateRuleByIndex(userID, req.Index, req.Name, req.Sources, req.Destinations, req.Action); err != nil {
 		serializer.Fail(ctx, err)
 		return
 	}
@@ -132,7 +139,8 @@ func (c *ACLController) DeleteRuleByIndex(ctx *gin.Context) {
 		return
 	}
 
-	if err := services.ACLService.DeleteRuleByIndex(index); err != nil {
+	userID := ctx.GetUint("userID")
+	if err := services.ACLService.DeleteRuleByIndex(userID, index); err != nil {
 		serializer.Fail(ctx, err)
 		return
 	}
@@ -142,8 +150,8 @@ func (c *ACLController) DeleteRuleByIndex(ctx *gin.Context) {
 // ACL Policies (Version History)
 
 func (c *ACLController) Generate(ctx *gin.Context) {
-	userID, _ := ctx.Get("userID")
-	policy, err := services.ACLService.Generate(userID.(uint))
+	userID := ctx.GetUint("userID")
+	policy, err := services.ACLService.Generate(userID)
 	if err != nil {
 		serializer.Fail(ctx, err)
 		return
@@ -155,7 +163,8 @@ func (c *ACLController) ListPolicies(ctx *gin.Context) {
 	page, _ := strconv.Atoi(ctx.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(ctx.DefaultQuery("page_size", "10"))
 
-	policies, total, err := services.ACLService.ListPolicies(page, pageSize)
+	userID := ctx.GetUint("userID")
+	policies, total, err := services.ACLService.ListPolicies(userID, page, pageSize)
 	if err != nil {
 		serializer.Fail(ctx, err)
 		return
@@ -177,7 +186,8 @@ func (c *ACLController) Apply(ctx *gin.Context) {
 		return
 	}
 
-	if err := services.ACLService.Apply(req.ID); err != nil {
+	userID := ctx.GetUint("userID")
+	if err := services.ACLService.Apply(userID, req.ID); err != nil {
 		serializer.Fail(ctx, err)
 		return
 	}

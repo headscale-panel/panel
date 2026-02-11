@@ -9,7 +9,11 @@ type groupService struct{}
 
 var GroupService = &groupService{}
 
-func (s *groupService) List(page, pageSize int) ([]model.Group, int64, error) {
+func (s *groupService) List(actorUserID uint, page, pageSize int) ([]model.Group, int64, error) {
+	if err := RequirePermission(actorUserID, "system:group:list"); err != nil {
+		return nil, 0, err
+	}
+
 	var groups []model.Group
 	var total int64
 
@@ -25,7 +29,11 @@ func (s *groupService) List(page, pageSize int) ([]model.Group, int64, error) {
 	return groups, total, nil
 }
 
-func (s *groupService) Create(name string, permissionIDs []uint) (*model.Group, error) {
+func (s *groupService) Create(actorUserID uint, name string, permissionIDs []uint) (*model.Group, error) {
+	if err := RequirePermission(actorUserID, "system:group:create"); err != nil {
+		return nil, err
+	}
+
 	var permissions []model.Permission
 	if len(permissionIDs) > 0 {
 		if err := model.DB.Find(&permissions, permissionIDs).Error; err != nil {
@@ -44,7 +52,11 @@ func (s *groupService) Create(name string, permissionIDs []uint) (*model.Group, 
 	return group, nil
 }
 
-func (s *groupService) Update(id uint, name string, permissionIDs []uint) error {
+func (s *groupService) Update(actorUserID uint, id uint, name string, permissionIDs []uint) error {
+	if err := RequirePermission(actorUserID, "system:group:update"); err != nil {
+		return err
+	}
+
 	var group model.Group
 	if err := model.DB.Preload("Permissions").First(&group, id).Error; err != nil {
 		return serializer.ErrDatabase
@@ -67,7 +79,11 @@ func (s *groupService) Update(id uint, name string, permissionIDs []uint) error 
 	return model.DB.Save(&group).Error
 }
 
-func (s *groupService) Delete(id uint) error {
+func (s *groupService) Delete(actorUserID uint, id uint) error {
+	if err := RequirePermission(actorUserID, "system:group:delete"); err != nil {
+		return err
+	}
+
 	var count int64
 	model.DB.Model(&model.User{}).Where("group_id = ?", id).Count(&count)
 	if count > 0 {
@@ -90,7 +106,11 @@ func (s *groupService) GetUserPermissions(userID uint) ([]string, error) {
 	return codes, nil
 }
 
-func (s *groupService) UpdatePermissions(groupID uint, permissionIDs []uint) error {
+func (s *groupService) UpdatePermissions(actorUserID uint, groupID uint, permissionIDs []uint) error {
+	if err := RequirePermission(actorUserID, "system:group:update"); err != nil {
+		return err
+	}
+
 	var group model.Group
 	if err := model.DB.First(&group, groupID).Error; err != nil {
 		return serializer.ErrDatabase
@@ -109,7 +129,11 @@ func (s *groupService) UpdatePermissions(groupID uint, permissionIDs []uint) err
 	return nil
 }
 
-func (s *groupService) AddPermissions(groupID uint, permissionIDs []uint) error {
+func (s *groupService) AddPermissions(actorUserID uint, groupID uint, permissionIDs []uint) error {
+	if err := RequirePermission(actorUserID, "system:group:update"); err != nil {
+		return err
+	}
+
 	var group model.Group
 	if err := model.DB.First(&group, groupID).Error; err != nil {
 		return serializer.ErrDatabase
@@ -128,7 +152,11 @@ func (s *groupService) AddPermissions(groupID uint, permissionIDs []uint) error 
 	return nil
 }
 
-func (s *groupService) RemovePermissions(groupID uint, permissionIDs []uint) error {
+func (s *groupService) RemovePermissions(actorUserID uint, groupID uint, permissionIDs []uint) error {
+	if err := RequirePermission(actorUserID, "system:group:update"); err != nil {
+		return err
+	}
+
 	var group model.Group
 	if err := model.DB.First(&group, groupID).Error; err != nil {
 		return serializer.ErrDatabase

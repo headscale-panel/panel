@@ -24,7 +24,11 @@ type HeadscaleRoute struct {
 }
 
 // ListRoutes fetches routes from all nodes in Headscale via gRPC
-func (s *routeService) ListRoutes(page, pageSize int, userFilter string, machineIDFilter string) ([]HeadscaleRoute, int64, error) {
+func (s *routeService) ListRoutes(actorUserID uint, page, pageSize int, userFilter string, machineIDFilter string) ([]HeadscaleRoute, int64, error) {
+	if err := RequirePermission(actorUserID, "headscale:route:list"); err != nil {
+		return nil, 0, err
+	}
+
 	ctx := context.Background()
 	resp, err := headscale.GlobalClient.Service.ListNodes(ctx, &v1.ListNodesRequest{})
 	if err != nil {
@@ -101,7 +105,11 @@ func (s *routeService) ListRoutes(page, pageSize int, userFilter string, machine
 }
 
 // EnableRoute approves a route on a node (adds to approved_routes)
-func (s *routeService) EnableRoute(machineID uint64, destination string) error {
+func (s *routeService) EnableRoute(actorUserID uint, machineID uint64, destination string) error {
+	if err := RequirePermission(actorUserID, "headscale:route:enable"); err != nil {
+		return err
+	}
+
 	ctx := context.Background()
 
 	// Get current node state
@@ -145,7 +153,11 @@ func (s *routeService) EnableRoute(machineID uint64, destination string) error {
 }
 
 // DisableRoute removes a route from approved_routes on a node
-func (s *routeService) DisableRoute(machineID uint64, destination string) error {
+func (s *routeService) DisableRoute(actorUserID uint, machineID uint64, destination string) error {
+	if err := RequirePermission(actorUserID, "headscale:route:disable"); err != nil {
+		return err
+	}
+
 	ctx := context.Background()
 
 	// Get current node state

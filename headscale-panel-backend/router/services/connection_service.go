@@ -21,7 +21,11 @@ type ConnectionCommand struct {
 }
 
 // GenerateConnectionCommands generates connection commands for selected machines
-func (s *connectionService) GenerateConnectionCommands(machineIDs []string, platform string) ([]ConnectionCommand, error) {
+func (s *connectionService) GenerateConnectionCommands(actorUserID uint, machineIDs []string, platform string) ([]ConnectionCommand, error) {
+	if err := RequirePermission(actorUserID, "headscale:machine:list"); err != nil {
+		return nil, err
+	}
+
 	if len(machineIDs) == 0 {
 		return nil, fmt.Errorf("no machines selected")
 	}
@@ -178,7 +182,11 @@ func (s *connectionService) generateSSHCommands(machineIDs []string) (Connection
 }
 
 // GeneratePreAuthKey generates a pre-auth key for device registration
-func (s *connectionService) GeneratePreAuthKey(userID uint, reusable bool, ephemeral bool) (string, error) {
+func (s *connectionService) GeneratePreAuthKey(actorUserID uint, userID uint, reusable bool, ephemeral bool) (string, error) {
+	if err := RequirePermission(actorUserID, "headscale:preauthkey:create"); err != nil {
+		return "", err
+	}
+
 	targetName := fmt.Sprintf("user-%d", userID)
 
 	// List users to find the ID

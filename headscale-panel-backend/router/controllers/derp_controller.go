@@ -1,9 +1,9 @@
 package controllers
 
 import (
-	"strconv"
 	"headscale-panel/pkg/utils/serializer"
 	"headscale-panel/router/services"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 )
@@ -16,7 +16,8 @@ func NewDERPController() *DERPController {
 
 // Get returns the current DERP map
 func (c *DERPController) Get(ctx *gin.Context) {
-	derpMap, err := services.DERPService.GetDERPMap()
+	userID := ctx.GetUint("userID")
+	derpMap, err := services.DERPService.GetDERPMap(userID)
 	if err != nil {
 		serializer.Fail(ctx, err)
 		return
@@ -32,7 +33,8 @@ func (c *DERPController) Update(ctx *gin.Context) {
 		return
 	}
 
-	if err := services.DERPService.SaveDERPMap(&derpMap); err != nil {
+	userID := ctx.GetUint("userID")
+	if err := services.DERPService.SaveDERPMap(userID, &derpMap); err != nil {
 		serializer.Fail(ctx, err)
 		return
 	}
@@ -48,7 +50,8 @@ func (c *DERPController) AddRegion(ctx *gin.Context) {
 		return
 	}
 
-	if err := services.DERPService.AddRegion(&region); err != nil {
+	userID := ctx.GetUint("userID")
+	if err := services.DERPService.AddRegion(userID, &region); err != nil {
 		serializer.Fail(ctx, err)
 		return
 	}
@@ -70,7 +73,8 @@ func (c *DERPController) UpdateRegion(ctx *gin.Context) {
 		return
 	}
 
-	if err := services.DERPService.UpdateRegion(regionID, &region); err != nil {
+	userID := ctx.GetUint("userID")
+	if err := services.DERPService.UpdateRegion(userID, regionID, &region); err != nil {
 		serializer.Fail(ctx, err)
 		return
 	}
@@ -86,7 +90,8 @@ func (c *DERPController) DeleteRegion(ctx *gin.Context) {
 		return
 	}
 
-	if err := services.DERPService.DeleteRegion(regionID); err != nil {
+	userID := ctx.GetUint("userID")
+	if err := services.DERPService.DeleteRegion(userID, regionID); err != nil {
 		serializer.Fail(ctx, err)
 		return
 	}
@@ -108,7 +113,8 @@ func (c *DERPController) AddNode(ctx *gin.Context) {
 		return
 	}
 
-	if err := services.DERPService.AddNode(regionID, node); err != nil {
+	userID := ctx.GetUint("userID")
+	if err := services.DERPService.AddNode(userID, regionID, node); err != nil {
 		serializer.Fail(ctx, err)
 		return
 	}
@@ -136,7 +142,8 @@ func (c *DERPController) UpdateNode(ctx *gin.Context) {
 		return
 	}
 
-	if err := services.DERPService.UpdateNode(regionID, nodeIndex, node); err != nil {
+	userID := ctx.GetUint("userID")
+	if err := services.DERPService.UpdateNode(userID, regionID, nodeIndex, node); err != nil {
 		serializer.Fail(ctx, err)
 		return
 	}
@@ -158,7 +165,8 @@ func (c *DERPController) DeleteNode(ctx *gin.Context) {
 		return
 	}
 
-	if err := services.DERPService.DeleteNode(regionID, nodeIndex); err != nil {
+	userID := ctx.GetUint("userID")
+	if err := services.DERPService.DeleteNode(userID, regionID, nodeIndex); err != nil {
 		serializer.Fail(ctx, err)
 		return
 	}

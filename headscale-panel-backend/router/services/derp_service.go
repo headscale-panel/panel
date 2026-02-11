@@ -39,7 +39,15 @@ type DERPNode struct {
 }
 
 // GetDERPMap reads the DERP map from the YAML file
-func (s *derpService) GetDERPMap() (*DERPMapFile, error) {
+func (s *derpService) GetDERPMap(actorUserID uint) (*DERPMapFile, error) {
+	if err := RequirePermission(actorUserID, "headscale:derp:view"); err != nil {
+		return nil, err
+	}
+
+	return s.getDERPMap()
+}
+
+func (s *derpService) getDERPMap() (*DERPMapFile, error) {
 	filePath := s.getDERPMapPath()
 
 	data, err := os.ReadFile(filePath)
@@ -65,7 +73,15 @@ func (s *derpService) GetDERPMap() (*DERPMapFile, error) {
 }
 
 // SaveDERPMap writes the DERP map to the YAML file
-func (s *derpService) SaveDERPMap(derpMap *DERPMapFile) error {
+func (s *derpService) SaveDERPMap(actorUserID uint, derpMap *DERPMapFile) error {
+	if err := RequirePermission(actorUserID, "headscale:derp:update"); err != nil {
+		return err
+	}
+
+	return s.saveDERPMap(derpMap)
+}
+
+func (s *derpService) saveDERPMap(derpMap *DERPMapFile) error {
 	filePath := s.getDERPMapPath()
 
 	dir := filepath.Dir(filePath)
@@ -103,8 +119,12 @@ func (s *derpService) getDERPMapPath() string {
 }
 
 // AddRegion adds a new DERP region
-func (s *derpService) AddRegion(region *DERPRegion) error {
-	derpMap, err := s.GetDERPMap()
+func (s *derpService) AddRegion(actorUserID uint, region *DERPRegion) error {
+	if err := RequirePermission(actorUserID, "headscale:derp:update"); err != nil {
+		return err
+	}
+
+	derpMap, err := s.getDERPMap()
 	if err != nil {
 		return fmt.Errorf("读取 DERP map 失败: %w", err)
 	}
@@ -115,7 +135,7 @@ func (s *derpService) AddRegion(region *DERPRegion) error {
 
 	derpMap.Regions[region.RegionID] = region
 
-	if err := s.SaveDERPMap(derpMap); err != nil {
+	if err := s.saveDERPMap(derpMap); err != nil {
 		return fmt.Errorf("保存 DERP map 失败: %w", err)
 	}
 
@@ -123,8 +143,12 @@ func (s *derpService) AddRegion(region *DERPRegion) error {
 }
 
 // UpdateRegion updates an existing DERP region
-func (s *derpService) UpdateRegion(regionID int, region *DERPRegion) error {
-	derpMap, err := s.GetDERPMap()
+func (s *derpService) UpdateRegion(actorUserID uint, regionID int, region *DERPRegion) error {
+	if err := RequirePermission(actorUserID, "headscale:derp:update"); err != nil {
+		return err
+	}
+
+	derpMap, err := s.getDERPMap()
 	if err != nil {
 		return fmt.Errorf("读取 DERP map 失败: %w", err)
 	}
@@ -140,7 +164,7 @@ func (s *derpService) UpdateRegion(regionID int, region *DERPRegion) error {
 
 	derpMap.Regions[region.RegionID] = region
 
-	if err := s.SaveDERPMap(derpMap); err != nil {
+	if err := s.saveDERPMap(derpMap); err != nil {
 		return fmt.Errorf("保存 DERP map 失败: %w", err)
 	}
 
@@ -148,8 +172,12 @@ func (s *derpService) UpdateRegion(regionID int, region *DERPRegion) error {
 }
 
 // DeleteRegion deletes a DERP region by its ID
-func (s *derpService) DeleteRegion(regionID int) error {
-	derpMap, err := s.GetDERPMap()
+func (s *derpService) DeleteRegion(actorUserID uint, regionID int) error {
+	if err := RequirePermission(actorUserID, "headscale:derp:update"); err != nil {
+		return err
+	}
+
+	derpMap, err := s.getDERPMap()
 	if err != nil {
 		return fmt.Errorf("读取 DERP map 失败: %w", err)
 	}
@@ -160,7 +188,7 @@ func (s *derpService) DeleteRegion(regionID int) error {
 
 	delete(derpMap.Regions, regionID)
 
-	if err := s.SaveDERPMap(derpMap); err != nil {
+	if err := s.saveDERPMap(derpMap); err != nil {
 		return fmt.Errorf("保存 DERP map 失败: %w", err)
 	}
 
@@ -168,8 +196,12 @@ func (s *derpService) DeleteRegion(regionID int) error {
 }
 
 // AddNode adds a new node to a DERP region
-func (s *derpService) AddNode(regionID int, node DERPNode) error {
-	derpMap, err := s.GetDERPMap()
+func (s *derpService) AddNode(actorUserID uint, regionID int, node DERPNode) error {
+	if err := RequirePermission(actorUserID, "headscale:derp:update"); err != nil {
+		return err
+	}
+
+	derpMap, err := s.getDERPMap()
 	if err != nil {
 		return fmt.Errorf("读取 DERP map 失败: %w", err)
 	}
@@ -182,7 +214,7 @@ func (s *derpService) AddNode(regionID int, node DERPNode) error {
 	node.RegionID = regionID
 	region.Nodes = append(region.Nodes, node)
 
-	if err := s.SaveDERPMap(derpMap); err != nil {
+	if err := s.saveDERPMap(derpMap); err != nil {
 		return fmt.Errorf("保存 DERP map 失败: %w", err)
 	}
 
@@ -190,8 +222,12 @@ func (s *derpService) AddNode(regionID int, node DERPNode) error {
 }
 
 // UpdateNode updates a node in a DERP region by its index
-func (s *derpService) UpdateNode(regionID int, nodeIndex int, node DERPNode) error {
-	derpMap, err := s.GetDERPMap()
+func (s *derpService) UpdateNode(actorUserID uint, regionID int, nodeIndex int, node DERPNode) error {
+	if err := RequirePermission(actorUserID, "headscale:derp:update"); err != nil {
+		return err
+	}
+
+	derpMap, err := s.getDERPMap()
 	if err != nil {
 		return fmt.Errorf("读取 DERP map 失败: %w", err)
 	}
@@ -208,7 +244,7 @@ func (s *derpService) UpdateNode(regionID int, nodeIndex int, node DERPNode) err
 	node.RegionID = regionID
 	region.Nodes[nodeIndex] = node
 
-	if err := s.SaveDERPMap(derpMap); err != nil {
+	if err := s.saveDERPMap(derpMap); err != nil {
 		return fmt.Errorf("保存 DERP map 失败: %w", err)
 	}
 
@@ -216,8 +252,12 @@ func (s *derpService) UpdateNode(regionID int, nodeIndex int, node DERPNode) err
 }
 
 // DeleteNode deletes a node from a DERP region by its index
-func (s *derpService) DeleteNode(regionID int, nodeIndex int) error {
-	derpMap, err := s.GetDERPMap()
+func (s *derpService) DeleteNode(actorUserID uint, regionID int, nodeIndex int) error {
+	if err := RequirePermission(actorUserID, "headscale:derp:update"); err != nil {
+		return err
+	}
+
+	derpMap, err := s.getDERPMap()
 	if err != nil {
 		return fmt.Errorf("读取 DERP map 失败: %w", err)
 	}
@@ -233,7 +273,7 @@ func (s *derpService) DeleteNode(regionID int, nodeIndex int) error {
 
 	region.Nodes = append(region.Nodes[:nodeIndex], region.Nodes[nodeIndex+1:]...)
 
-	if err := s.SaveDERPMap(derpMap); err != nil {
+	if err := s.saveDERPMap(derpMap); err != nil {
 		return fmt.Errorf("保存 DERP map 失败: %w", err)
 	}
 

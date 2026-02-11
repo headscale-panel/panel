@@ -43,7 +43,11 @@ type ExtraRecord struct {
 	Value string `json:"value"`
 }
 
-func (s *dnsService) Create(req *CreateDNSRecordRequest) (*model.DNSRecord, error) {
+func (s *dnsService) Create(actorUserID uint, req *CreateDNSRecordRequest) (*model.DNSRecord, error) {
+	if err := RequirePermission(actorUserID, "dns:record:create"); err != nil {
+		return nil, err
+	}
+
 	record := model.DNSRecord{
 		Name:    req.Name,
 		Type:    req.Type,
@@ -56,14 +60,18 @@ func (s *dnsService) Create(req *CreateDNSRecordRequest) (*model.DNSRecord, erro
 	}
 
 	// 同步到文件
-	if err := s.SyncToFile(); err != nil {
+	if err := s.SyncToFile(actorUserID); err != nil {
 		return &record, err
 	}
 
 	return &record, nil
 }
 
-func (s *dnsService) List(req *ListDNSRecordRequest) ([]model.DNSRecord, int64, error) {
+func (s *dnsService) List(actorUserID uint, req *ListDNSRecordRequest) ([]model.DNSRecord, int64, error) {
+	if err := RequirePermission(actorUserID, "dns:record:list"); err != nil {
+		return nil, 0, err
+	}
+
 	var records []model.DNSRecord
 	var total int64
 
@@ -90,7 +98,11 @@ func (s *dnsService) List(req *ListDNSRecordRequest) ([]model.DNSRecord, int64, 
 	return records, total, nil
 }
 
-func (s *dnsService) Update(req *UpdateDNSRecordRequest) (*model.DNSRecord, error) {
+func (s *dnsService) Update(actorUserID uint, req *UpdateDNSRecordRequest) (*model.DNSRecord, error) {
+	if err := RequirePermission(actorUserID, "dns:record:update"); err != nil {
+		return nil, err
+	}
+
 	var record model.DNSRecord
 	if err := model.DB.First(&record, req.ID).Error; err != nil {
 		return nil, serializer.ErrDatabase
@@ -120,23 +132,31 @@ func (s *dnsService) Update(req *UpdateDNSRecordRequest) (*model.DNSRecord, erro
 	model.DB.First(&record, req.ID)
 
 	// 同步到文件
-	if err := s.SyncToFile(); err != nil {
+	if err := s.SyncToFile(actorUserID); err != nil {
 		return &record, err
 	}
 
 	return &record, nil
 }
 
-func (s *dnsService) Delete(id uint) error {
+func (s *dnsService) Delete(actorUserID uint, id uint) error {
+	if err := RequirePermission(actorUserID, "dns:record:delete"); err != nil {
+		return err
+	}
+
 	if err := model.DB.Delete(&model.DNSRecord{}, id).Error; err != nil {
 		return serializer.ErrDatabase
 	}
 
 	// 同步到文件
-	return s.SyncToFile()
+	return s.SyncToFile(actorUserID)
 }
 
-func (s *dnsService) Get(id uint) (*model.DNSRecord, error) {
+func (s *dnsService) Get(actorUserID uint, id uint) (*model.DNSRecord, error) {
+	if err := RequirePermission(actorUserID, "dns:record:get"); err != nil {
+		return nil, err
+	}
+
 	var record model.DNSRecord
 	if err := model.DB.First(&record, id).Error; err != nil {
 		return nil, serializer.ErrDatabase
@@ -145,7 +165,11 @@ func (s *dnsService) Get(id uint) (*model.DNSRecord, error) {
 }
 
 // SyncToFile 将所有 DNS 记录同步到 extra-records.json 文件
-func (s *dnsService) SyncToFile() error {
+func (s *dnsService) SyncToFile(actorUserID uint) error {
+	if err := RequirePermission(actorUserID, "dns:sync"); err != nil {
+		return err
+	}
+
 	var records []model.DNSRecord
 	if err := model.DB.Find(&records).Error; err != nil {
 		return serializer.ErrDatabase
@@ -182,7 +206,11 @@ func (s *dnsService) SyncToFile() error {
 }
 
 // GetExtraRecordsFromFile 从文件读取 DNS 记录
-func (s *dnsService) GetExtraRecordsFromFile() ([]ExtraRecord, error) {
+func (s *dnsService) GetExtraRecordsFromFile(actorUserID uint) ([]ExtraRecord, error) {
+	if err := RequirePermission(actorUserID, "dns:file:get"); err != nil {
+		return nil, err
+	}
+
 	filePath := s.getExtraRecordsPath()
 
 	data, err := os.ReadFile(filePath)
@@ -210,8 +238,12 @@ func (s *dnsService) getExtraRecordsPath() string {
 }
 
 // ImportFromFile 从文件导入 DNS 记录到数据库
-func (s *dnsService) ImportFromFile() (int, error) {
-	records, err := s.GetExtraRecordsFromFile()
+func (s *dnsService) ImportFromFile(actorUserID uint) (int, error) {
+	if err := RequirePermission(actorUserID, "dns:import"); err != nil {
+		return 0, err
+	}
+
+	records, err := s.GetExtraRecordsFromFile(actorUserID)
 	if err != nil {
 		return 0, err
 	}
