@@ -5,6 +5,7 @@ import (
 	"headscale-panel/pkg/conf"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -296,6 +297,46 @@ func (s *headscaleConfigService) MergePreservedSecrets(incoming, current *Headsc
 	return &merged
 }
 
+func (s *headscaleConfigService) IsOIDCAutoLinkAllowed(config *HeadscaleConfigFile, email string) bool {
+	if config == nil {
+		return true
+	}
+
+	normalizedEmail := strings.ToLower(strings.TrimSpace(email))
+	if normalizedEmail == "" {
+		return false
+	}
+
+	allowedUsers := normalizeOIDCAllowlist(config.OIDC.AllowedUsers)
+	allowedDomains := normalizeOIDCAllowlist(config.OIDC.AllowedDomains)
+	if len(allowedUsers) == 0 && len(allowedDomains) == 0 {
+		return true
+	}
+
+	if _, ok := allowedUsers[normalizedEmail]; ok {
+		return true
+	}
+
+	parts := strings.Split(normalizedEmail, "@")
+	if len(parts) != 2 || strings.TrimSpace(parts[1]) == "" {
+		return false
+	}
+	_, ok := allowedDomains[parts[1]]
+	return ok
+}
+
+func normalizeOIDCAllowlist(values []string) map[string]struct{} {
+	result := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		normalized := strings.ToLower(strings.TrimSpace(value))
+		if normalized == "" {
+			continue
+		}
+		result[normalized] = struct{}{}
+	}
+	return result
+}
+
 func (s *headscaleConfigService) defaultConfig() *HeadscaleConfigFile {
 	return &HeadscaleConfigFile{
 		ServerURL:                      "https://hs.bokro.cn",
@@ -348,6 +389,7 @@ func (s *headscaleConfigService) defaultConfig() *HeadscaleConfigFile {
 			OnlyStartIfOIDCIsAvailable: false,
 			Issuer:                     "https://auth.bokro.cn",
 			Scope:                      []string{"openid", "profile", "email", "groups"},
+			EmailVerifiedRequired:      true,
 			PKCE: PKCEConfig{
 				Enabled: false,
 				Method:  "S256",

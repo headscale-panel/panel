@@ -79,12 +79,12 @@ func (a *AuthController) OIDCStatus(c *gin.Context) {
 func (a *AuthController) OIDCLogin(c *gin.Context) {
 	hsConfig, err := services.HeadscaleConfigService.GetConfig()
 	if err != nil {
-		serializer.Fail(c, fmt.Errorf("failed to read OIDC config: %w", err))
+		failOIDCAuth(c)
 		return
 	}
 
 	if hsConfig.OIDC.Issuer == "" || hsConfig.OIDC.ClientID == "" {
-		serializer.FailWithCode(c, serializer.CodeParamErr, "OIDC is not configured")
+		failOIDCAuth(c)
 		return
 	}
 
@@ -117,7 +117,7 @@ func (a *AuthController) OIDCLogin(c *gin.Context) {
 
 	provider, err := oidc.NewProvider(ctx, hsConfig.OIDC.Issuer)
 	if err != nil {
-		serializer.Fail(c, fmt.Errorf("OIDC discovery failed: %w", err))
+		failOIDCAuth(c)
 		return
 	}
 
@@ -161,12 +161,12 @@ func (a *AuthController) OIDCCallback(c *gin.Context) {
 
 	hsConfig, err := services.HeadscaleConfigService.GetConfig()
 	if err != nil {
-		serializer.Fail(c, fmt.Errorf("failed to read OIDC config: %w", err))
+		failOIDCAuth(c)
 		return
 	}
 
 	if hsConfig.OIDC.Issuer == "" || hsConfig.OIDC.ClientID == "" {
-		serializer.FailWithCode(c, serializer.CodeParamErr, "OIDC is not configured")
+		failOIDCAuth(c)
 		return
 	}
 
@@ -175,7 +175,7 @@ func (a *AuthController) OIDCCallback(c *gin.Context) {
 
 	provider, err := oidc.NewProvider(ctx, hsConfig.OIDC.Issuer)
 	if err != nil {
-		serializer.Fail(c, fmt.Errorf("OIDC discovery failed: %w", err))
+		failOIDCAuth(c)
 		return
 	}
 
@@ -186,7 +186,7 @@ func (a *AuthController) OIDCCallback(c *gin.Context) {
 
 	redirectURI, err := oidcRedirectURI()
 	if err != nil {
-		serializer.Fail(c, serializer.NewError(serializer.CodeInternalError, "invalid OIDC redirect base URL", err))
+		failOIDCAuth(c)
 		return
 	}
 
@@ -200,20 +200,20 @@ func (a *AuthController) OIDCCallback(c *gin.Context) {
 
 	oauthToken, err := oauthCfg.Exchange(ctx, code)
 	if err != nil {
-		serializer.Fail(c, fmt.Errorf("failed to exchange authorization code: %w", err))
+		failOIDCAuth(c)
 		return
 	}
 
 	rawIDToken, ok := oauthToken.Extra("id_token").(string)
 	if !ok {
-		serializer.FailWithCode(c, serializer.CodeInternalError, "no id_token in token response")
+		failOIDCAuth(c)
 		return
 	}
 
 	verifier := provider.Verifier(&oidc.Config{ClientID: hsConfig.OIDC.ClientID})
 	idToken, err := verifier.Verify(ctx, rawIDToken)
 	if err != nil {
-		serializer.Fail(c, fmt.Errorf("failed to verify ID token: %w", err))
+		failOIDCAuth(c)
 		return
 	}
 
@@ -226,24 +226,24 @@ func (a *AuthController) OIDCCallback(c *gin.Context) {
 		Picture       string `json:"picture"`
 	}
 	if err := idToken.Claims(&claims); err != nil {
-		serializer.Fail(c, fmt.Errorf("failed to parse ID token claims: %w", err))
+		failOIDCAuth(c)
 		return
 	}
 
-	if claims.Sub == "" {
-		serializer.FailWithCode(c, serializer.CodeParamErr, "ID token missing sub claim")
+	if claims.Sub == "" || !claims.EmailVerified {
+		failOIDCAuth(c)
 		return
 	}
 
-	user, err := findOrCreateOIDCUser(claims.Sub, claims.Email, claims.Name, claims.PreferredUser, claims.Picture)
+	user, err := findOrCreateOIDCUser(hsConfig, claims.Sub, claims.Email, claims.Name, claims.PreferredUser, claims.Picture)
 	if err != nil {
-		serializer.Fail(c, fmt.Errorf("failed to find or create user: %w", err))
+		failOIDCAuth(c)
 		return
 	}
 
 	token, err := jwt.GenerateToken(user.ID, user.Username, user.GroupID)
 	if err != nil {
-		serializer.Fail(c, fmt.Errorf("failed to generate token: %w", err))
+		failOIDCAuth(c)
 		return
 	}
 
@@ -260,8 +260,8 @@ func (a *AuthController) OIDCCallback(c *gin.Context) {
 }
 
 // findOrCreateOIDCUser looks up an existing panel user by OIDC provider+sub,
-// falling back to email lookup, and finally creating a new user if none exists.
-func findOrCreateOIDCUser(sub, email, name, preferredUsername, picture string) (*model.User, error) {
+// falling back to email lookup (with allowlist guard), and finally creating a new user if none exists.
+func findOrCreateOIDCUser(config *services.HeadscaleConfigFile, sub, email, name, preferredUsername, picture string) (*model.User, error) {
 	// Try 1: Find by provider + provider_id (sub)
 	var user model.User
 	err := model.DB.Preload("Group").
@@ -292,27 +292,40 @@ func findOrCreateOIDCUser(sub, email, name, preferredUsername, picture string) (
 
 	// Try 2: Find by email (link existing account)
 	if email != "" {
-		err = model.DB.Preload("Group").
-			Where("email = ? AND email != ''", email).
-			First(&user).Error
-		if err == nil {
-			// Link the OIDC identity to the existing account
-			if err := model.DB.Model(&user).Updates(map[string]interface{}{
-				"provider":        "oidc",
-				"provider_id":     sub,
-				"profile_pic_url": picture,
-			}).Error; err != nil {
-				return nil, fmt.Errorf("failed to link oidc account: %w", err)
-			}
-			if name != "" && user.DisplayName == "" {
-				if err := model.DB.Model(&user).Update("display_name", name).Error; err != nil {
-					return nil, fmt.Errorf("failed to update display name: %w", err)
+		autoLinkAllowed := services.HeadscaleConfigService.IsOIDCAutoLinkAllowed(config, email)
+		if autoLinkAllowed {
+			err = model.DB.Preload("Group").
+				Where("email = ? AND email != ''", email).
+				First(&user).Error
+			if err == nil {
+				// Link the OIDC identity to the existing account
+				if err := model.DB.Model(&user).Updates(map[string]interface{}{
+					"provider":        "oidc",
+					"provider_id":     sub,
+					"profile_pic_url": picture,
+				}).Error; err != nil {
+					return nil, fmt.Errorf("failed to link oidc account: %w", err)
 				}
+				if name != "" && user.DisplayName == "" {
+					if err := model.DB.Model(&user).Update("display_name", name).Error; err != nil {
+						return nil, fmt.Errorf("failed to update display name: %w", err)
+					}
+				}
+				return &user, nil
 			}
-			return &user, nil
-		}
-		if !errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, err
+			if !errors.Is(err, gorm.ErrRecordNotFound) {
+				return nil, err
+			}
+		} else {
+			var existingAccountCount int64
+			if err := model.DB.Model(&model.User{}).
+				Where("email = ? AND email != ''", email).
+				Count(&existingAccountCount).Error; err != nil {
+				return nil, err
+			}
+			if existingAccountCount > 0 {
+				return nil, errors.New("oidc auto-link denied by allowlist")
+			}
 		}
 	}
 
@@ -352,6 +365,10 @@ func findOrCreateOIDCUser(sub, email, name, preferredUsername, picture string) (
 		return nil, fmt.Errorf("failed to reload created user: %w", err)
 	}
 	return &newUser, nil
+}
+
+func failOIDCAuth(c *gin.Context) {
+	serializer.Fail(c, serializer.NewError(serializer.CodeNoPermissionErr, "OIDC authentication failed", nil))
 }
 
 // deriveUsername picks the best available username string from OIDC claims.
