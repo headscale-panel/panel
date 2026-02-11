@@ -21,7 +21,7 @@ func (c *OauthClientController) List(ctx *gin.Context) {
 	userID := ctx.GetUint("userID")
 	clients, total, err := services.OauthClientService.List(userID, page, pageSize)
 	if err != nil {
-		serializer.Fail(ctx, serializer.ErrDatabase)
+		serializer.Fail(ctx, err)
 		return
 	}
 
@@ -46,7 +46,7 @@ func (c *OauthClientController) Create(ctx *gin.Context) {
 	userID := ctx.GetUint("userID")
 	client, err := services.OauthClientService.Create(userID, req.Name, req.RedirectURIs)
 	if err != nil {
-		serializer.Fail(ctx, serializer.ErrDatabase)
+		serializer.Fail(ctx, err)
 		return
 	}
 

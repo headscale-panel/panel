@@ -143,18 +143,18 @@ func initDefaultData() {
 	DB.Where("code IN ?", []string{"dashboard:view", "resource:list", "resource:create"}).Find(&basicPermissions)
 	DB.Model(&userGroup).Association("Permissions").Replace(basicPermissions)
 
-	// 默认管理员账户
+	// 禁止保留默认管理员弱口令路径：admin/admin123
 	var adminUser User
-	if err := DB.Where("username = ?", "admin").First(&adminUser).Error; err != nil {
-		if err == gorm.ErrRecordNotFound {
-			adminUser = User{
-				Username: "admin",
-				Password: "admin123", // 默认密码，首次登录后请修改
-				Email:    "",
-				GroupID:  adminGroup.ID,
-			}
-			DB.Create(&adminUser)
-			log.Println("Created default admin user: admin / admin123")
-		}
+	err := DB.Where("username = ?", "admin").First(&adminUser).Error
+	if err != nil && err != gorm.ErrRecordNotFound {
+		log.Fatalf("failed to check admin user: %v", err)
+	}
+	if err == nil && adminUser.CheckPassword("admin123") {
+		log.Fatalf("insecure default admin credentials detected (admin/admin123); rotate the password before startup")
+	}
+
+	var userCount int64
+	if err := DB.Model(&User{}).Count(&userCount).Error; err == nil && userCount == 0 {
+		log.Println("No users found. Create the first admin via /api/v1/setup/init")
 	}
 }

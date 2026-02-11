@@ -3,6 +3,7 @@ package influxdb
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
@@ -14,6 +15,7 @@ var (
 	Client   influxdb2.Client
 	WriteAPI api.WriteAPI
 	QueryAPI api.QueryAPI
+	bucket   string
 )
 
 type Config struct {
@@ -28,6 +30,12 @@ func Init(cfg Config) error {
 		logrus.Warn("InfluxDB URL not configured, metrics collection disabled")
 		return nil
 	}
+	if strings.TrimSpace(cfg.Org) == "" {
+		return fmt.Errorf("influxdb org is required when URL is configured")
+	}
+	if strings.TrimSpace(cfg.Bucket) == "" {
+		return fmt.Errorf("influxdb bucket is required when URL is configured")
+	}
 
 	Client = influxdb2.NewClient(cfg.URL, cfg.Token)
 
@@ -41,20 +49,32 @@ func Init(cfg Config) error {
 	}
 
 	if health.Status != "pass" {
-		return fmt.Errorf("InfluxDB health check failed: %s", health.Message)
+		message := ""
+		if health.Message != nil {
+			message = *health.Message
+		}
+		return fmt.Errorf("InfluxDB health check failed: status=%s message=%s", health.Status, message)
 	}
 
 	WriteAPI = Client.WriteAPI(cfg.Org, cfg.Bucket)
 	QueryAPI = Client.QueryAPI(cfg.Org)
+	bucket = cfg.Bucket
 
 	logrus.Info("InfluxDB client initialized successfully")
 	return nil
 }
 
 func Close() {
+	if WriteAPI != nil {
+		WriteAPI.Flush()
+	}
 	if Client != nil {
 		Client.Close()
 	}
+	Client = nil
+	WriteAPI = nil
+	QueryAPI = nil
+	bucket = ""
 }
 
 // WriteDeviceStatus writes device online status to InfluxDB
@@ -113,13 +133,13 @@ func QueryOnlineDuration(ctx context.Context, userID, machineID string, start, e
 		return 0, fmt.Errorf("InfluxDB not configured")
 	}
 
-	filter := fmt.Sprintf(`r["user_id"] == "%s"`, userID)
+	filter := fmt.Sprintf(`r["user_id"] == %s`, fluxStringLiteral(userID))
 	if machineID != "" {
-		filter = fmt.Sprintf(`r["machine_id"] == "%s"`, machineID)
+		filter = fmt.Sprintf(`r["machine_id"] == %s`, fluxStringLiteral(machineID))
 	}
 
 	query := fmt.Sprintf(`
-		from(bucket: "metrics")
+		from(bucket: %s)
 			|> range(start: %s, stop: %s)
 			|> filter(fn: (r) => r["_measurement"] == "device_status")
 			|> filter(fn: (r) => %s)
@@ -127,7 +147,7 @@ func QueryOnlineDuration(ctx context.Context, userID, machineID string, start, e
 			|> filter(fn: (r) => r["_value"] == true)
 			|> elapsed(unit: 1s)
 			|> sum()
-	`, start.Format(time.RFC3339), end.Format(time.RFC3339), filter)
+	`, fluxStringLiteral(bucket), start.Format(time.RFC3339), end.Format(time.RFC3339), filter)
 
 	result, err := QueryAPI.Query(ctx, query)
 	if err != nil {
@@ -156,12 +176,12 @@ func GetDeviceStatusHistory(ctx context.Context, machineID string, start, end ti
 	}
 
 	query := fmt.Sprintf(`
-		from(bucket: "metrics")
+		from(bucket: %s)
 			|> range(start: %s, stop: %s)
 			|> filter(fn: (r) => r["_measurement"] == "device_status")
-			|> filter(fn: (r) => r["machine_id"] == "%s")
+			|> filter(fn: (r) => r["machine_id"] == %s)
 			|> filter(fn: (r) => r["_field"] == "status")
-	`, start.Format(time.RFC3339), end.Format(time.RFC3339), machineID)
+	`, fluxStringLiteral(bucket), start.Format(time.RFC3339), end.Format(time.RFC3339), fluxStringLiteral(machineID))
 
 	result, err := QueryAPI.Query(ctx, query)
 	if err != nil {
@@ -183,4 +203,15 @@ func GetDeviceStatusHistory(ctx context.Context, machineID string, start, end ti
 	}
 
 	return records, nil
+}
+
+func fluxStringLiteral(input string) string {
+	replacer := strings.NewReplacer(
+		"\\", "\\\\",
+		"\"", "\\\"",
+		"\n", " ",
+		"\r", " ",
+		"\t", " ",
+	)
+	return fmt.Sprintf("\"%s\"", replacer.Replace(input))
 }

@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"headscale-panel/model"
 	"headscale-panel/pkg/utils/serializer"
+	"strings"
 )
 
 type oauthClientService struct{}
@@ -36,6 +37,15 @@ func (s *oauthClientService) Create(actorUserID uint, name, redirectURIs string)
 		return nil, err
 	}
 
+	trimmedName := strings.TrimSpace(name)
+	if trimmedName == "" {
+		return nil, serializer.NewError(serializer.CodeParamErr, "name is required", nil)
+	}
+	normalizedRedirectURIs, err := normalizeRedirectURIs(redirectURIs)
+	if err != nil {
+		return nil, serializer.NewError(serializer.CodeParamErr, err.Error(), nil)
+	}
+
 	clientID, err := generateRandomString(16)
 	if err != nil {
 		return nil, err
@@ -46,10 +56,10 @@ func (s *oauthClientService) Create(actorUserID uint, name, redirectURIs string)
 	}
 
 	client := &model.OauthClient{
-		Name:         name,
+		Name:         trimmedName,
 		ClientID:     clientID,
 		ClientSecret: clientSecret,
-		RedirectURIs: redirectURIs,
+		RedirectURIs: normalizedRedirectURIs,
 	}
 
 	if err := model.DB.Create(client).Error; err != nil {
@@ -64,13 +74,22 @@ func (s *oauthClientService) Update(actorUserID uint, id uint, name, redirectURI
 		return err
 	}
 
+	trimmedName := strings.TrimSpace(name)
+	if trimmedName == "" {
+		return serializer.NewError(serializer.CodeParamErr, "name is required", nil)
+	}
+	normalizedRedirectURIs, err := normalizeRedirectURIs(redirectURIs)
+	if err != nil {
+		return serializer.NewError(serializer.CodeParamErr, err.Error(), nil)
+	}
+
 	var client model.OauthClient
 	if err := model.DB.First(&client, id).Error; err != nil {
 		return serializer.ErrUserNotFound // Reuse or create ErrClientNotFound
 	}
 
-	client.Name = name
-	client.RedirectURIs = redirectURIs
+	client.Name = trimmedName
+	client.RedirectURIs = normalizedRedirectURIs
 	return model.DB.Save(&client).Error
 }
 

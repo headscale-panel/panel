@@ -9,6 +9,8 @@ import (
 	"headscale-panel/model"
 	"headscale-panel/pkg/conf"
 	"math/big"
+	"net/url"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -43,16 +45,18 @@ func (s *oidcService) Init() error {
 	}
 	s.privateKey = key
 
-	// Ensure default client exists
-	var count int64
-	model.DB.Model(&model.OauthClient{}).Count(&count)
-	if count == 0 {
-		model.DB.Create(&model.OauthClient{
-			ClientID:     "headscale",
-			ClientSecret: "headscale-secret",
-			RedirectURIs: "*", // Allow all for dev, restrict in prod
-			Name:         "Headscale",
-		})
+	// Validate existing clients to prevent insecure defaults and wildcard redirect.
+	var clients []model.OauthClient
+	if err := model.DB.Find(&clients).Error; err != nil {
+		return err
+	}
+	for _, client := range clients {
+		if isInsecureOIDCClientSecret(client.ClientSecret) {
+			return fmt.Errorf("oidc client %q uses insecure client secret; rotate it", client.ClientID)
+		}
+		if _, err := normalizeRedirectURIs(client.RedirectURIs); err != nil {
+			return fmt.Errorf("oidc client %q has invalid redirect_uris: %w", client.ClientID, err)
+		}
 	}
 
 	return nil
@@ -80,6 +84,9 @@ func (s *oidcService) GenerateAuthCode(userID uint, clientID, redirectURI, nonce
 func (s *oidcService) ExchangeCode(code, clientID, clientSecret string) (string, string, string, error) {
 	var client model.OauthClient
 	if err := model.DB.Where("client_id = ? AND client_secret = ?", clientID, clientSecret).First(&client).Error; err != nil {
+		return "", "", "", errors.New("invalid client")
+	}
+	if !isSafeOIDCClient(client) {
 		return "", "", "", errors.New("invalid client")
 	}
 
@@ -131,6 +138,9 @@ func (s *oidcService) ExchangeCode(code, clientID, clientSecret string) (string,
 func (s *oidcService) RefreshTokens(refreshTokenStr, clientID, clientSecret string) (string, string, string, error) {
 	var client model.OauthClient
 	if err := model.DB.Where("client_id = ? AND client_secret = ?", clientID, clientSecret).First(&client).Error; err != nil {
+		return "", "", "", errors.New("invalid client")
+	}
+	if !isSafeOIDCClient(client) {
 		return "", "", "", errors.New("invalid client")
 	}
 
@@ -317,14 +327,88 @@ func (s *oidcService) ValidateRedirectURI(clientID, redirectURI string) bool {
 	if err := model.DB.Where("client_id = ?", clientID).First(&client).Error; err != nil {
 		return false
 	}
-	if client.RedirectURIs == "*" {
-		return true
+	if !isSafeOIDCClient(client) {
+		return false
 	}
-	uris := strings.Split(client.RedirectURIs, ",")
+
+	validRedirect, err := validateRedirectURI(redirectURI)
+	if err != nil {
+		return false
+	}
+
+	normalizedRedirectURIs, err := normalizeRedirectURIs(client.RedirectURIs)
+	if err != nil {
+		return false
+	}
+	uris := strings.Split(normalizedRedirectURIs, ",")
 	for _, u := range uris {
-		if strings.TrimSpace(u) == redirectURI {
+		if strings.TrimSpace(u) == validRedirect {
 			return true
 		}
 	}
 	return false
+}
+
+func isInsecureOIDCClientSecret(secret string) bool {
+	normalized := strings.TrimSpace(strings.ToLower(secret))
+	return normalized == "" || normalized == "headscale-secret"
+}
+
+func isSafeOIDCClient(client model.OauthClient) bool {
+	if isInsecureOIDCClientSecret(client.ClientSecret) {
+		return false
+	}
+	_, err := normalizeRedirectURIs(client.RedirectURIs)
+	return err == nil
+}
+
+func normalizeRedirectURIs(redirectURIs string) (string, error) {
+	if strings.TrimSpace(redirectURIs) == "" {
+		return "", errors.New("redirect URIs cannot be empty")
+	}
+
+	parts := strings.Split(redirectURIs, ",")
+	normalized := make([]string, 0, len(parts))
+	seen := make(map[string]struct{}, len(parts))
+
+	for _, part := range parts {
+		uri, err := validateRedirectURI(part)
+		if err != nil {
+			return "", err
+		}
+		if _, ok := seen[uri]; ok {
+			continue
+		}
+		seen[uri] = struct{}{}
+		normalized = append(normalized, uri)
+	}
+
+	if len(normalized) == 0 {
+		return "", errors.New("redirect URIs cannot be empty")
+	}
+
+	sort.Strings(normalized)
+	return strings.Join(normalized, ","), nil
+}
+
+func validateRedirectURI(uri string) (string, error) {
+	normalized := strings.TrimSpace(uri)
+	if normalized == "" {
+		return "", errors.New("redirect URI cannot be empty")
+	}
+	if strings.Contains(normalized, "*") {
+		return "", errors.New("wildcard redirect URI is not allowed")
+	}
+	if strings.Contains(normalized, "#") {
+		return "", fmt.Errorf("redirect URI must not contain fragment: %s", normalized)
+	}
+
+	parsed, err := url.ParseRequestURI(normalized)
+	if err != nil {
+		return "", fmt.Errorf("invalid redirect URI: %s", normalized)
+	}
+	if parsed.Scheme == "" || parsed.Host == "" {
+		return "", fmt.Errorf("redirect URI must be absolute: %s", normalized)
+	}
+	return normalized, nil
 }

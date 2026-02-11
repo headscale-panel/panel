@@ -1,6 +1,7 @@
 package conf
 
 import (
+	"fmt"
 	"log"
 	"strings"
 
@@ -76,7 +77,6 @@ func Init(path string) {
 	viper.SetDefault("system.release", false)
 	viper.SetDefault("system.base_url", "http://localhost:8080")
 	viper.SetDefault("db.path", "data.db")
-	viper.SetDefault("jwt.secret", "headscale-panel-secret")
 	viper.SetDefault("jwt.expire", 24)
 	viper.SetDefault("headscale.grpc_addr", "localhost:50443")
 	viper.SetDefault("headscale.api_key", "")
@@ -92,6 +92,7 @@ func Init(path string) {
 	// Manually bind env vars to nested keys because Viper doesn't automatically map flat env keys to nested structs
 	viper.BindEnv("system.port", "SYSTEM_PORT")
 	viper.BindEnv("system.release", "SYSTEM_RELEASE")
+	viper.BindEnv("system.base_url", "SYSTEM_BASE_URL")
 	viper.BindEnv("db.path", "DB_PATH")
 	viper.BindEnv("jwt.secret", "JWT_SECRET")
 	viper.BindEnv("jwt.expire", "JWT_EXPIRE")
@@ -109,4 +110,32 @@ func Init(path string) {
 	if err := viper.Unmarshal(&Conf); err != nil {
 		log.Fatalf("Unable to decode into struct, %v", err)
 	}
+
+	if err := validateSecurityConfig(Conf); err != nil {
+		log.Fatalf("Invalid security configuration: %v", err)
+	}
+}
+
+func validateSecurityConfig(cfg Config) error {
+	secret := strings.TrimSpace(cfg.JWT.Secret)
+	if secret == "" {
+		return fmt.Errorf("JWT_SECRET is required and cannot be empty")
+	}
+
+	lowered := strings.ToLower(secret)
+	insecureDefaults := map[string]struct{}{
+		"headscale-panel-secret":   {},
+		"your-secret-key":          {},
+		"your_jwt_secret_key_here": {},
+	}
+
+	if _, found := insecureDefaults[lowered]; found {
+		return fmt.Errorf("JWT_SECRET uses an insecure default or placeholder value")
+	}
+
+	if len(secret) < 32 {
+		return fmt.Errorf("JWT_SECRET must be at least 32 characters")
+	}
+
+	return nil
 }
