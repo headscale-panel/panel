@@ -1,6 +1,7 @@
 package application
 
 import (
+	"context"
 	"headscale-panel/model"
 	"headscale-panel/pkg/conf"
 	"headscale-panel/pkg/headscale"
@@ -82,5 +83,21 @@ func (s *Server) Run() {
 	<-quit
 	logrus.Info("Shutting down server...")
 
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	if s.server != nil {
+		if err := s.server.Shutdown(shutdownCtx); err != nil {
+			logrus.WithError(err).Error("Failed to gracefully shutdown HTTP server")
+		}
+	}
+
+	services.MetricsService.StopMetricsCollector()
+	services.StopWebSocket()
+
+	headscale.Close()
 	influxdb.Close()
+	if err := model.Close(); err != nil {
+		logrus.WithError(err).Warn("Failed to close database connection")
+	}
 }

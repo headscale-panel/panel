@@ -6,18 +6,26 @@ import (
 	"headscale-panel/pkg/headscale"
 	"headscale-panel/pkg/influxdb"
 	v1 "headscale-panel/pkg/proto/headscale/v1"
+	"sync"
 	"time"
 
 	"github.com/sirupsen/logrus"
 )
 
-type metricsService struct{}
+type metricsService struct {
+	mu      sync.Mutex
+	cancel  context.CancelFunc
+	stopped chan struct{}
+}
 
 var MetricsService = &metricsService{}
 
 // CollectDeviceStatus collects device status and writes to InfluxDB
-func (s *metricsService) CollectDeviceStatus() error {
-	nodes, err := headscale.GlobalClient.Service.ListNodes(context.Background(), &v1.ListNodesRequest{})
+func (s *metricsService) CollectDeviceStatus(ctx context.Context) error {
+	ctx, cancel := withServiceTimeout(ctx)
+	defer cancel()
+
+	nodes, err := headscale.GlobalClient.Service.ListNodes(ctx, &v1.ListNodesRequest{})
 	if err != nil {
 		return fmt.Errorf("failed to list nodes: %w", err)
 	}
@@ -52,15 +60,49 @@ func (s *metricsService) CollectDeviceStatus() error {
 
 // StartMetricsCollector starts a background goroutine to collect metrics periodically
 func (s *metricsService) StartMetricsCollector(interval time.Duration) {
+	s.StopMetricsCollector()
+
+	collectorCtx, cancel := context.WithCancel(context.Background())
+	stopped := make(chan struct{})
+
+	s.mu.Lock()
+	s.cancel = cancel
+	s.stopped = stopped
+	s.mu.Unlock()
+
 	ticker := time.NewTicker(interval)
 	go func() {
-		for range ticker.C {
-			if err := s.CollectDeviceStatus(); err != nil {
+		defer close(stopped)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-collectorCtx.Done():
+				return
+			case <-ticker.C:
+			}
+
+			if err := s.CollectDeviceStatus(collectorCtx); err != nil {
 				logrus.WithError(err).Error("Failed to collect device status")
 			}
 		}
 	}()
 	logrus.Infof("Metrics collector started with interval: %v", interval)
+}
+
+func (s *metricsService) StopMetricsCollector() {
+	s.mu.Lock()
+	cancel := s.cancel
+	stopped := s.stopped
+	s.cancel = nil
+	s.stopped = nil
+	s.mu.Unlock()
+
+	if cancel != nil {
+		cancel()
+	}
+	if stopped != nil {
+		<-stopped
+	}
 }
 
 // GetOnlineDuration gets online duration for a user or device
@@ -75,7 +117,10 @@ func (s *metricsService) GetDeviceStatusHistory(ctx context.Context, machineID s
 
 // GetOnlineDurationStats gets online duration statistics for all users
 func (s *metricsService) GetOnlineDurationStats(ctx context.Context, start, end time.Time) ([]map[string]interface{}, error) {
-	nodes, err := headscale.GlobalClient.Service.ListNodes(context.Background(), &v1.ListNodesRequest{})
+	queryCtx, cancel := withServiceTimeout(ctx)
+	defer cancel()
+
+	nodes, err := headscale.GlobalClient.Service.ListNodes(queryCtx, &v1.ListNodesRequest{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to list nodes: %w", err)
 	}
@@ -102,8 +147,11 @@ func (s *metricsService) GetOnlineDurationStats(ctx context.Context, start, end 
 }
 
 // GetDeviceStatus gets current device status
-func (s *metricsService) GetDeviceStatus() ([]map[string]interface{}, error) {
-	nodes, err := headscale.GlobalClient.Service.ListNodes(context.Background(), &v1.ListNodesRequest{})
+func (s *metricsService) GetDeviceStatus(ctx context.Context) ([]map[string]interface{}, error) {
+	queryCtx, cancel := withServiceTimeout(ctx)
+	defer cancel()
+
+	nodes, err := headscale.GlobalClient.Service.ListNodes(queryCtx, &v1.ListNodesRequest{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to list nodes: %w", err)
 	}
@@ -138,7 +186,10 @@ func (s *metricsService) GetDeviceStatus() ([]map[string]interface{}, error) {
 // GetTrafficStats gets traffic statistics for devices
 // Note: Headscale doesn't provide traffic stats directly, so this returns basic info
 func (s *metricsService) GetTrafficStats(ctx context.Context, machineID string, start, end time.Time) (map[string]interface{}, error) {
-	nodes, err := headscale.GlobalClient.Service.ListNodes(context.Background(), &v1.ListNodesRequest{})
+	queryCtx, cancel := withServiceTimeout(ctx)
+	defer cancel()
+
+	nodes, err := headscale.GlobalClient.Service.ListNodes(queryCtx, &v1.ListNodesRequest{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to list nodes: %w", err)
 	}

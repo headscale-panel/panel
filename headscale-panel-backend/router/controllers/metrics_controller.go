@@ -33,7 +33,7 @@ func (c *MetricsController) GetOnlineDuration(ctx *gin.Context) {
 	}
 	end = end.Add(24 * time.Hour) // Include the end date
 
-	duration, err := services.MetricsService.GetOnlineDuration(ctx, fmt.Sprintf("%d", userID), machineID, start, end)
+	duration, err := services.MetricsService.GetOnlineDuration(ctx.Request.Context(), fmt.Sprintf("%d", userID), machineID, start, end)
 	if err != nil {
 		serializer.Fail(ctx, err)
 		return
@@ -65,7 +65,7 @@ func (c *MetricsController) GetOnlineDurationStats(ctx *gin.Context) {
 	}
 	end = end.Add(24 * time.Hour)
 
-	stats, err := services.MetricsService.GetOnlineDurationStats(ctx, start, end)
+	stats, err := services.MetricsService.GetOnlineDurationStats(ctx.Request.Context(), start, end)
 	if err != nil {
 		serializer.Fail(ctx, err)
 		return
@@ -77,7 +77,7 @@ func (c *MetricsController) GetOnlineDurationStats(ctx *gin.Context) {
 // GetDeviceStatus gets current device status
 // GET /api/metrics/device-status
 func (c *MetricsController) GetDeviceStatus(ctx *gin.Context) {
-	devices, err := services.MetricsService.GetDeviceStatus()
+	devices, err := services.MetricsService.GetDeviceStatus(ctx.Request.Context())
 	if err != nil {
 		serializer.Fail(ctx, err)
 		return
@@ -111,7 +111,7 @@ func (c *MetricsController) GetDeviceStatusHistory(ctx *gin.Context) {
 	}
 	end = end.Add(24 * time.Hour)
 
-	history, err := services.MetricsService.GetDeviceStatusHistory(ctx, machineID, start, end)
+	history, err := services.MetricsService.GetDeviceStatusHistory(ctx.Request.Context(), machineID, start, end)
 	if err != nil {
 		serializer.Fail(ctx, err)
 		return
@@ -140,7 +140,7 @@ func (c *MetricsController) GetTrafficStats(ctx *gin.Context) {
 	}
 	end = end.Add(24 * time.Hour)
 
-	stats, err := services.MetricsService.GetTrafficStats(ctx, machineID, start, end)
+	stats, err := services.MetricsService.GetTrafficStats(ctx.Request.Context(), machineID, start, end)
 	if err != nil {
 		serializer.Fail(ctx, err)
 		return

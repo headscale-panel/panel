@@ -33,7 +33,7 @@ func (c *DockerController) GetContainer(ctx *gin.Context) {
 	containerName := ctx.Param("name")
 	userID := ctx.GetUint("userID")
 
-	container, err := c.dockerService.GetContainer(userID, containerName)
+	container, err := c.dockerService.GetContainerWithContext(ctx.Request.Context(), userID, containerName)
 	if err != nil {
 		serializer.Fail(ctx, err)
 		return
@@ -51,7 +51,7 @@ func (c *DockerController) StartContainer(ctx *gin.Context) {
 	containerName := ctx.Param("name")
 	userID := ctx.GetUint("userID")
 
-	if err := c.dockerService.StartContainer(userID, containerName); err != nil {
+	if err := c.dockerService.StartContainerWithContext(ctx.Request.Context(), userID, containerName); err != nil {
 		serializer.Fail(ctx, err)
 		return
 	}
@@ -68,7 +68,7 @@ func (c *DockerController) StopContainer(ctx *gin.Context) {
 	containerName := ctx.Param("name")
 	userID := ctx.GetUint("userID")
 
-	if err := c.dockerService.StopContainer(userID, containerName); err != nil {
+	if err := c.dockerService.StopContainerWithContext(ctx.Request.Context(), userID, containerName); err != nil {
 		serializer.Fail(ctx, err)
 		return
 	}
@@ -85,7 +85,7 @@ func (c *DockerController) RestartContainer(ctx *gin.Context) {
 	containerName := ctx.Param("name")
 	userID := ctx.GetUint("userID")
 
-	if err := c.dockerService.RestartContainer(userID, containerName); err != nil {
+	if err := c.dockerService.RestartContainerWithContext(ctx.Request.Context(), userID, containerName); err != nil {
 		serializer.Fail(ctx, err)
 		return
 	}
@@ -108,7 +108,7 @@ func (c *DockerController) GetContainerLogs(ctx *gin.Context) {
 		tail = 100
 	}
 
-	logs, err := c.dockerService.GetContainerLogs(userID, containerName, tail)
+	logs, err := c.dockerService.GetContainerLogsWithContext(ctx.Request.Context(), userID, containerName, tail)
 	if err != nil {
 		serializer.Fail(ctx, err)
 		return
@@ -126,7 +126,7 @@ func (c *DockerController) GetContainerStats(ctx *gin.Context) {
 	containerName := ctx.Param("name")
 	userID := ctx.GetUint("userID")
 
-	stats, err := c.dockerService.GetContainerStats(userID, containerName)
+	stats, err := c.dockerService.GetContainerStatsWithContext(ctx.Request.Context(), userID, containerName)
 	if err != nil {
 		serializer.Fail(ctx, err)
 		return
@@ -142,7 +142,7 @@ func (c *DockerController) ListContainers(ctx *gin.Context) {
 	}
 
 	userID := ctx.GetUint("userID")
-	containers, err := c.dockerService.ListContainers(userID)
+	containers, err := c.dockerService.ListContainersWithContext(ctx.Request.Context(), userID)
 	if err != nil {
 		serializer.Fail(ctx, err)
 		return
@@ -164,7 +164,7 @@ func (c *DockerController) DeployContainer(ctx *gin.Context) {
 	}
 
 	userID := ctx.GetUint("userID")
-	progress, err := c.dockerService.DeployContainer(userID, req)
+	progress, err := c.dockerService.DeployContainerWithContext(ctx.Request.Context(), userID, req)
 	if err != nil {
 		serializer.Fail(ctx, err)
 		return

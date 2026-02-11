@@ -22,11 +22,11 @@ func (s *oauthClientService) List(actorUserID uint, page, pageSize int) ([]model
 
 	db := model.DB.Model(&model.OauthClient{})
 	if err := db.Count(&total).Error; err != nil {
-		return nil, 0, err
+		return nil, 0, serializer.ErrDatabase.WithError(err)
 	}
 
 	if err := db.Offset((page - 1) * pageSize).Limit(pageSize).Find(&clients).Error; err != nil {
-		return nil, 0, err
+		return nil, 0, serializer.ErrDatabase.WithError(err)
 	}
 
 	return clients, total, nil
@@ -43,7 +43,7 @@ func (s *oauthClientService) Create(actorUserID uint, name, redirectURIs string)
 	}
 	normalizedRedirectURIs, err := normalizeRedirectURIs(redirectURIs)
 	if err != nil {
-		return nil, serializer.NewError(serializer.CodeParamErr, err.Error(), nil)
+		return nil, serializer.NewError(serializer.CodeParamErr, "redirect_uris is invalid", err)
 	}
 
 	clientID, err := generateRandomString(16)
@@ -63,7 +63,7 @@ func (s *oauthClientService) Create(actorUserID uint, name, redirectURIs string)
 	}
 
 	if err := model.DB.Create(client).Error; err != nil {
-		return nil, err
+		return nil, serializer.ErrDatabase.WithError(err)
 	}
 
 	return client, nil
@@ -80,17 +80,20 @@ func (s *oauthClientService) Update(actorUserID uint, id uint, name, redirectURI
 	}
 	normalizedRedirectURIs, err := normalizeRedirectURIs(redirectURIs)
 	if err != nil {
-		return serializer.NewError(serializer.CodeParamErr, err.Error(), nil)
+		return serializer.NewError(serializer.CodeParamErr, "redirect_uris is invalid", err)
 	}
 
 	var client model.OauthClient
 	if err := model.DB.First(&client, id).Error; err != nil {
-		return serializer.ErrUserNotFound // Reuse or create ErrClientNotFound
+		return serializer.NewError(serializer.CodeNotFound, "oauth client not found", err)
 	}
 
 	client.Name = trimmedName
 	client.RedirectURIs = normalizedRedirectURIs
-	return model.DB.Save(&client).Error
+	if err := model.DB.Save(&client).Error; err != nil {
+		return serializer.ErrDatabase.WithError(err)
+	}
+	return nil
 }
 
 func (s *oauthClientService) Delete(actorUserID uint, id uint) error {
@@ -98,7 +101,10 @@ func (s *oauthClientService) Delete(actorUserID uint, id uint) error {
 		return err
 	}
 
-	return model.DB.Delete(&model.OauthClient{}, id).Error
+	if err := model.DB.Delete(&model.OauthClient{}, id).Error; err != nil {
+		return serializer.ErrDatabase.WithError(err)
+	}
+	return nil
 }
 
 func (s *oauthClientService) RegenerateSecret(actorUserID uint, id uint) (string, error) {
@@ -108,7 +114,7 @@ func (s *oauthClientService) RegenerateSecret(actorUserID uint, id uint) (string
 
 	var client model.OauthClient
 	if err := model.DB.First(&client, id).Error; err != nil {
-		return "", serializer.ErrUserNotFound
+		return "", serializer.NewError(serializer.CodeNotFound, "oauth client not found", err)
 	}
 
 	newSecret, err := generateRandomString(32)
@@ -118,7 +124,7 @@ func (s *oauthClientService) RegenerateSecret(actorUserID uint, id uint) (string
 
 	client.ClientSecret = newSecret
 	if err := model.DB.Save(&client).Error; err != nil {
-		return "", err
+		return "", serializer.ErrDatabase.WithError(err)
 	}
 
 	return newSecret, nil

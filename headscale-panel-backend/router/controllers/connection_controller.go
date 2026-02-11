@@ -23,7 +23,7 @@ func (c *ConnectionController) GenerateConnectionCommands(ctx *gin.Context) {
 	}
 
 	userID := ctx.GetUint("userID")
-	commands, err := services.ConnectionService.GenerateConnectionCommands(userID, req.MachineIDs, req.Platform)
+	commands, err := services.ConnectionService.GenerateConnectionCommandsWithContext(ctx.Request.Context(), userID, req.MachineIDs, req.Platform)
 	if err != nil {
 		serializer.Fail(ctx, err)
 		return
@@ -47,7 +47,7 @@ func (c *ConnectionController) GeneratePreAuthKey(ctx *gin.Context) {
 	}
 
 	userID := ctx.GetUint("userID")
-	key, err := services.ConnectionService.GeneratePreAuthKey(userID, req.UserID, req.Reusable, req.Ephemeral)
+	key, err := services.ConnectionService.GeneratePreAuthKeyWithContext(ctx.Request.Context(), userID, req.UserID, req.Reusable, req.Ephemeral)
 	if err != nil {
 		serializer.Fail(ctx, err)
 		return

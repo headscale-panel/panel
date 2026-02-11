@@ -18,7 +18,7 @@ func NewACLController() *ACLController {
 // GetPolicy retrieves the current ACL policy from Headscale
 func (c *ACLController) GetPolicy(ctx *gin.Context) {
 	userID := ctx.GetUint("userID")
-	policy, err := services.ACLService.GetPolicy(userID)
+	policy, err := services.ACLService.GetPolicyWithContext(ctx.Request.Context(), userID)
 	if err != nil {
 		serializer.Fail(ctx, err)
 		return
@@ -35,7 +35,7 @@ func (c *ACLController) UpdatePolicy(ctx *gin.Context) {
 	}
 
 	userID := ctx.GetUint("userID")
-	if err := services.ACLService.UpdatePolicy(userID, &policy); err != nil {
+	if err := services.ACLService.UpdatePolicyWithContext(ctx.Request.Context(), userID, &policy); err != nil {
 		serializer.Fail(ctx, err)
 		return
 	}
@@ -55,7 +55,7 @@ func (c *ACLController) SetPolicyRaw(ctx *gin.Context) {
 	}
 
 	userID := ctx.GetUint("userID")
-	if err := services.ACLService.SetPolicyRaw(userID, req.Policy); err != nil {
+	if err := services.ACLService.SetPolicyRawWithContext(ctx.Request.Context(), userID, req.Policy); err != nil {
 		serializer.Fail(ctx, err)
 		return
 	}
@@ -65,7 +65,7 @@ func (c *ACLController) SetPolicyRaw(ctx *gin.Context) {
 // GetParsedRules returns ACL rules with resolved groups and hosts
 func (c *ACLController) GetParsedRules(ctx *gin.Context) {
 	userID := ctx.GetUint("userID")
-	rules, err := services.ACLService.GetParsedRules(userID)
+	rules, err := services.ACLService.GetParsedRulesWithContext(ctx.Request.Context(), userID)
 	if err != nil {
 		serializer.Fail(ctx, err)
 		return
@@ -76,7 +76,7 @@ func (c *ACLController) GetParsedRules(ctx *gin.Context) {
 // SyncResourcesAsHosts syncs all resources to ACL hosts
 func (c *ACLController) SyncResourcesAsHosts(ctx *gin.Context) {
 	userID := ctx.GetUint("userID")
-	if err := services.ACLService.SyncResourcesAsHosts(userID); err != nil {
+	if err := services.ACLService.SyncResourcesAsHostsWithContext(ctx.Request.Context(), userID); err != nil {
 		serializer.Fail(ctx, err)
 		return
 	}
@@ -99,7 +99,7 @@ func (c *ACLController) AddRule(ctx *gin.Context) {
 	}
 
 	userID := ctx.GetUint("userID")
-	if err := services.ACLService.AddRule(userID, req.Name, req.Sources, req.Destinations, req.Action); err != nil {
+	if err := services.ACLService.AddRuleWithContext(ctx.Request.Context(), userID, req.Name, req.Sources, req.Destinations, req.Action); err != nil {
 		serializer.Fail(ctx, err)
 		return
 	}
@@ -123,7 +123,7 @@ func (c *ACLController) UpdateRuleByIndex(ctx *gin.Context) {
 	}
 
 	userID := ctx.GetUint("userID")
-	if err := services.ACLService.UpdateRuleByIndex(userID, req.Index, req.Name, req.Sources, req.Destinations, req.Action); err != nil {
+	if err := services.ACLService.UpdateRuleByIndexWithContext(ctx.Request.Context(), userID, req.Index, req.Name, req.Sources, req.Destinations, req.Action); err != nil {
 		serializer.Fail(ctx, err)
 		return
 	}
@@ -140,7 +140,7 @@ func (c *ACLController) DeleteRuleByIndex(ctx *gin.Context) {
 	}
 
 	userID := ctx.GetUint("userID")
-	if err := services.ACLService.DeleteRuleByIndex(userID, index); err != nil {
+	if err := services.ACLService.DeleteRuleByIndexWithContext(ctx.Request.Context(), userID, index); err != nil {
 		serializer.Fail(ctx, err)
 		return
 	}
@@ -151,7 +151,7 @@ func (c *ACLController) DeleteRuleByIndex(ctx *gin.Context) {
 
 func (c *ACLController) Generate(ctx *gin.Context) {
 	userID := ctx.GetUint("userID")
-	policy, err := services.ACLService.Generate(userID)
+	policy, err := services.ACLService.GenerateWithContext(ctx.Request.Context(), userID)
 	if err != nil {
 		serializer.Fail(ctx, err)
 		return
@@ -187,7 +187,7 @@ func (c *ACLController) Apply(ctx *gin.Context) {
 	}
 
 	userID := ctx.GetUint("userID")
-	if err := services.ACLService.Apply(userID, req.ID); err != nil {
+	if err := services.ACLService.ApplyWithContext(ctx.Request.Context(), userID, req.ID); err != nil {
 		serializer.Fail(ctx, err)
 		return
 	}

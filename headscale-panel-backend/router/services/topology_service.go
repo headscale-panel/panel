@@ -56,16 +56,21 @@ type TopologyResponse struct {
 
 // GetTopology generates network topology data in frontend-expected format
 func (s *topologyService) GetTopology() (*TopologyResponse, error) {
-	ctx := context.Background()
+	return s.GetTopologyWithContext(context.Background())
+}
+
+func (s *topologyService) GetTopologyWithContext(ctx context.Context) (*TopologyResponse, error) {
+	queryCtx, cancel := withServiceTimeout(ctx)
+	defer cancel()
 
 	// Get all users from Headscale
-	usersResp, err := headscale.GlobalClient.Service.ListUsers(ctx, &v1.ListUsersRequest{})
+	usersResp, err := headscale.GlobalClient.Service.ListUsers(queryCtx, &v1.ListUsersRequest{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to list users: %w", err)
 	}
 
 	// Get all nodes from Headscale
-	nodesResp, err := headscale.GlobalClient.Service.ListNodes(ctx, &v1.ListNodesRequest{})
+	nodesResp, err := headscale.GlobalClient.Service.ListNodes(queryCtx, &v1.ListNodesRequest{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to list nodes: %w", err)
 	}
@@ -129,10 +134,15 @@ func (s *topologyService) GetTopology() (*TopologyResponse, error) {
 
 // GetACLMatrix generates ACL connectivity matrix
 func (s *topologyService) GetACLMatrix() (map[string]map[string]string, error) {
-	ctx := context.Background()
+	return s.GetACLMatrixWithContext(context.Background())
+}
+
+func (s *topologyService) GetACLMatrixWithContext(ctx context.Context) (map[string]map[string]string, error) {
+	queryCtx, cancel := withServiceTimeout(ctx)
+	defer cancel()
 
 	// Get all nodes
-	nodesResp, err := headscale.GlobalClient.Service.ListNodes(ctx, &v1.ListNodesRequest{})
+	nodesResp, err := headscale.GlobalClient.Service.ListNodes(queryCtx, &v1.ListNodesRequest{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to list nodes: %w", err)
 	}
@@ -160,14 +170,19 @@ func (s *topologyService) GetACLMatrix() (map[string]map[string]string, error) {
 
 // GetTopologyWithACL generates topology with full ACL information
 func (s *topologyService) GetTopologyWithACL() (*TopologyResponse, error) {
-	topology, err := s.GetTopology()
+	return s.GetTopologyWithACLContext(context.Background())
+}
+
+func (s *topologyService) GetTopologyWithACLContext(ctx context.Context) (*TopologyResponse, error) {
+	topology, err := s.GetTopologyWithContext(ctx)
 	if err != nil {
 		return nil, err
 	}
 
 	// Get ACL policy from Headscale
-	ctx := context.Background()
-	policyResp, err := headscale.GlobalClient.Service.GetPolicy(ctx, &v1.GetPolicyRequest{})
+	queryCtx, cancel := withServiceTimeout(ctx)
+	defer cancel()
+	policyResp, err := headscale.GlobalClient.Service.GetPolicy(queryCtx, &v1.GetPolicyRequest{})
 	if err != nil {
 		// If ACL fails, return topology without ACL
 		return topology, nil

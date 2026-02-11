@@ -27,13 +27,25 @@ type DashboardTopologyNode struct {
 }
 
 func (s *dashboardService) GetOverview() (*OverviewResponse, error) {
-	var userCount, groupCount, resourceCount int64
-	model.DB.Model(&model.User{}).Count(&userCount)
-	model.DB.Model(&model.Group{}).Count(&groupCount)
-	model.DB.Model(&model.Resource{}).Count(&resourceCount)
+	return s.GetOverviewWithContext(context.Background())
+}
 
-	ctx := context.Background()
-	nodesResp, err := headscale.GlobalClient.Service.ListNodes(ctx, &v1.ListNodesRequest{})
+func (s *dashboardService) GetOverviewWithContext(ctx context.Context) (*OverviewResponse, error) {
+	var userCount, groupCount, resourceCount int64
+	if err := model.DB.Model(&model.User{}).Count(&userCount).Error; err != nil {
+		return nil, err
+	}
+	if err := model.DB.Model(&model.Group{}).Count(&groupCount).Error; err != nil {
+		return nil, err
+	}
+	if err := model.DB.Model(&model.Resource{}).Count(&resourceCount).Error; err != nil {
+		return nil, err
+	}
+
+	queryCtx, cancel := withServiceTimeout(ctx)
+	defer cancel()
+
+	nodesResp, err := headscale.GlobalClient.Service.ListNodes(queryCtx, &v1.ListNodesRequest{})
 	if err != nil {
 		return nil, err
 	}
@@ -56,6 +68,10 @@ func (s *dashboardService) GetOverview() (*OverviewResponse, error) {
 }
 
 func (s *dashboardService) GetTopology() (*DashboardTopologyNode, error) {
+	return s.GetTopologyWithContext(context.Background())
+}
+
+func (s *dashboardService) GetTopologyWithContext(ctx context.Context) (*DashboardTopologyNode, error) {
 	// Root: Headscale Server
 	root := &DashboardTopologyNode{
 		Name:     "Headscale Server",
@@ -63,8 +79,10 @@ func (s *dashboardService) GetTopology() (*DashboardTopologyNode, error) {
 		Children: []*DashboardTopologyNode{},
 	}
 
-	ctx := context.Background()
-	nodesResp, err := headscale.GlobalClient.Service.ListNodes(ctx, &v1.ListNodesRequest{})
+	queryCtx, cancel := withServiceTimeout(ctx)
+	defer cancel()
+
+	nodesResp, err := headscale.GlobalClient.Service.ListNodes(queryCtx, &v1.ListNodesRequest{})
 	if err != nil {
 		return nil, err
 	}
@@ -79,7 +97,9 @@ func (s *dashboardService) GetTopology() (*DashboardTopologyNode, error) {
 
 	// Level 2: Groups
 	var groups []model.Group
-	model.DB.Preload("Users").Find(&groups)
+	if err := model.DB.Preload("Users").Find(&groups).Error; err != nil {
+		return nil, err
+	}
 
 	for _, g := range groups {
 		groupNode := &DashboardTopologyNode{

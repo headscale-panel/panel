@@ -20,7 +20,7 @@ func (u *UserController) Register(c *gin.Context) {
 		return
 	}
 
-	if err := services.UserService.Register(&req); err != nil {
+	if err := services.UserService.RegisterWithContext(c.Request.Context(), &req); err != nil {
 		serializer.Fail(c, err)
 		return
 	}

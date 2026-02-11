@@ -16,7 +16,7 @@ func NewHeadscaleController() *HeadscaleController {
 
 func (h *HeadscaleController) ListUsers(c *gin.Context) {
 	actorUserID := c.GetUint("userID")
-	users, err := services.HeadscaleService.ListHeadscaleUsers(actorUserID)
+	users, err := services.HeadscaleService.ListHeadscaleUsersWithContext(c.Request.Context(), actorUserID)
 	if err != nil {
 		serializer.Fail(c, err)
 		return
@@ -33,7 +33,7 @@ func (h *HeadscaleController) CreateUser(c *gin.Context) {
 		return
 	}
 	userID := c.GetUint("userID")
-	user, err := services.HeadscaleService.CreateUser(userID, req.Name)
+	user, err := services.HeadscaleService.CreateUserWithContext(c.Request.Context(), userID, req.Name)
 	if err != nil {
 		serializer.Fail(c, err)
 		return
@@ -53,7 +53,7 @@ func (h *HeadscaleController) RenameUser(c *gin.Context) {
 
 	// Find user ID by listing users and matching name
 	actorUserID := c.GetUint("userID")
-	users, err := services.HeadscaleService.ListHeadscaleUsers(actorUserID)
+	users, err := services.HeadscaleService.ListHeadscaleUsersWithContext(c.Request.Context(), actorUserID)
 	if err != nil {
 		serializer.Fail(c, err)
 		return
@@ -70,7 +70,7 @@ func (h *HeadscaleController) RenameUser(c *gin.Context) {
 		return
 	}
 
-	user, err := services.HeadscaleService.RenameUser(actorUserID, targetUserID, req.NewName)
+	user, err := services.HeadscaleService.RenameUserWithContext(c.Request.Context(), actorUserID, targetUserID, req.NewName)
 	if err != nil {
 		serializer.Fail(c, err)
 		return
@@ -87,7 +87,7 @@ func (h *HeadscaleController) DeleteUser(c *gin.Context) {
 
 	// Find user ID by listing users and matching name
 	actorUserID := c.GetUint("userID")
-	users, err := services.HeadscaleService.ListHeadscaleUsers(actorUserID)
+	users, err := services.HeadscaleService.ListHeadscaleUsersWithContext(c.Request.Context(), actorUserID)
 	if err != nil {
 		serializer.Fail(c, err)
 		return
@@ -104,7 +104,7 @@ func (h *HeadscaleController) DeleteUser(c *gin.Context) {
 		return
 	}
 
-	if err := services.HeadscaleService.DeleteUser(actorUserID, targetUserID); err != nil {
+	if err := services.HeadscaleService.DeleteUserWithContext(c.Request.Context(), actorUserID, targetUserID); err != nil {
 		serializer.Fail(c, err)
 		return
 	}
@@ -118,7 +118,7 @@ func (h *HeadscaleController) ListMachines(c *gin.Context) {
 	statusFilter := c.Query("status")
 
 	userID := c.GetUint("userID")
-	machines, total, err := services.HeadscaleService.ListMachines(userID, page, pageSize, userFilter, statusFilter)
+	machines, total, err := services.HeadscaleService.ListMachinesWithContext(c.Request.Context(), userID, page, pageSize, userFilter, statusFilter)
 	if err != nil {
 		serializer.Fail(c, err)
 		return
@@ -139,7 +139,7 @@ func (h *HeadscaleController) GetMachine(c *gin.Context) {
 	}
 
 	userID := c.GetUint("userID")
-	machine, err := services.HeadscaleService.GetMachine(userID, id)
+	machine, err := services.HeadscaleService.GetMachineWithContext(c.Request.Context(), userID, id)
 	if err != nil {
 		serializer.Fail(c, err)
 		return
@@ -164,7 +164,7 @@ func (h *HeadscaleController) RenameMachine(c *gin.Context) {
 	}
 
 	userID := c.GetUint("userID")
-	machine, err := services.HeadscaleService.RenameMachine(userID, id, req.Name)
+	machine, err := services.HeadscaleService.RenameMachineWithContext(c.Request.Context(), userID, id, req.Name)
 	if err != nil {
 		serializer.Fail(c, err)
 		return
@@ -181,7 +181,7 @@ func (h *HeadscaleController) DeleteMachine(c *gin.Context) {
 	}
 
 	userID := c.GetUint("userID")
-	if err := services.HeadscaleService.DeleteMachine(userID, id); err != nil {
+	if err := services.HeadscaleService.DeleteMachineWithContext(c.Request.Context(), userID, id); err != nil {
 		serializer.Fail(c, err)
 		return
 	}
@@ -197,7 +197,7 @@ func (h *HeadscaleController) ExpireMachine(c *gin.Context) {
 	}
 
 	userID := c.GetUint("userID")
-	machine, err := services.HeadscaleService.ExpireMachine(userID, id)
+	machine, err := services.HeadscaleService.ExpireMachineWithContext(c.Request.Context(), userID, id)
 	if err != nil {
 		serializer.Fail(c, err)
 		return
@@ -222,7 +222,7 @@ func (h *HeadscaleController) SetMachineTags(c *gin.Context) {
 	}
 
 	userID := c.GetUint("userID")
-	machine, err := services.HeadscaleService.SetMachineTags(userID, id, req.Tags)
+	machine, err := services.HeadscaleService.SetMachineTagsWithContext(c.Request.Context(), userID, id, req.Tags)
 	if err != nil {
 		serializer.Fail(c, err)
 		return
@@ -240,7 +240,7 @@ func (h *HeadscaleController) GetMachineRoutes(c *gin.Context) {
 
 	machineIDStr := strconv.FormatUint(id, 10)
 	userID := c.GetUint("userID")
-	routes, _, err := services.RouteService.ListRoutes(userID, 1, 1000, "", machineIDStr)
+	routes, _, err := services.RouteService.ListRoutesWithContext(c.Request.Context(), userID, 1, 1000, "", machineIDStr)
 	if err != nil {
 		serializer.Fail(c, err)
 		return
@@ -257,7 +257,7 @@ func (h *HeadscaleController) GetPreAuthKeys(c *gin.Context) {
 
 	// Find the user ID from user name
 	actorUserID := c.GetUint("userID")
-	users, err := services.HeadscaleService.ListHeadscaleUsers(actorUserID)
+	users, err := services.HeadscaleService.ListHeadscaleUsersWithContext(c.Request.Context(), actorUserID)
 	if err != nil {
 		serializer.Fail(c, err)
 		return
@@ -274,7 +274,7 @@ func (h *HeadscaleController) GetPreAuthKeys(c *gin.Context) {
 		return
 	}
 
-	keys, err := services.HeadscaleService.GetPreAuthKeys(actorUserID, targetUserID)
+	keys, err := services.HeadscaleService.GetPreAuthKeysWithContext(c.Request.Context(), actorUserID, targetUserID)
 	if err != nil {
 		serializer.Fail(c, err)
 		return
@@ -296,7 +296,7 @@ func (h *HeadscaleController) CreatePreAuthKey(c *gin.Context) {
 
 	// Find user ID
 	actorUserID := c.GetUint("userID")
-	users, err := services.HeadscaleService.ListHeadscaleUsers(actorUserID)
+	users, err := services.HeadscaleService.ListHeadscaleUsersWithContext(c.Request.Context(), actorUserID)
 	if err != nil {
 		serializer.Fail(c, err)
 		return
@@ -313,7 +313,7 @@ func (h *HeadscaleController) CreatePreAuthKey(c *gin.Context) {
 		return
 	}
 
-	key, err := services.HeadscaleService.CreatePreAuthKey(actorUserID, targetUserID, req.Reusable, req.Ephemeral, req.Expiration)
+	key, err := services.HeadscaleService.CreatePreAuthKeyWithContext(c.Request.Context(), actorUserID, targetUserID, req.Reusable, req.Ephemeral, req.Expiration)
 	if err != nil {
 		serializer.Fail(c, err)
 		return
@@ -333,7 +333,7 @@ func (h *HeadscaleController) ExpirePreAuthKey(c *gin.Context) {
 
 	// Find user ID
 	actorUserID := c.GetUint("userID")
-	users, err := services.HeadscaleService.ListHeadscaleUsers(actorUserID)
+	users, err := services.HeadscaleService.ListHeadscaleUsersWithContext(c.Request.Context(), actorUserID)
 	if err != nil {
 		serializer.Fail(c, err)
 		return
@@ -350,7 +350,7 @@ func (h *HeadscaleController) ExpirePreAuthKey(c *gin.Context) {
 		return
 	}
 
-	if err := services.HeadscaleService.ExpirePreAuthKey(actorUserID, targetUserID, req.Key); err != nil {
+	if err := services.HeadscaleService.ExpirePreAuthKeyWithContext(c.Request.Context(), actorUserID, targetUserID, req.Key); err != nil {
 		serializer.Fail(c, err)
 		return
 	}
@@ -380,7 +380,7 @@ func (h *HeadscaleController) CheckAccess(c *gin.Context) {
 		}
 	}
 
-	machines, err := services.HeadscaleService.GetAccessibleMachines(userID.(uint), userID.(uint), canAccessAll)
+	machines, err := services.HeadscaleService.GetAccessibleMachinesWithContext(c.Request.Context(), userID.(uint), userID.(uint), canAccessAll)
 	if err != nil {
 		serializer.Fail(c, err)
 		return

@@ -25,12 +25,18 @@ type HeadscaleRoute struct {
 
 // ListRoutes fetches routes from all nodes in Headscale via gRPC
 func (s *routeService) ListRoutes(actorUserID uint, page, pageSize int, userFilter string, machineIDFilter string) ([]HeadscaleRoute, int64, error) {
+	return s.ListRoutesWithContext(context.Background(), actorUserID, page, pageSize, userFilter, machineIDFilter)
+}
+
+func (s *routeService) ListRoutesWithContext(ctx context.Context, actorUserID uint, page, pageSize int, userFilter string, machineIDFilter string) ([]HeadscaleRoute, int64, error) {
 	if err := RequirePermission(actorUserID, "headscale:route:list"); err != nil {
 		return nil, 0, err
 	}
 
-	ctx := context.Background()
-	resp, err := headscale.GlobalClient.Service.ListNodes(ctx, &v1.ListNodesRequest{})
+	queryCtx, cancel := withServiceTimeout(ctx)
+	defer cancel()
+
+	resp, err := headscale.GlobalClient.Service.ListNodes(queryCtx, &v1.ListNodesRequest{})
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to list nodes from Headscale: %w", err)
 	}
@@ -106,14 +112,19 @@ func (s *routeService) ListRoutes(actorUserID uint, page, pageSize int, userFilt
 
 // EnableRoute approves a route on a node (adds to approved_routes)
 func (s *routeService) EnableRoute(actorUserID uint, machineID uint64, destination string) error {
+	return s.EnableRouteWithContext(context.Background(), actorUserID, machineID, destination)
+}
+
+func (s *routeService) EnableRouteWithContext(ctx context.Context, actorUserID uint, machineID uint64, destination string) error {
 	if err := RequirePermission(actorUserID, "headscale:route:enable"); err != nil {
 		return err
 	}
 
-	ctx := context.Background()
+	queryCtx, cancel := withServiceTimeout(ctx)
+	defer cancel()
 
 	// Get current node state
-	node, err := headscale.GlobalClient.Service.GetNode(ctx, &v1.GetNodeRequest{
+	node, err := headscale.GlobalClient.Service.GetNode(queryCtx, &v1.GetNodeRequest{
 		NodeId: machineID,
 	})
 	if err != nil {
@@ -141,7 +152,7 @@ func (s *routeService) EnableRoute(actorUserID uint, machineID uint64, destinati
 		}
 	}
 
-	_, err = headscale.GlobalClient.Service.SetApprovedRoutes(ctx, &v1.SetApprovedRoutesRequest{
+	_, err = headscale.GlobalClient.Service.SetApprovedRoutes(queryCtx, &v1.SetApprovedRoutesRequest{
 		NodeId: machineID,
 		Routes: approvedRoutes,
 	})
@@ -154,14 +165,19 @@ func (s *routeService) EnableRoute(actorUserID uint, machineID uint64, destinati
 
 // DisableRoute removes a route from approved_routes on a node
 func (s *routeService) DisableRoute(actorUserID uint, machineID uint64, destination string) error {
+	return s.DisableRouteWithContext(context.Background(), actorUserID, machineID, destination)
+}
+
+func (s *routeService) DisableRouteWithContext(ctx context.Context, actorUserID uint, machineID uint64, destination string) error {
 	if err := RequirePermission(actorUserID, "headscale:route:disable"); err != nil {
 		return err
 	}
 
-	ctx := context.Background()
+	queryCtx, cancel := withServiceTimeout(ctx)
+	defer cancel()
 
 	// Get current node state
-	node, err := headscale.GlobalClient.Service.GetNode(ctx, &v1.GetNodeRequest{
+	node, err := headscale.GlobalClient.Service.GetNode(queryCtx, &v1.GetNodeRequest{
 		NodeId: machineID,
 	})
 	if err != nil {
@@ -182,7 +198,7 @@ func (s *routeService) DisableRoute(actorUserID uint, machineID uint64, destinat
 		}
 	}
 
-	_, err = headscale.GlobalClient.Service.SetApprovedRoutes(ctx, &v1.SetApprovedRoutesRequest{
+	_, err = headscale.GlobalClient.Service.SetApprovedRoutes(queryCtx, &v1.SetApprovedRoutesRequest{
 		NodeId: machineID,
 		Routes: approvedRoutes,
 	})

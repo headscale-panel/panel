@@ -129,13 +129,13 @@ func (s *SetupController) DeployContainer(ctx *gin.Context) {
 
 	dockerService, err := services.NewDockerService()
 	if err != nil {
-		serializer.Fail(ctx, serializer.NewError(500, "Docker is not available: "+err.Error(), nil))
+		serializer.Fail(ctx, serializer.NewError(serializer.CodeInternalError, "Docker service not available", err))
 		return
 	}
 
-	progress, err := dockerService.DeployContainerUnsafe(req)
+	progress, err := dockerService.DeployContainerUnsafeWithContext(ctx.Request.Context(), req)
 	if err != nil {
-		serializer.Fail(ctx, serializer.NewError(500, err.Error(), nil))
+		serializer.Fail(ctx, serializer.NewError(serializer.CodeInternalError, "container deployment failed", err))
 		return
 	}
 

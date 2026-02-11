@@ -1,6 +1,7 @@
 package model
 
 import (
+	"fmt"
 	"headscale-panel/pkg/conf"
 	"log"
 
@@ -32,6 +33,20 @@ func Init() {
 	}
 
 	initDefaultData()
+}
+
+func Close() error {
+	if DB == nil {
+		return nil
+	}
+	sqlDB, err := DB.DB()
+	if err != nil {
+		return fmt.Errorf("failed to get sql db: %w", err)
+	}
+	if err := sqlDB.Close(); err != nil {
+		return fmt.Errorf("failed to close sql db: %w", err)
+	}
+	return nil
 }
 
 func initDefaultData() {

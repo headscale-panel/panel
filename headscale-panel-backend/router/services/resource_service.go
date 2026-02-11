@@ -48,12 +48,12 @@ func (s *resourceService) Create(userID uint, req *CreateResourceRequest) error 
 
 	ipAddress, err := normalizeIPAddress(req.IPAddress)
 	if err != nil {
-		return serializer.NewError(serializer.CodeParamErr, err.Error(), nil)
+		return serializer.NewError(serializer.CodeParamErr, "IP地址格式不正确", err)
 	}
 
 	port := strings.TrimSpace(req.Port)
 	if err := validatePortSpec(port); err != nil {
-		return serializer.NewError(serializer.CodeParamErr, err.Error(), nil)
+		return serializer.NewError(serializer.CodeParamErr, "端口格式不正确", err)
 	}
 
 	description := strings.TrimSpace(req.Description)
@@ -70,7 +70,7 @@ func (s *resourceService) Create(userID uint, req *CreateResourceRequest) error 
 	}
 
 	if err := model.DB.Create(&resource).Error; err != nil {
-		return serializer.ErrDatabase
+		return serializer.ErrDatabase.WithError(err)
 	}
 	return nil
 }
@@ -100,12 +100,12 @@ func (s *resourceService) List(userID uint, req *ListResourceRequest) ([]model.R
 	}
 
 	if err := query.Count(&total).Error; err != nil {
-		return nil, 0, serializer.ErrDatabase
+		return nil, 0, serializer.ErrDatabase.WithError(err)
 	}
 
 	offset := (req.Page - 1) * req.PageSize
 	if err := query.Offset(offset).Limit(req.PageSize).Order("created_at DESC").Find(&resources).Error; err != nil {
-		return nil, 0, serializer.ErrDatabase
+		return nil, 0, serializer.ErrDatabase.WithError(err)
 	}
 
 	return resources, total, nil
@@ -143,14 +143,14 @@ func (s *resourceService) Update(userID uint, req *UpdateResourceRequest) error 
 	if req.IPAddress != "" {
 		ipAddress, err := normalizeIPAddress(req.IPAddress)
 		if err != nil {
-			return serializer.NewError(serializer.CodeParamErr, err.Error(), nil)
+			return serializer.NewError(serializer.CodeParamErr, "IP地址格式不正确", err)
 		}
 		resource.IPAddress = ipAddress
 	}
 
 	port := strings.TrimSpace(req.Port)
 	if err := validatePortSpec(port); err != nil {
-		return serializer.NewError(serializer.CodeParamErr, err.Error(), nil)
+		return serializer.NewError(serializer.CodeParamErr, "端口格式不正确", err)
 	}
 	resource.Port = port
 
@@ -161,7 +161,7 @@ func (s *resourceService) Update(userID uint, req *UpdateResourceRequest) error 
 	resource.Description = description
 
 	if err := model.DB.Save(&resource).Error; err != nil {
-		return serializer.ErrDatabase
+		return serializer.ErrDatabase.WithError(err)
 	}
 	return nil
 }
@@ -185,7 +185,7 @@ func (s *resourceService) Delete(userID uint, id uint) error {
 	}
 
 	if err := model.DB.Delete(&resource).Error; err != nil {
-		return serializer.ErrDatabase
+		return serializer.ErrDatabase.WithError(err)
 	}
 	return nil
 }
@@ -194,7 +194,7 @@ func (s *resourceService) Delete(userID uint, id uint) error {
 func (s *resourceService) GetAllAsHosts() (map[string]string, error) {
 	var resources []model.Resource
 	if err := model.DB.Find(&resources).Error; err != nil {
-		return nil, serializer.ErrDatabase
+		return nil, serializer.ErrDatabase.WithError(err)
 	}
 
 	hosts := make(map[string]string)

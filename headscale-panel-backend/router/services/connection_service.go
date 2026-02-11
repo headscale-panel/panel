@@ -22,6 +22,10 @@ type ConnectionCommand struct {
 
 // GenerateConnectionCommands generates connection commands for selected machines
 func (s *connectionService) GenerateConnectionCommands(actorUserID uint, machineIDs []string, platform string) ([]ConnectionCommand, error) {
+	return s.GenerateConnectionCommandsWithContext(context.Background(), actorUserID, machineIDs, platform)
+}
+
+func (s *connectionService) GenerateConnectionCommandsWithContext(ctx context.Context, actorUserID uint, machineIDs []string, platform string) ([]ConnectionCommand, error) {
 	if err := RequirePermission(actorUserID, "headscale:machine:list"); err != nil {
 		return nil, err
 	}
@@ -57,7 +61,7 @@ func (s *connectionService) GenerateConnectionCommands(actorUserID uint, machine
 	}
 
 	// Add SSH connection commands for selected machines
-	sshCommands, err := s.generateSSHCommands(machineIDs)
+	sshCommands, err := s.generateSSHCommands(ctx, machineIDs)
 	if err == nil && len(sshCommands.Commands) > 0 {
 		commands = append(commands, sshCommands)
 	}
@@ -145,7 +149,10 @@ func (s *connectionService) generateAndroidCommands(serverURL, authKey string) C
 	}
 }
 
-func (s *connectionService) generateSSHCommands(machineIDs []string) (ConnectionCommand, error) {
+func (s *connectionService) generateSSHCommands(ctx context.Context, machineIDs []string) (ConnectionCommand, error) {
+	queryCtx, cancel := withServiceTimeout(ctx)
+	defer cancel()
+
 	var commands []string
 	commands = append(commands, "# SSH to selected devices:")
 	commands = append(commands, "")
@@ -155,7 +162,7 @@ func (s *connectionService) generateSSHCommands(machineIDs []string) (Connection
 		if err != nil {
 			continue
 		}
-		node, err := headscale.GlobalClient.Service.GetNode(context.Background(), &v1.GetNodeRequest{
+		node, err := headscale.GlobalClient.Service.GetNode(queryCtx, &v1.GetNodeRequest{
 			NodeId: machineID,
 		})
 		if err != nil {
@@ -183,14 +190,21 @@ func (s *connectionService) generateSSHCommands(machineIDs []string) (Connection
 
 // GeneratePreAuthKey generates a pre-auth key for device registration
 func (s *connectionService) GeneratePreAuthKey(actorUserID uint, userID uint, reusable bool, ephemeral bool) (string, error) {
+	return s.GeneratePreAuthKeyWithContext(context.Background(), actorUserID, userID, reusable, ephemeral)
+}
+
+func (s *connectionService) GeneratePreAuthKeyWithContext(ctx context.Context, actorUserID uint, userID uint, reusable bool, ephemeral bool) (string, error) {
 	if err := RequirePermission(actorUserID, "headscale:preauthkey:create"); err != nil {
 		return "", err
 	}
 
+	queryCtx, cancel := withServiceTimeout(ctx)
+	defer cancel()
+
 	targetName := fmt.Sprintf("user-%d", userID)
 
 	// List users to find the ID
-	users, err := headscale.GlobalClient.Service.ListUsers(context.Background(), &v1.ListUsersRequest{})
+	users, err := headscale.GlobalClient.Service.ListUsers(queryCtx, &v1.ListUsersRequest{})
 	if err != nil {
 		return "", fmt.Errorf("failed to list users: %w", err)
 	}
@@ -209,7 +223,7 @@ func (s *connectionService) GeneratePreAuthKey(actorUserID uint, userID uint, re
 		return "", fmt.Errorf("user not found in headscale: %s", targetName)
 	}
 
-	resp, err := headscale.GlobalClient.Service.CreatePreAuthKey(context.Background(), &v1.CreatePreAuthKeyRequest{
+	resp, err := headscale.GlobalClient.Service.CreatePreAuthKey(queryCtx, &v1.CreatePreAuthKeyRequest{
 		User:      headscaleUserID,
 		Reusable:  reusable,
 		Ephemeral: ephemeral,

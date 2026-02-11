@@ -142,13 +142,18 @@ func NewDockerService() (*DockerService, error) {
 
 // GetContainer gets information about a specific container
 func (s *DockerService) GetContainer(actorUserID uint, containerName string) (*ContainerInfo, error) {
+	return s.GetContainerWithContext(context.Background(), actorUserID, containerName)
+}
+
+func (s *DockerService) GetContainerWithContext(ctx context.Context, actorUserID uint, containerName string) (*ContainerInfo, error) {
 	if err := s.requirePermission(actorUserID, "docker:container:get"); err != nil {
 		return nil, err
 	}
 
-	ctx := context.Background()
+	queryCtx, cancel := withServiceTimeout(ctx)
+	defer cancel()
 
-	containers, err := s.client.ContainerList(ctx, container.ListOptions{All: true})
+	containers, err := s.client.ContainerList(queryCtx, container.ListOptions{All: true})
 	if err != nil {
 		return nil, fmt.Errorf("failed to list containers: %w", err)
 	}
@@ -173,10 +178,11 @@ func (s *DockerService) GetContainer(actorUserID uint, containerName string) (*C
 	return nil, fmt.Errorf("container not found: %s", containerName)
 }
 
-func (s *DockerService) getContainerByName(containerName string) (*ContainerInfo, error) {
-	ctx := context.Background()
+func (s *DockerService) getContainerByName(ctx context.Context, containerName string) (*ContainerInfo, error) {
+	queryCtx, cancel := withServiceTimeout(ctx)
+	defer cancel()
 
-	containers, err := s.client.ContainerList(ctx, container.ListOptions{All: true})
+	containers, err := s.client.ContainerList(queryCtx, container.ListOptions{All: true})
 	if err != nil {
 		return nil, fmt.Errorf("failed to list containers: %w", err)
 	}
@@ -203,63 +209,83 @@ func (s *DockerService) getContainerByName(containerName string) (*ContainerInfo
 
 // StartContainer starts a container
 func (s *DockerService) StartContainer(actorUserID uint, containerName string) error {
+	return s.StartContainerWithContext(context.Background(), actorUserID, containerName)
+}
+
+func (s *DockerService) StartContainerWithContext(ctx context.Context, actorUserID uint, containerName string) error {
 	if err := s.requirePermission(actorUserID, "docker:container:start"); err != nil {
 		return err
 	}
 
-	ctx := context.Background()
+	queryCtx, cancel := withServiceTimeout(ctx)
+	defer cancel()
 
-	containerObj, err := s.getContainerByName(containerName)
+	containerObj, err := s.getContainerByName(queryCtx, containerName)
 	if err != nil {
 		return err
 	}
 
-	return s.client.ContainerStart(ctx, containerObj.ID, container.StartOptions{})
+	return s.client.ContainerStart(queryCtx, containerObj.ID, container.StartOptions{})
 }
 
 // StopContainer stops a container
 func (s *DockerService) StopContainer(actorUserID uint, containerName string) error {
+	return s.StopContainerWithContext(context.Background(), actorUserID, containerName)
+}
+
+func (s *DockerService) StopContainerWithContext(ctx context.Context, actorUserID uint, containerName string) error {
 	if err := s.requirePermission(actorUserID, "docker:container:stop"); err != nil {
 		return err
 	}
 
-	ctx := context.Background()
+	queryCtx, cancel := withServiceTimeout(ctx)
+	defer cancel()
 
-	containerObj, err := s.getContainerByName(containerName)
+	containerObj, err := s.getContainerByName(queryCtx, containerName)
 	if err != nil {
 		return err
 	}
 
 	timeout := 10
-	return s.client.ContainerStop(ctx, containerObj.ID, container.StopOptions{Timeout: &timeout})
+	return s.client.ContainerStop(queryCtx, containerObj.ID, container.StopOptions{Timeout: &timeout})
 }
 
 // RestartContainer restarts a container
 func (s *DockerService) RestartContainer(actorUserID uint, containerName string) error {
+	return s.RestartContainerWithContext(context.Background(), actorUserID, containerName)
+}
+
+func (s *DockerService) RestartContainerWithContext(ctx context.Context, actorUserID uint, containerName string) error {
 	if err := s.requirePermission(actorUserID, "docker:container:restart"); err != nil {
 		return err
 	}
 
-	ctx := context.Background()
+	queryCtx, cancel := withServiceTimeout(ctx)
+	defer cancel()
 
-	containerObj, err := s.getContainerByName(containerName)
+	containerObj, err := s.getContainerByName(queryCtx, containerName)
 	if err != nil {
 		return err
 	}
 
 	timeout := 10
-	return s.client.ContainerRestart(ctx, containerObj.ID, container.StopOptions{Timeout: &timeout})
+	return s.client.ContainerRestart(queryCtx, containerObj.ID, container.StopOptions{Timeout: &timeout})
 }
 
 // GetContainerLogs gets logs from a container
 func (s *DockerService) GetContainerLogs(actorUserID uint, containerName string, tail int) (string, error) {
+	return s.GetContainerLogsWithContext(context.Background(), actorUserID, containerName, tail)
+}
+
+func (s *DockerService) GetContainerLogsWithContext(ctx context.Context, actorUserID uint, containerName string, tail int) (string, error) {
 	if err := s.requirePermission(actorUserID, "docker:container:logs"); err != nil {
 		return "", err
 	}
 
-	ctx := context.Background()
+	queryCtx, cancel := withServiceTimeout(ctx)
+	defer cancel()
 
-	containerObj, err := s.getContainerByName(containerName)
+	containerObj, err := s.getContainerByName(queryCtx, containerName)
 	if err != nil {
 		return "", err
 	}
@@ -271,7 +297,7 @@ func (s *DockerService) GetContainerLogs(actorUserID uint, containerName string,
 		Timestamps: true,
 	}
 
-	logs, err := s.client.ContainerLogs(ctx, containerObj.ID, options)
+	logs, err := s.client.ContainerLogs(queryCtx, containerObj.ID, options)
 	if err != nil {
 		return "", fmt.Errorf("failed to get logs: %w", err)
 	}
@@ -287,18 +313,23 @@ func (s *DockerService) GetContainerLogs(actorUserID uint, containerName string,
 
 // GetContainerStats gets resource usage statistics for a container
 func (s *DockerService) GetContainerStats(actorUserID uint, containerName string) (*ContainerStats, error) {
+	return s.GetContainerStatsWithContext(context.Background(), actorUserID, containerName)
+}
+
+func (s *DockerService) GetContainerStatsWithContext(ctx context.Context, actorUserID uint, containerName string) (*ContainerStats, error) {
 	if err := s.requirePermission(actorUserID, "docker:container:stats"); err != nil {
 		return nil, err
 	}
 
-	ctx := context.Background()
+	queryCtx, cancel := withServiceTimeout(ctx)
+	defer cancel()
 
-	container, err := s.getContainerByName(containerName)
+	container, err := s.getContainerByName(queryCtx, containerName)
 	if err != nil {
 		return nil, err
 	}
 
-	stats, err := s.client.ContainerStats(ctx, container.ID, false)
+	stats, err := s.client.ContainerStats(queryCtx, container.ID, false)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get stats: %w", err)
 	}
@@ -342,13 +373,18 @@ func (s *DockerService) GetContainerStats(actorUserID uint, containerName string
 
 // ListContainers lists all containers
 func (s *DockerService) ListContainers(actorUserID uint) ([]*ContainerInfo, error) {
+	return s.ListContainersWithContext(context.Background(), actorUserID)
+}
+
+func (s *DockerService) ListContainersWithContext(ctx context.Context, actorUserID uint) ([]*ContainerInfo, error) {
 	if err := s.requirePermission(actorUserID, "docker:container:list"); err != nil {
 		return nil, err
 	}
 
-	ctx := context.Background()
+	queryCtx, cancel := withServiceTimeout(ctx)
+	defer cancel()
 
-	containers, err := s.client.ContainerList(ctx, container.ListOptions{All: true})
+	containers, err := s.client.ContainerList(queryCtx, container.ListOptions{All: true})
 	if err != nil {
 		return nil, fmt.Errorf("failed to list containers: %w", err)
 	}
@@ -396,10 +432,15 @@ type DeployProgress struct {
 
 // PullImage pulls a Docker image and returns progress messages.
 func (s *DockerService) PullImage(imageName string) ([]DeployProgress, error) {
-	ctx := context.Background()
+	return s.PullImageWithContext(context.Background(), imageName)
+}
+
+func (s *DockerService) PullImageWithContext(ctx context.Context, imageName string) ([]DeployProgress, error) {
+	queryCtx, cancel := withServiceTimeout(ctx)
+	defer cancel()
 	var progress []DeployProgress
 
-	reader, err := s.client.ImagePull(ctx, imageName, image.PullOptions{})
+	reader, err := s.client.ImagePull(queryCtx, imageName, image.PullOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to pull image %s: %w", imageName, err)
 	}
@@ -434,9 +475,14 @@ func (s *DockerService) PullImage(imageName string) ([]DeployProgress, error) {
 
 // EnsureNetwork creates a docker network if it doesn't exist.
 func (s *DockerService) EnsureNetwork(networkName string) error {
-	ctx := context.Background()
+	return s.EnsureNetworkWithContext(context.Background(), networkName)
+}
 
-	networks, err := s.client.NetworkList(ctx, network.ListOptions{})
+func (s *DockerService) EnsureNetworkWithContext(ctx context.Context, networkName string) error {
+	queryCtx, cancel := withServiceTimeout(ctx)
+	defer cancel()
+
+	networks, err := s.client.NetworkList(queryCtx, network.ListOptions{})
 	if err != nil {
 		return fmt.Errorf("failed to list networks: %w", err)
 	}
@@ -447,7 +493,7 @@ func (s *DockerService) EnsureNetwork(networkName string) error {
 		}
 	}
 
-	_, err = s.client.NetworkCreate(ctx, networkName, network.CreateOptions{
+	_, err = s.client.NetworkCreate(queryCtx, networkName, network.CreateOptions{
 		Driver: "bridge",
 	})
 	if err != nil {
@@ -458,31 +504,47 @@ func (s *DockerService) EnsureNetwork(networkName string) error {
 
 // RemoveContainer force-removes a container by name (ignores if not found).
 func (s *DockerService) RemoveContainer(containerName string) error {
-	ctx := context.Background()
-	c, err := s.getContainerByName(containerName)
+	return s.RemoveContainerWithContext(context.Background(), containerName)
+}
+
+func (s *DockerService) RemoveContainerWithContext(ctx context.Context, containerName string) error {
+	queryCtx, cancel := withServiceTimeout(ctx)
+	defer cancel()
+
+	c, err := s.getContainerByName(queryCtx, containerName)
 	if err != nil {
 		return nil // not found, OK
 	}
-	return s.client.ContainerRemove(ctx, c.ID, container.RemoveOptions{Force: true})
+	return s.client.ContainerRemove(queryCtx, c.ID, container.RemoveOptions{Force: true})
 }
 
 // DeployContainer creates and starts a container based on DeployRequest.
 func (s *DockerService) DeployContainer(actorUserID uint, req DeployRequest) ([]DeployProgress, error) {
+	return s.DeployContainerWithContext(context.Background(), actorUserID, req)
+}
+
+func (s *DockerService) DeployContainerWithContext(ctx context.Context, actorUserID uint, req DeployRequest) ([]DeployProgress, error) {
 	if err := s.requirePermission(actorUserID, "docker:container:deploy"); err != nil {
 		return nil, err
 	}
 
-	return s.deployContainer(req)
+	return s.deployContainer(ctx, req)
 }
 
 // DeployContainerUnsafe deploys a container without auth checks.
 // This is only for setup flow before any user account exists.
 func (s *DockerService) DeployContainerUnsafe(req DeployRequest) ([]DeployProgress, error) {
-	return s.deployContainer(req)
+	return s.DeployContainerUnsafeWithContext(context.Background(), req)
 }
 
-func (s *DockerService) deployContainer(req DeployRequest) ([]DeployProgress, error) {
-	ctx := context.Background()
+func (s *DockerService) DeployContainerUnsafeWithContext(ctx context.Context, req DeployRequest) ([]DeployProgress, error) {
+	return s.deployContainer(ctx, req)
+}
+
+func (s *DockerService) deployContainer(ctx context.Context, req DeployRequest) ([]DeployProgress, error) {
+	queryCtx, cancel := withServiceTimeout(ctx)
+	defer cancel()
+
 	var progress []DeployProgress
 
 	policy, normalizedReq, err := validateAndNormalizeDeployRequest(req)
@@ -492,7 +554,7 @@ func (s *DockerService) deployContainer(req DeployRequest) ([]DeployProgress, er
 	req = normalizedReq
 
 	// 1. Pull image
-	pullProgress, err := s.PullImage(req.Image)
+	pullProgress, err := s.PullImageWithContext(queryCtx, req.Image)
 	progress = append(progress, pullProgress...)
 	if err != nil {
 		return progress, err
@@ -500,11 +562,11 @@ func (s *DockerService) deployContainer(req DeployRequest) ([]DeployProgress, er
 	progress = append(progress, DeployProgress{Step: "pull", Message: fmt.Sprintf("Image %s ready", req.Image)})
 
 	// 2. Remove existing container with same name
-	_ = s.RemoveContainer(req.ContainerName)
+	_ = s.RemoveContainerWithContext(queryCtx, req.ContainerName)
 
 	// 3. Ensure network
 	if req.NetworkName != "" {
-		if err := s.EnsureNetwork(req.NetworkName); err != nil {
+		if err := s.EnsureNetworkWithContext(queryCtx, req.NetworkName); err != nil {
 			return progress, err
 		}
 		progress = append(progress, DeployProgress{Step: "network", Message: fmt.Sprintf("Network %s ready", req.NetworkName)})
@@ -587,7 +649,7 @@ func (s *DockerService) deployContainer(req DeployRequest) ([]DeployProgress, er
 
 	progress = append(progress, DeployProgress{Step: "create", Message: fmt.Sprintf("Creating container %s ...", req.ContainerName)})
 
-	resp, err := s.client.ContainerCreate(ctx, containerConfig, hostConfig, networkingConfig, nil, req.ContainerName)
+	resp, err := s.client.ContainerCreate(queryCtx, containerConfig, hostConfig, networkingConfig, nil, req.ContainerName)
 	if err != nil {
 		return progress, fmt.Errorf("failed to create container: %w", err)
 	}
@@ -596,7 +658,7 @@ func (s *DockerService) deployContainer(req DeployRequest) ([]DeployProgress, er
 
 	// 5. Start container
 	progress = append(progress, DeployProgress{Step: "start", Message: "Starting container ..."})
-	if err := s.client.ContainerStart(ctx, resp.ID, container.StartOptions{}); err != nil {
+	if err := s.client.ContainerStart(queryCtx, resp.ID, container.StartOptions{}); err != nil {
 		return progress, fmt.Errorf("failed to start container: %w", err)
 	}
 

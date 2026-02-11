@@ -30,8 +30,14 @@ type LoginRequest struct {
 }
 
 func (s *userService) Register(req *RegisterRequest) error {
+	return s.RegisterWithContext(context.Background(), req)
+}
+
+func (s *userService) RegisterWithContext(ctx context.Context, req *RegisterRequest) error {
 	var userCount int64
-	model.DB.Model(&model.User{}).Count(&userCount)
+	if err := model.DB.Model(&model.User{}).Count(&userCount).Error; err != nil {
+		return serializer.ErrDatabase.WithError(err)
+	}
 
 	var group model.Group
 	if userCount == 0 {
@@ -47,13 +53,17 @@ func (s *userService) Register(req *RegisterRequest) error {
 	}
 
 	var count int64
-	model.DB.Model(&model.User{}).Where("username = ?", req.Username).Count(&count)
+	if err := model.DB.Model(&model.User{}).Where("username = ?", req.Username).Count(&count).Error; err != nil {
+		return serializer.ErrDatabase.WithError(err)
+	}
 	if count > 0 {
 		return serializer.ErrUserNameExisted
 	}
 
-	ctx := context.Background()
-	_, err := headscale.GlobalClient.Service.CreateUser(ctx, &v1.CreateUserRequest{
+	queryCtx, cancel := withServiceTimeout(ctx)
+	defer cancel()
+
+	_, err := headscale.GlobalClient.Service.CreateUser(queryCtx, &v1.CreateUserRequest{
 		Name: req.Username,
 	})
 	if err != nil {
@@ -79,7 +89,7 @@ func (s *userService) Register(req *RegisterRequest) error {
 	}
 
 	if err := model.DB.Create(&user).Error; err != nil {
-		return serializer.ErrDatabase
+		return serializer.ErrDatabase.WithError(err)
 	}
 
 	return nil
@@ -101,11 +111,11 @@ func (s *userService) Login(req *LoginRequest) (string, *model.User, error) {
 	// Check TOTP
 	if user.TOTPEnabled {
 		if req.TOTPCode == "" {
-			return "", nil, errors.New("TOTP code required")
+			return "", nil, serializer.NewError(serializer.Code2FACodeErr, "TOTP code required", nil)
 		}
 		valid := totp.Validate(req.TOTPCode, user.TOTPSecret)
 		if !valid {
-			return "", nil, errors.New("invalid TOTP code")
+			return "", nil, serializer.NewError(serializer.Code2FACodeErr, "invalid TOTP code", nil)
 		}
 	}
 
@@ -128,7 +138,7 @@ func (s *userService) GetUserInfo(userID uint) (*model.User, error) {
 func (s *userService) GetUserPermissions(userID uint) ([]string, error) {
 	var user model.User
 	if err := model.DB.Preload("Group.Permissions").First(&user, userID).Error; err != nil {
-		return nil, err
+		return nil, serializer.ErrDatabase.WithError(err)
 	}
 
 	var codes []string
@@ -155,7 +165,9 @@ func (s *userService) GenerateTOTP(userID uint) (string, string, error) {
 	// Save secret temporarily or return it to be saved after verification?
 	// Usually we save it but mark as disabled until verified.
 	user.TOTPSecret = key.Secret()
-	model.DB.Save(&user)
+	if err := model.DB.Save(&user).Error; err != nil {
+		return "", "", serializer.ErrDatabase.WithError(err)
+	}
 
 	return key.Secret(), key.URL(), nil
 }
@@ -167,10 +179,12 @@ func (s *userService) EnableTOTP(userID uint, code string) error {
 	}
 
 	if !totp.Validate(code, user.TOTPSecret) {
-		return errors.New("invalid TOTP code")
+		return serializer.NewError(serializer.Code2FACodeErr, "invalid TOTP code", nil)
 	}
 
 	user.TOTPEnabled = true
-	model.DB.Save(&user)
+	if err := model.DB.Save(&user).Error; err != nil {
+		return serializer.ErrDatabase.WithError(err)
+	}
 	return nil
 }

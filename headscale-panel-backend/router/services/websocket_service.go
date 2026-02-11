@@ -1,6 +1,7 @@
 package services
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -42,7 +43,10 @@ type Hub struct {
 	broadcast  chan []byte
 	register   chan *Client
 	unregister chan *Client
+	stop       chan struct{}
+	stopped    chan struct{}
 	mu         sync.RWMutex
+	stopOnce   sync.Once
 }
 
 // Message types
@@ -74,6 +78,9 @@ type Notification struct {
 // Global hub instance
 var wsHub *Hub
 var wsInitOnce sync.Once
+var wsMetricsCancel context.CancelFunc
+var wsMetricsStopped chan struct{}
+var wsLifecycleMu sync.Mutex
 
 // InitWebSocket initializes the WebSocket hub
 func InitWebSocket() {
@@ -82,9 +89,19 @@ func InitWebSocket() {
 		broadcast:  make(chan []byte, 256),
 		register:   make(chan *Client, 256),
 		unregister: make(chan *Client, 256),
+		stop:       make(chan struct{}),
+		stopped:    make(chan struct{}),
 	}
+	collectorCtx, collectorCancel := context.WithCancel(context.Background())
+	collectorStopped := make(chan struct{})
+
+	wsLifecycleMu.Lock()
+	wsMetricsCancel = collectorCancel
+	wsMetricsStopped = collectorStopped
+	wsLifecycleMu.Unlock()
+
 	go wsHub.Run()
-	go startMetricsCollector()
+	go startMetricsCollector(collectorCtx, collectorStopped)
 }
 
 // GetHub returns the global hub instance
@@ -127,6 +144,16 @@ func (h *Hub) Run() {
 			for _, client := range staleClients {
 				h.enqueueUnregister(client)
 			}
+		case <-h.stop:
+			h.mu.Lock()
+			for client := range h.clients {
+				delete(h.clients, client)
+				close(client.Send)
+				_ = client.Conn.Close()
+			}
+			h.mu.Unlock()
+			close(h.stopped)
+			return
 		}
 	}
 }
@@ -194,6 +221,14 @@ func (h *Hub) removeClient(client *Client) {
 
 	delete(h.clients, client)
 	close(client.Send)
+	_ = client.Conn.Close()
+}
+
+func (h *Hub) Stop() {
+	h.stopOnce.Do(func() {
+		close(h.stop)
+		<-h.stopped
+	})
 }
 
 // HandleWebSocket handles WebSocket connections
@@ -339,11 +374,18 @@ func generateClientID() string {
 }
 
 // startMetricsCollector starts a background goroutine to collect and broadcast metrics
-func startMetricsCollector() {
+func startMetricsCollector(ctx context.Context, stopped chan<- struct{}) {
 	ticker := time.NewTicker(30 * time.Second)
+	defer close(stopped)
 	defer ticker.Stop()
 
-	for range ticker.C {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+
 		if wsHub == nil {
 			continue
 		}
@@ -431,4 +473,29 @@ func isOriginAllowed(r *http.Request) bool {
 	}
 
 	return false
+}
+
+func StopWebSocket() {
+	wsLifecycleMu.Lock()
+	cancel := wsMetricsCancel
+	stopped := wsMetricsStopped
+	wsMetricsCancel = nil
+	wsMetricsStopped = nil
+	hub := wsHub
+	wsLifecycleMu.Unlock()
+
+	if cancel != nil {
+		cancel()
+	}
+	if stopped != nil {
+		<-stopped
+	}
+	if hub != nil {
+		hub.Stop()
+	}
+
+	wsLifecycleMu.Lock()
+	wsHub = nil
+	wsInitOnce = sync.Once{}
+	wsLifecycleMu.Unlock()
 }

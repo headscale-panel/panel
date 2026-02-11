@@ -117,7 +117,7 @@ func (oc *OIDCController) Token(c *gin.Context) {
 		code := c.PostForm("code")
 		idToken, accessToken, refreshToken, err := services.OIDCService.ExchangeCode(code, clientID, clientSecret)
 		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_grant"})
 			return
 		}
 		c.JSON(http.StatusOK, gin.H{
@@ -132,7 +132,7 @@ func (oc *OIDCController) Token(c *gin.Context) {
 		refreshTokenStr := c.PostForm("refresh_token")
 		idToken, accessToken, newRefreshToken, err := services.OIDCService.RefreshTokens(refreshTokenStr, clientID, clientSecret)
 		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_grant"})
 			return
 		}
 		c.JSON(http.StatusOK, gin.H{
@@ -169,7 +169,11 @@ func (oc *OIDCController) UserInfo(c *gin.Context) {
 	// Validate the access token
 	claims, err := services.OIDCService.ValidateAccessToken(tokenStr)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid_token", "error_description": err.Error()})
+		resp := gin.H{"error": "invalid_token"}
+		if !conf.Conf.System.Release {
+			resp["error_description"] = err.Error()
+		}
+		c.JSON(http.StatusUnauthorized, resp)
 		return
 	}
 
@@ -182,7 +186,7 @@ func (oc *OIDCController) UserInfo(c *gin.Context) {
 	// Get user info
 	userInfo, err := services.OIDCService.GetUserInfoBySub(sub)
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		c.JSON(http.StatusNotFound, gin.H{"error": "user_not_found"})
 		return
 	}
 
