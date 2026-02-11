@@ -1,9 +1,12 @@
 package controllers
 
 import (
+	"crypto/subtle"
 	"headscale-panel/model"
+	"headscale-panel/pkg/conf"
 	"headscale-panel/pkg/utils/serializer"
 	"headscale-panel/router/services"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -32,6 +35,7 @@ func (s *SetupController) GetStatus(ctx *gin.Context) {
 	now := time.Now()
 	windowOpen := services.SetupStateService.IsWindowOpen(state, now)
 	initialized := state.State == model.SetupStateInitialized
+	bootstrapAuthorized := isSetupBootstrapAuthorized(ctx)
 
 	resp := gin.H{
 		"initialized":           initialized,
@@ -39,12 +43,13 @@ func (s *SetupController) GetStatus(ctx *gin.Context) {
 		"user_count":            count,
 		"setup_window_open":     windowOpen,
 		"setup_window_deadline": "",
+		"bootstrap_configured":  isSetupBootstrapConfigured(),
 	}
 	if state.WindowDeadline != nil {
 		resp["setup_window_deadline"] = state.WindowDeadline.UTC().Format(time.RFC3339)
 	}
 
-	if windowOpen {
+	if windowOpen && bootstrapAuthorized {
 		initToken, initTokenExpiresAt, err := services.SetupGuardService.IssueInitToken(true, ctx.ClientIP(), ctx.GetHeader("User-Agent"))
 		if err == nil {
 			resp["init_token"] = initToken
@@ -69,6 +74,11 @@ type InitializeRequest struct {
 
 // Initialize creates the first admin user if no users exist yet.
 func (s *SetupController) Initialize(ctx *gin.Context) {
+	if err := requireSetupBootstrap(ctx); err != nil {
+		serializer.Fail(ctx, err)
+		return
+	}
+
 	state, err := services.SetupStateService.RequireSetupWindow()
 	if err != nil {
 		serializer.Fail(ctx, err)
@@ -145,6 +155,11 @@ func (s *SetupController) Initialize(ctx *gin.Context) {
 // DeployContainer deploys a Docker container during the setup wizard.
 // SECURITY: Only available when the system has NOT been initialized yet (no users exist).
 func (s *SetupController) DeployContainer(ctx *gin.Context) {
+	if err := requireSetupBootstrap(ctx); err != nil {
+		serializer.Fail(ctx, err)
+		return
+	}
+
 	state, err := services.SetupStateService.RequireSetupWindow()
 	if err != nil {
 		serializer.Fail(ctx, err)
@@ -207,4 +222,56 @@ func (s *SetupController) DeployContainer(ctx *gin.Context) {
 	serializer.Success(ctx, gin.H{
 		"progress": progress,
 	})
+}
+
+func requireSetupBootstrap(ctx *gin.Context) error {
+	expected := strings.TrimSpace(conf.Conf.System.SetupBootstrapToken)
+	if expected == "" {
+		return serializer.NewError(serializer.CodeNoPermissionErr, "setup bootstrap credential is not configured", nil)
+	}
+
+	provided := strings.TrimSpace(readSetupBootstrapCredential(ctx))
+	if provided == "" {
+		return serializer.NewError(serializer.CodeNoPermissionErr, "missing setup bootstrap credential", nil)
+	}
+
+	if subtle.ConstantTimeCompare([]byte(provided), []byte(expected)) != 1 {
+		return serializer.NewError(serializer.CodeNoPermissionErr, "invalid setup bootstrap credential", nil)
+	}
+
+	return nil
+}
+
+func isSetupBootstrapAuthorized(ctx *gin.Context) bool {
+	expected := strings.TrimSpace(conf.Conf.System.SetupBootstrapToken)
+	if expected == "" {
+		return false
+	}
+
+	provided := strings.TrimSpace(readSetupBootstrapCredential(ctx))
+	if provided == "" {
+		return false
+	}
+
+	return subtle.ConstantTimeCompare([]byte(provided), []byte(expected)) == 1
+}
+
+func isSetupBootstrapConfigured() bool {
+	return strings.TrimSpace(conf.Conf.System.SetupBootstrapToken) != ""
+}
+
+func readSetupBootstrapCredential(ctx *gin.Context) string {
+	if token := strings.TrimSpace(ctx.GetHeader("X-Setup-Bootstrap-Token")); token != "" {
+		return token
+	}
+	if token := strings.TrimSpace(ctx.GetHeader("X-Bootstrap-Token")); token != "" {
+		return token
+	}
+
+	authHeader := strings.TrimSpace(ctx.GetHeader("Authorization"))
+	if strings.HasPrefix(strings.ToLower(authHeader), "bearer ") {
+		return strings.TrimSpace(authHeader[7:])
+	}
+
+	return ""
 }

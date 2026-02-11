@@ -19,9 +19,10 @@ type Config struct {
 }
 
 type SystemConfig struct {
-	Port    string `mapstructure:"port"`
-	Release bool   `mapstructure:"release"`
-	BaseURL string `mapstructure:"base_url"`
+	Port                string `mapstructure:"port"`
+	Release             bool   `mapstructure:"release"`
+	BaseURL             string `mapstructure:"base_url"`
+	SetupBootstrapToken string `mapstructure:"setup_bootstrap_token"`
 }
 
 type DBConfig struct {
@@ -76,6 +77,7 @@ func Init(path string) {
 	viper.SetDefault("system.port", ":8080")
 	viper.SetDefault("system.release", false)
 	viper.SetDefault("system.base_url", "http://localhost:8080")
+	viper.SetDefault("system.setup_bootstrap_token", "")
 	viper.SetDefault("db.path", "data.db")
 	viper.SetDefault("jwt.expire", 24)
 	viper.SetDefault("headscale.grpc_addr", "localhost:50443")
@@ -93,6 +95,7 @@ func Init(path string) {
 	viper.BindEnv("system.port", "SYSTEM_PORT")
 	viper.BindEnv("system.release", "SYSTEM_RELEASE")
 	viper.BindEnv("system.base_url", "SYSTEM_BASE_URL")
+	viper.BindEnv("system.setup_bootstrap_token", "SYSTEM_SETUP_BOOTSTRAP_TOKEN")
 	viper.BindEnv("db.path", "DB_PATH")
 	viper.BindEnv("jwt.secret", "JWT_SECRET")
 	viper.BindEnv("jwt.expire", "JWT_EXPIRE")
@@ -135,6 +138,23 @@ func validateSecurityConfig(cfg Config) error {
 
 	if len(secret) < 32 {
 		return fmt.Errorf("JWT_SECRET must be at least 32 characters")
+	}
+
+	bootstrapToken := strings.TrimSpace(cfg.System.SetupBootstrapToken)
+	if bootstrapToken != "" {
+		loweredBootstrap := strings.ToLower(bootstrapToken)
+		insecureBootstrapDefaults := map[string]struct{}{
+			"bootstrap":       {},
+			"bootstrap-token": {},
+			"changeme":        {},
+			"default":         {},
+		}
+		if _, found := insecureBootstrapDefaults[loweredBootstrap]; found {
+			return fmt.Errorf("SYSTEM_SETUP_BOOTSTRAP_TOKEN uses an insecure default or placeholder value")
+		}
+		if len(bootstrapToken) < 32 {
+			return fmt.Errorf("SYSTEM_SETUP_BOOTSTRAP_TOKEN must be at least 32 characters when configured")
+		}
 	}
 
 	return nil
