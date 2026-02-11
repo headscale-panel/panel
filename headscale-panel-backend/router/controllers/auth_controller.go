@@ -290,42 +290,33 @@ func findOrCreateOIDCUser(config *services.HeadscaleConfigFile, sub, email, name
 		return nil, err
 	}
 
+	if services.HeadscaleConfigService.HasOIDCAllowlist(config) && !services.HeadscaleConfigService.IsOIDCAutoLinkAllowed(config, email) {
+		return nil, errors.New("oidc access denied by allowlist")
+	}
+
 	// Try 2: Find by email (link existing account)
 	if email != "" {
-		autoLinkAllowed := services.HeadscaleConfigService.IsOIDCAutoLinkAllowed(config, email)
-		if autoLinkAllowed {
-			err = model.DB.Preload("Group").
-				Where("email = ? AND email != ''", email).
-				First(&user).Error
-			if err == nil {
-				// Link the OIDC identity to the existing account
-				if err := model.DB.Model(&user).Updates(map[string]interface{}{
-					"provider":        "oidc",
-					"provider_id":     sub,
-					"profile_pic_url": picture,
-				}).Error; err != nil {
-					return nil, fmt.Errorf("failed to link oidc account: %w", err)
+		err = model.DB.Preload("Group").
+			Where("email = ? AND email != ''", email).
+			First(&user).Error
+		if err == nil {
+			// Link the OIDC identity to the existing account
+			if err := model.DB.Model(&user).Updates(map[string]interface{}{
+				"provider":        "oidc",
+				"provider_id":     sub,
+				"profile_pic_url": picture,
+			}).Error; err != nil {
+				return nil, fmt.Errorf("failed to link oidc account: %w", err)
+			}
+			if name != "" && user.DisplayName == "" {
+				if err := model.DB.Model(&user).Update("display_name", name).Error; err != nil {
+					return nil, fmt.Errorf("failed to update display name: %w", err)
 				}
-				if name != "" && user.DisplayName == "" {
-					if err := model.DB.Model(&user).Update("display_name", name).Error; err != nil {
-						return nil, fmt.Errorf("failed to update display name: %w", err)
-					}
-				}
-				return &user, nil
 			}
-			if !errors.Is(err, gorm.ErrRecordNotFound) {
-				return nil, err
-			}
-		} else {
-			var existingAccountCount int64
-			if err := model.DB.Model(&model.User{}).
-				Where("email = ? AND email != ''", email).
-				Count(&existingAccountCount).Error; err != nil {
-				return nil, err
-			}
-			if existingAccountCount > 0 {
-				return nil, errors.New("oidc auto-link denied by allowlist")
-			}
+			return &user, nil
+		}
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, err
 		}
 	}
 

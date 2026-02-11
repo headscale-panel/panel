@@ -15,6 +15,12 @@ type RouteController struct{}
 func (c *RouteController) ListRoutes(ctx *gin.Context) {
 	page, _ := strconv.Atoi(ctx.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(ctx.DefaultQuery("page_size", "20"))
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 {
+		pageSize = 20
+	}
 	userFilter := ctx.Query("user_id")
 	machineID := ctx.Query("machine_id")
 

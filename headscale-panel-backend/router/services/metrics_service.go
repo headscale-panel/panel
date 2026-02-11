@@ -3,7 +3,6 @@ package services
 import (
 	"context"
 	"fmt"
-	"headscale-panel/pkg/headscale"
 	"headscale-panel/pkg/influxdb"
 	v1 "headscale-panel/pkg/proto/headscale/v1"
 	"sync"
@@ -24,8 +23,12 @@ var MetricsService = &metricsService{}
 func (s *metricsService) CollectDeviceStatus(ctx context.Context) error {
 	ctx, cancel := withServiceTimeout(ctx)
 	defer cancel()
+	client, err := headscaleServiceClient()
+	if err != nil {
+		return err
+	}
 
-	nodes, err := headscale.GlobalClient.Service.ListNodes(ctx, &v1.ListNodesRequest{})
+	nodes, err := client.ListNodes(ctx, &v1.ListNodesRequest{})
 	if err != nil {
 		return fmt.Errorf("failed to list nodes: %w", err)
 	}
@@ -86,9 +89,16 @@ func (s *metricsService) StartMetricsCollector(interval time.Duration) {
 			case <-ticker.C:
 			}
 
-			if err := s.CollectDeviceStatus(collectorCtx); err != nil {
-				logrus.WithError(err).Error("Failed to collect device status")
-			}
+			func() {
+				defer func() {
+					if r := recover(); r != nil {
+						logrus.WithField("panic", r).Error("panic recovered in metrics collector")
+					}
+				}()
+				if err := s.CollectDeviceStatus(collectorCtx); err != nil {
+					logrus.WithError(err).Error("Failed to collect device status")
+				}
+			}()
 		}
 	}()
 	logrus.Infof("Metrics collector started with interval: %v", interval)
@@ -131,11 +141,15 @@ func (s *metricsService) GetOnlineDurationStats(ctx context.Context, actorUserID
 	if err := RequirePermission(actorUserID, "metrics:online_duration_stats:view"); err != nil {
 		return nil, err
 	}
+	client, err := headscaleServiceClient()
+	if err != nil {
+		return nil, err
+	}
 
 	queryCtx, cancel := withServiceTimeout(ctx)
 	defer cancel()
 
-	nodes, err := headscale.GlobalClient.Service.ListNodes(queryCtx, &v1.ListNodesRequest{})
+	nodes, err := client.ListNodes(queryCtx, &v1.ListNodesRequest{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to list nodes: %w", err)
 	}
@@ -173,11 +187,15 @@ func (s *metricsService) GetDeviceStatus(ctx context.Context, actorUserID uint) 
 	if err := RequirePermission(actorUserID, "metrics:device_status:view"); err != nil {
 		return nil, err
 	}
+	client, err := headscaleServiceClient()
+	if err != nil {
+		return nil, err
+	}
 
 	queryCtx, cancel := withServiceTimeout(ctx)
 	defer cancel()
 
-	nodes, err := headscale.GlobalClient.Service.ListNodes(queryCtx, &v1.ListNodesRequest{})
+	nodes, err := client.ListNodes(queryCtx, &v1.ListNodesRequest{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to list nodes: %w", err)
 	}
@@ -222,11 +240,15 @@ func (s *metricsService) GetTrafficStats(ctx context.Context, actorUserID uint, 
 	if err := RequirePermission(actorUserID, "metrics:traffic:view"); err != nil {
 		return nil, err
 	}
+	client, err := headscaleServiceClient()
+	if err != nil {
+		return nil, err
+	}
 
 	queryCtx, cancel := withServiceTimeout(ctx)
 	defer cancel()
 
-	nodes, err := headscale.GlobalClient.Service.ListNodes(queryCtx, &v1.ListNodesRequest{})
+	nodes, err := client.ListNodes(queryCtx, &v1.ListNodesRequest{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to list nodes: %w", err)
 	}

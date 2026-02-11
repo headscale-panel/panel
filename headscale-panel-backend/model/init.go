@@ -145,36 +145,55 @@ func initDefaultData() {
 	}
 
 	for _, p := range permissions {
-		DB.FirstOrCreate(&p, Permission{Code: p.Code})
+		perm := p
+		if err := DB.Where(Permission{Code: perm.Code}).FirstOrCreate(&perm).Error; err != nil {
+			log.Fatalf("failed to bootstrap permission %s: %v", perm.Code, err)
+		}
 	}
 
 	// 管理员组
 	var adminGroup Group
 	if err := DB.Where("name = ?", "Admin").First(&adminGroup).Error; err != nil {
-		if err == gorm.ErrRecordNotFound {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
 			adminGroup = Group{Name: "Admin"}
-			DB.Create(&adminGroup)
+			if err := DB.Create(&adminGroup).Error; err != nil {
+				log.Fatalf("failed to bootstrap Admin group: %v", err)
+			}
+		} else {
+			log.Fatalf("failed to load Admin group: %v", err)
 		}
 	}
 
 	// 给管理员组分配所有权限
 	var allPermissions []Permission
-	DB.Find(&allPermissions)
-	DB.Model(&adminGroup).Association("Permissions").Replace(allPermissions)
+	if err := DB.Find(&allPermissions).Error; err != nil {
+		log.Fatalf("failed to load permissions for Admin group: %v", err)
+	}
+	if err := DB.Model(&adminGroup).Association("Permissions").Replace(allPermissions); err != nil {
+		log.Fatalf("failed to assign Admin group permissions: %v", err)
+	}
 
 	// 普通用户组
 	var userGroup Group
 	if err := DB.Where("name = ?", "User").First(&userGroup).Error; err != nil {
-		if err == gorm.ErrRecordNotFound {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
 			userGroup = Group{Name: "User"}
-			DB.Create(&userGroup)
+			if err := DB.Create(&userGroup).Error; err != nil {
+				log.Fatalf("failed to bootstrap User group: %v", err)
+			}
+		} else {
+			log.Fatalf("failed to load User group: %v", err)
 		}
 	}
 
 	// 给普通用户组分配基本权限
 	var basicPermissions []Permission
-	DB.Where("code IN ?", []string{"dashboard:view", "resource:list", "resource:create"}).Find(&basicPermissions)
-	DB.Model(&userGroup).Association("Permissions").Replace(basicPermissions)
+	if err := DB.Where("code IN ?", []string{"dashboard:view", "resource:list", "resource:create"}).Find(&basicPermissions).Error; err != nil {
+		log.Fatalf("failed to load User group permissions: %v", err)
+	}
+	if err := DB.Model(&userGroup).Association("Permissions").Replace(basicPermissions); err != nil {
+		log.Fatalf("failed to assign User group permissions: %v", err)
+	}
 
 	// 禁止保留默认管理员弱口令路径：admin/admin123
 	var adminUser User

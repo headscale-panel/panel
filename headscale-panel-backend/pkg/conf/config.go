@@ -82,7 +82,7 @@ func Init(path string) {
 	viper.SetDefault("jwt.expire", 24)
 	viper.SetDefault("headscale.grpc_addr", "localhost:50443")
 	viper.SetDefault("headscale.api_key", "")
-	viper.SetDefault("headscale.insecure", true)
+	viper.SetDefault("headscale.insecure", false)
 	viper.SetDefault("influxdb.url", "")
 	viper.SetDefault("influxdb.token", "")
 	viper.SetDefault("influxdb.org", "headscale-panel")

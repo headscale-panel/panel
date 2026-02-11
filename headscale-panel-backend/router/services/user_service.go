@@ -3,13 +3,15 @@ package services
 import (
 	"context"
 	"errors"
+	"fmt"
 	"headscale-panel/model"
-	"headscale-panel/pkg/headscale"
 	v1 "headscale-panel/pkg/proto/headscale/v1"
 	"headscale-panel/pkg/utils/jwt"
 	"headscale-panel/pkg/utils/serializer"
 
 	"github.com/pquerna/otp/totp"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"gorm.io/gorm"
 )
 
@@ -71,20 +73,22 @@ func (s *userService) RegisterWithContext(ctx context.Context, req *RegisterRequ
 	queryCtx, cancel := withServiceTimeout(ctx)
 	defer cancel()
 
-	_, err = headscale.GlobalClient.Service.CreateUser(queryCtx, &v1.CreateUserRequest{
+	headscaleClient, err := headscaleServiceClient()
+	if err != nil {
+		return err
+	}
+
+	_, err = headscaleClient.CreateUser(queryCtx, &v1.CreateUserRequest{
 		Name: req.Username,
 	})
 	if err != nil {
-		// If user already exists in Headscale, we might want to proceed or fail.
-		// For now, let's assume we want to sync it.
-		// But if it fails with "already exists", we can ignore.
-		// However, checking error string is brittle.
-		// Let's assume if it fails, we fail registration for now, unless it's "already exists".
-		// But gRPC errors are specific.
-		// Let's just log it or return error.
-		// Actually, if we want to support "importing" existing Headscale users, we should probably use SyncData first.
-		// But for new registration, we try to create.
-		// return err
+		if st, ok := status.FromError(err); !ok || st.Code() != codes.AlreadyExists {
+			return serializer.NewError(
+				serializer.CodeThirdPartyServiceError,
+				"failed to initialize headscale user",
+				fmt.Errorf("headscale create user %q: %w", req.Username, err),
+			)
+		}
 	}
 
 	user := model.User{

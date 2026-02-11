@@ -34,7 +34,7 @@ func NewServer() (*Server, error) {
 	model.Init()
 
 	if err := headscale.Init(); err != nil {
-		logrus.WithError(err).Error("Failed to init headscale client")
+		return nil, err
 	}
 
 	if conf.Conf.InfluxDB.URL != "" {

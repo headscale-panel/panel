@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"headscale-panel/model"
-	"headscale-panel/pkg/headscale"
 	v1 "headscale-panel/pkg/proto/headscale/v1"
 	"headscale-panel/pkg/utils/serializer"
 	"strings"
@@ -74,11 +73,15 @@ func (s *headscaleService) ListHeadscaleUsersWithContext(ctx context.Context, ac
 	if err := RequirePermission(actorUserID, "headscale:user:list"); err != nil {
 		return nil, err
 	}
+	client, err := headscaleServiceClient()
+	if err != nil {
+		return nil, err
+	}
 
 	queryCtx, cancel := withServiceTimeout(ctx)
 	defer cancel()
 
-	resp, err := headscale.GlobalClient.Service.ListUsers(queryCtx, &v1.ListUsersRequest{})
+	resp, err := client.ListUsers(queryCtx, &v1.ListUsersRequest{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to list users from Headscale: %w", err)
 	}
@@ -111,11 +114,20 @@ func (s *headscaleService) ListMachinesWithContext(ctx context.Context, actorUse
 	if err := RequirePermission(actorUserID, "headscale:machine:list"); err != nil {
 		return nil, 0, err
 	}
+	page, pageSize = normalizePagination(page, pageSize)
+	client, err := headscaleServiceClient()
+	if err != nil {
+		return nil, 0, err
+	}
+	scope, err := loadActorScope(actorUserID)
+	if err != nil {
+		return nil, 0, err
+	}
 
 	queryCtx, cancel := withServiceTimeout(ctx)
 	defer cancel()
 
-	resp, err := headscale.GlobalClient.Service.ListNodes(queryCtx, &v1.ListNodesRequest{})
+	resp, err := client.ListNodes(queryCtx, &v1.ListNodesRequest{})
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to list nodes from Headscale: %w", err)
 	}
@@ -123,6 +135,9 @@ func (s *headscaleService) ListMachinesWithContext(ctx context.Context, actorUse
 	// Convert all nodes to our format
 	allMachines := make([]HeadscaleMachine, 0, len(resp.Nodes))
 	for _, node := range resp.Nodes {
+		if !actorCanAccessNode(scope, node) {
+			continue
+		}
 		machine := s.nodeToMachine(node)
 		allMachines = append(allMachines, machine)
 	}
@@ -180,15 +195,22 @@ func (s *headscaleService) GetMachineWithContext(ctx context.Context, actorUserI
 	if err := RequirePermission(actorUserID, "headscale:machine:get"); err != nil {
 		return nil, err
 	}
+	client, err := headscaleServiceClient()
+	if err != nil {
+		return nil, err
+	}
 
 	queryCtx, cancel := withServiceTimeout(ctx)
 	defer cancel()
 
-	resp, err := headscale.GlobalClient.Service.GetNode(queryCtx, &v1.GetNodeRequest{
+	resp, err := client.GetNode(queryCtx, &v1.GetNodeRequest{
 		NodeId: nodeID,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to get node from Headscale: %w", err)
+	}
+	if err := ensureActorCanAccessNode(actorUserID, resp.Node); err != nil {
+		return nil, err
 	}
 	machine := s.nodeToMachine(resp.Node)
 	return &machine, nil
@@ -203,11 +225,15 @@ func (s *headscaleService) GetAccessibleMachinesWithContext(ctx context.Context,
 	if err := RequirePermission(actorUserID, "headscale:acl:access"); err != nil {
 		return nil, err
 	}
+	client, err := headscaleServiceClient()
+	if err != nil {
+		return nil, err
+	}
 
 	queryCtx, cancel := withServiceTimeout(ctx)
 	defer cancel()
 
-	resp, err := headscale.GlobalClient.Service.ListNodes(queryCtx, &v1.ListNodesRequest{})
+	resp, err := client.ListNodes(queryCtx, &v1.ListNodesRequest{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to list nodes from Headscale: %w", err)
 	}
@@ -240,11 +266,25 @@ func (s *headscaleService) RenameMachineWithContext(ctx context.Context, actorUs
 	if err := RequirePermission(actorUserID, "headscale:machine:update"); err != nil {
 		return nil, err
 	}
+	client, err := headscaleServiceClient()
+	if err != nil {
+		return nil, err
+	}
 
 	queryCtx, cancel := withServiceTimeout(ctx)
 	defer cancel()
 
-	resp, err := headscale.GlobalClient.Service.RenameNode(queryCtx, &v1.RenameNodeRequest{
+	nodeResp, err := client.GetNode(queryCtx, &v1.GetNodeRequest{
+		NodeId: nodeID,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get node from Headscale: %w", err)
+	}
+	if err := ensureActorCanAccessNode(actorUserID, nodeResp.Node); err != nil {
+		return nil, err
+	}
+
+	resp, err := client.RenameNode(queryCtx, &v1.RenameNodeRequest{
 		NodeId:  nodeID,
 		NewName: newName,
 	})
@@ -264,10 +304,23 @@ func (s *headscaleService) DeleteMachineWithContext(ctx context.Context, actorUs
 	if err := RequirePermission(actorUserID, "headscale:machine:delete"); err != nil {
 		return err
 	}
+	client, err := headscaleServiceClient()
+	if err != nil {
+		return err
+	}
 
 	queryCtx, cancel := withServiceTimeout(ctx)
 	defer cancel()
-	_, err := headscale.GlobalClient.Service.DeleteNode(queryCtx, &v1.DeleteNodeRequest{
+	nodeResp, err := client.GetNode(queryCtx, &v1.GetNodeRequest{
+		NodeId: nodeID,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to get node from Headscale: %w", err)
+	}
+	if err := ensureActorCanAccessNode(actorUserID, nodeResp.Node); err != nil {
+		return err
+	}
+	_, err = client.DeleteNode(queryCtx, &v1.DeleteNodeRequest{
 		NodeId: nodeID,
 	})
 	if err != nil {
@@ -285,11 +338,25 @@ func (s *headscaleService) ExpireMachineWithContext(ctx context.Context, actorUs
 	if err := RequirePermission(actorUserID, "headscale:machine:expire"); err != nil {
 		return nil, err
 	}
+	client, err := headscaleServiceClient()
+	if err != nil {
+		return nil, err
+	}
 
 	queryCtx, cancel := withServiceTimeout(ctx)
 	defer cancel()
 
-	resp, err := headscale.GlobalClient.Service.ExpireNode(queryCtx, &v1.ExpireNodeRequest{
+	nodeResp, err := client.GetNode(queryCtx, &v1.GetNodeRequest{
+		NodeId: nodeID,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get node from Headscale: %w", err)
+	}
+	if err := ensureActorCanAccessNode(actorUserID, nodeResp.Node); err != nil {
+		return nil, err
+	}
+
+	resp, err := client.ExpireNode(queryCtx, &v1.ExpireNodeRequest{
 		NodeId: nodeID,
 	})
 	if err != nil {
@@ -308,11 +375,25 @@ func (s *headscaleService) SetMachineTagsWithContext(ctx context.Context, actorU
 	if err := RequirePermission(actorUserID, "headscale:machine:tags"); err != nil {
 		return nil, err
 	}
+	client, err := headscaleServiceClient()
+	if err != nil {
+		return nil, err
+	}
 
 	queryCtx, cancel := withServiceTimeout(ctx)
 	defer cancel()
 
-	resp, err := headscale.GlobalClient.Service.SetTags(queryCtx, &v1.SetTagsRequest{
+	nodeResp, err := client.GetNode(queryCtx, &v1.GetNodeRequest{
+		NodeId: nodeID,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get node from Headscale: %w", err)
+	}
+	if err := ensureActorCanAccessNode(actorUserID, nodeResp.Node); err != nil {
+		return nil, err
+	}
+
+	resp, err := client.SetTags(queryCtx, &v1.SetTagsRequest{
 		NodeId: nodeID,
 		Tags:   tags,
 	})
@@ -332,11 +413,15 @@ func (s *headscaleService) CreateUserWithContext(ctx context.Context, actorUserI
 	if err := RequirePermission(actorUserID, "headscale:user:create"); err != nil {
 		return nil, err
 	}
+	client, err := headscaleServiceClient()
+	if err != nil {
+		return nil, err
+	}
 
 	queryCtx, cancel := withServiceTimeout(ctx)
 	defer cancel()
 
-	resp, err := headscale.GlobalClient.Service.CreateUser(queryCtx, &v1.CreateUserRequest{
+	resp, err := client.CreateUser(queryCtx, &v1.CreateUserRequest{
 		Name: name,
 	})
 	if err != nil {
@@ -361,11 +446,15 @@ func (s *headscaleService) RenameUserWithContext(ctx context.Context, actorUserI
 	if err := RequirePermission(actorUserID, "headscale:user:update"); err != nil {
 		return nil, err
 	}
+	client, err := headscaleServiceClient()
+	if err != nil {
+		return nil, err
+	}
 
 	queryCtx, cancel := withServiceTimeout(ctx)
 	defer cancel()
 
-	resp, err := headscale.GlobalClient.Service.RenameUser(queryCtx, &v1.RenameUserRequest{
+	resp, err := client.RenameUser(queryCtx, &v1.RenameUserRequest{
 		OldId:   oldID,
 		NewName: newName,
 	})
@@ -388,11 +477,15 @@ func (s *headscaleService) DeleteUserWithContext(ctx context.Context, actorUserI
 	if err := RequirePermission(actorUserID, "headscale:user:delete"); err != nil {
 		return err
 	}
+	client, err := headscaleServiceClient()
+	if err != nil {
+		return err
+	}
 
 	queryCtx, cancel := withServiceTimeout(ctx)
 	defer cancel()
 
-	_, err := headscale.GlobalClient.Service.DeleteUser(queryCtx, &v1.DeleteUserRequest{
+	_, err = client.DeleteUser(queryCtx, &v1.DeleteUserRequest{
 		Id: id,
 	})
 	if err != nil {
@@ -410,11 +503,15 @@ func (s *headscaleService) GetPreAuthKeysWithContext(ctx context.Context, actorU
 	if err := RequirePermission(actorUserID, "headscale:preauthkey:list"); err != nil {
 		return nil, err
 	}
+	client, err := headscaleServiceClient()
+	if err != nil {
+		return nil, err
+	}
 
 	queryCtx, cancel := withServiceTimeout(ctx)
 	defer cancel()
 
-	resp, err := headscale.GlobalClient.Service.ListPreAuthKeys(queryCtx, &v1.ListPreAuthKeysRequest{
+	resp, err := client.ListPreAuthKeys(queryCtx, &v1.ListPreAuthKeysRequest{
 		User: userID,
 	})
 	if err != nil {
@@ -432,6 +529,10 @@ func (s *headscaleService) CreatePreAuthKeyWithContext(ctx context.Context, acto
 	if err := RequirePermission(actorUserID, "headscale:preauthkey:create"); err != nil {
 		return nil, err
 	}
+	client, err := headscaleServiceClient()
+	if err != nil {
+		return nil, err
+	}
 
 	queryCtx, cancel := withServiceTimeout(ctx)
 	defer cancel()
@@ -447,7 +548,7 @@ func (s *headscaleService) CreatePreAuthKeyWithContext(ctx context.Context, acto
 			req.Expiration = timestamppb.New(t)
 		}
 	}
-	resp, err := headscale.GlobalClient.Service.CreatePreAuthKey(queryCtx, req)
+	resp, err := client.CreatePreAuthKey(queryCtx, req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create pre-auth key: %w", err)
 	}
@@ -463,11 +564,15 @@ func (s *headscaleService) ExpirePreAuthKeyWithContext(ctx context.Context, acto
 	if err := RequirePermission(actorUserID, "headscale:preauthkey:expire"); err != nil {
 		return err
 	}
+	client, err := headscaleServiceClient()
+	if err != nil {
+		return err
+	}
 
 	queryCtx, cancel := withServiceTimeout(ctx)
 	defer cancel()
 
-	_, err := headscale.GlobalClient.Service.ExpirePreAuthKey(queryCtx, &v1.ExpirePreAuthKeyRequest{
+	_, err = client.ExpirePreAuthKey(queryCtx, &v1.ExpirePreAuthKeyRequest{
 		User: userID,
 		Key:  key,
 	})
@@ -483,9 +588,13 @@ func (s *headscaleService) SyncACL() error {
 }
 
 func (s *headscaleService) SyncACLWithContext(ctx context.Context) error {
+	client, err := headscaleServiceClient()
+	if err != nil {
+		return err
+	}
 	queryCtx, cancel := withServiceTimeout(ctx)
 	defer cancel()
-	resp, err := headscale.GlobalClient.Service.GetPolicy(queryCtx, &v1.GetPolicyRequest{})
+	resp, err := client.GetPolicy(queryCtx, &v1.GetPolicyRequest{})
 	if err != nil {
 		return err
 	}

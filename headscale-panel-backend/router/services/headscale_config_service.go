@@ -325,6 +325,13 @@ func (s *headscaleConfigService) IsOIDCAutoLinkAllowed(config *HeadscaleConfigFi
 	return ok
 }
 
+func (s *headscaleConfigService) HasOIDCAllowlist(config *HeadscaleConfigFile) bool {
+	if config == nil {
+		return false
+	}
+	return len(normalizeOIDCAllowlist(config.OIDC.AllowedUsers)) > 0 || len(normalizeOIDCAllowlist(config.OIDC.AllowedDomains)) > 0
+}
+
 func normalizeOIDCAllowlist(values []string) map[string]struct{} {
 	result := make(map[string]struct{}, len(values))
 	for _, value := range values {

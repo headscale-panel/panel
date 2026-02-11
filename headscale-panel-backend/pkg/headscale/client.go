@@ -22,14 +22,17 @@ func Init() error {
 	addr := conf.Conf.Headscale.GRPCAddr
 	apiKey := conf.Conf.Headscale.APIKey
 
-	perRPC := &apiKeyAuth{apiKey: apiKey}
+	perRPC := &apiKeyAuth{
+		apiKey:                 apiKey,
+		allowInsecureTransport: conf.Conf.Headscale.Insecure,
+	}
 
 	var creds credentials.TransportCredentials
 	if conf.Conf.Headscale.Insecure {
 		creds = insecure.NewCredentials()
 	} else {
 		creds = credentials.NewTLS(&tls.Config{
-			InsecureSkipVerify: true,
+			MinVersion: tls.VersionTLS12,
 		})
 	}
 
@@ -53,7 +56,8 @@ func Init() error {
 }
 
 type apiKeyAuth struct {
-	apiKey string
+	apiKey                 string
+	allowInsecureTransport bool
 }
 
 func (a *apiKeyAuth) GetRequestMetadata(ctx context.Context, uri ...string) (map[string]string, error) {
@@ -63,7 +67,7 @@ func (a *apiKeyAuth) GetRequestMetadata(ctx context.Context, uri ...string) (map
 }
 
 func (a *apiKeyAuth) RequireTransportSecurity() bool {
-	return false
+	return !a.allowInsecureTransport
 }
 
 func Close() {

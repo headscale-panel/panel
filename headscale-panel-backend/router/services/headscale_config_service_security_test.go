@@ -27,3 +27,48 @@ func TestIsOIDCAutoLinkAllowed_NoAllowlistDefaultsToAllow(t *testing.T) {
 		t.Fatalf("expected allow when allowlist is empty")
 	}
 }
+
+func TestHasOIDCAllowlist(t *testing.T) {
+	cases := []struct {
+		name string
+		cfg  *HeadscaleConfigFile
+		want bool
+	}{
+		{
+			name: "nil config",
+			cfg:  nil,
+			want: false,
+		},
+		{
+			name: "empty config",
+			cfg:  &HeadscaleConfigFile{},
+			want: false,
+		},
+		{
+			name: "user allowlist present",
+			cfg: &HeadscaleConfigFile{
+				OIDC: OIDCConfig{
+					AllowedUsers: []string{"alice@example.com"},
+				},
+			},
+			want: true,
+		},
+		{
+			name: "domain allowlist present",
+			cfg: &HeadscaleConfigFile{
+				OIDC: OIDCConfig{
+					AllowedDomains: []string{"example.com"},
+				},
+			},
+			want: true,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := HeadscaleConfigService.HasOIDCAllowlist(tc.cfg); got != tc.want {
+				t.Fatalf("HasOIDCAllowlist() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
