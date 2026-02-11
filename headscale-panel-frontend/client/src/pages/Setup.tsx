@@ -174,6 +174,8 @@ export default function Setup() {
   const [step, setStep] = useState<Step>('welcome');
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [setupWindowOpen, setSetupWindowOpen] = useState(true);
+  const [setupWindowDeadline, setSetupWindowDeadline] = useState('');
   const [adminForm, setAdminForm] = useState({ username: '', password: '', email: '' });
 
   const [hsCfg, setHsCfg] = useState<HeadscaleConfig>(defaultHeadscale);
@@ -195,6 +197,8 @@ export default function Setup() {
       if (data?.initialized) {
         setLocation('/login');
       } else {
+        setSetupWindowOpen(Boolean(data?.setup_window_open));
+        setSetupWindowDeadline(String(data?.setup_window_deadline || ''));
         setLoading(false);
       }
     }).catch(() => setLoading(false));
@@ -205,8 +209,13 @@ export default function Setup() {
     if (status?.initialized) {
       throw new Error('system already initialized');
     }
-    if (!status?.setup_window_open) {
-      throw new Error('setup window closed');
+    const windowOpen = Boolean(status?.setup_window_open);
+    const windowDeadline = String(status?.setup_window_deadline || '');
+    setSetupWindowOpen(windowOpen);
+    setSetupWindowDeadline(windowDeadline);
+
+    if (!windowOpen) {
+      throw new Error(windowDeadline ? `setup window closed (${windowDeadline})` : 'setup window closed');
     }
     const token = String(status?.deploy_token || '');
     if (!token) {
@@ -467,6 +476,13 @@ export default function Setup() {
 
               <Separator />
 
+              {!setupWindowOpen && (
+                <div className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-xs text-destructive">
+                  Setup deploy window is closed{setupWindowDeadline ? ` (deadline: ${setupWindowDeadline})` : ''}.
+                  Please restart backend service to reopen setup window.
+                </div>
+              )}
+
               {/* Command preview */}
               <div>
                 <div className="flex items-center gap-2 mb-2">
@@ -479,7 +495,8 @@ export default function Setup() {
               {/* Deploy button & log */}
               {hsDeployStatus === 'idle' && (
                 <Button className="w-full" size="lg"
-                  onClick={() => deployContainer('headscale', setHsDeployStatus, setHsDeployLog)}>
+                  onClick={() => deployContainer('headscale', setHsDeployStatus, setHsDeployLog)}
+                  disabled={!setupWindowOpen}>
                   <PlayCircle className="h-4 w-4 mr-2" />{t.setup.deployNow}
                 </Button>
               )}
@@ -568,6 +585,13 @@ export default function Setup() {
 
               <Separator />
 
+              {!setupWindowOpen && (
+                <div className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-xs text-destructive">
+                  Setup deploy window is closed{setupWindowDeadline ? ` (deadline: ${setupWindowDeadline})` : ''}.
+                  Please restart backend service to reopen setup window.
+                </div>
+              )}
+
               {/* Command preview */}
               <div>
                 <div className="flex items-center gap-2 mb-2">
@@ -580,7 +604,8 @@ export default function Setup() {
               {/* Deploy button & log */}
               {dpDeployStatus === 'idle' && (
                 <Button className="w-full" size="lg"
-                  onClick={() => deployContainer('derper', setDpDeployStatus, setDpDeployLog)}>
+                  onClick={() => deployContainer('derper', setDpDeployStatus, setDpDeployLog)}
+                  disabled={!setupWindowOpen}>
                   <PlayCircle className="h-4 w-4 mr-2" />{t.setup.deployNow}
                 </Button>
               )}

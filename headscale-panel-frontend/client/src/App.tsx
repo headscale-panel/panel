@@ -44,7 +44,7 @@ function AppRoutes() {
         </ProtectedRoute>
       </Route>
       <Route path="/users">
-        <ProtectedRoute>
+        <ProtectedRoute requireAdmin>
           <Users />
         </ProtectedRoute>
       </Route>
@@ -59,17 +59,17 @@ function AppRoutes() {
         </ProtectedRoute>
       </Route>
       <Route path="/resources">
-        <ProtectedRoute>
+        <ProtectedRoute requireAdmin>
           <Resources />
         </ProtectedRoute>
       </Route>
       <Route path="/acl">
-        <ProtectedRoute>
+        <ProtectedRoute requireAdmin>
           <ACL />
         </ProtectedRoute>
       </Route>
       <Route path="/metrics">
-        <ProtectedRoute>
+        <ProtectedRoute requireAdmin>
           <Metrics />
         </ProtectedRoute>
       </Route>
@@ -79,12 +79,12 @@ function AppRoutes() {
         </ProtectedRoute>
       </Route>
       <Route path="/server-control">
-        <ProtectedRoute>
+        <ProtectedRoute requireAdmin>
           <ServerControl />
         </ProtectedRoute>
       </Route>
       <Route path="/dns">
-        <ProtectedRoute>
+        <ProtectedRoute requireAdmin>
           <DNS />
         </ProtectedRoute>
       </Route>

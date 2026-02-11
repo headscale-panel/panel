@@ -43,12 +43,17 @@ export default function ProtectedRoute({ children, requireAdmin = false }: Prote
       return;
     }
 
-    if (requireAdmin && user?.role !== 'admin') {
+    // Wait until user profile is loaded before applying admin redirect.
+    if (requireAdmin && user && user.role !== 'admin') {
       setLocation('/');
     }
   }, [isAuthenticated, user, requireAdmin, setLocation]);
 
   if (!isAuthenticated) {
+    return null;
+  }
+
+  if (requireAdmin && !user) {
     return null;
   }
 
