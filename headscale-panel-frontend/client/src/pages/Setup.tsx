@@ -204,7 +204,7 @@ export default function Setup() {
     }).catch(() => setLoading(false));
   }, [setLocation]);
 
-  const fetchSetupDeployToken = useCallback(async (): Promise<string> => {
+  const fetchSetupToken = useCallback(async (purpose: 'init' | 'deploy'): Promise<string> => {
     const status = await api.get('/setup/status') as any;
     if (status?.initialized) {
       throw new Error('system already initialized');
@@ -217,12 +217,21 @@ export default function Setup() {
     if (!windowOpen) {
       throw new Error(windowDeadline ? `setup window closed (${windowDeadline})` : 'setup window closed');
     }
-    const token = String(status?.deploy_token || '');
+    const tokenField = purpose === 'init' ? 'init_token' : 'deploy_token';
+    const token = String(status?.[tokenField] || '');
     if (!token) {
-      throw new Error('missing setup deploy token');
+      throw new Error(`missing setup ${purpose} token`);
     }
     return token;
   }, []);
+
+  const fetchSetupInitToken = useCallback(async (): Promise<string> => {
+    return fetchSetupToken('init');
+  }, [fetchSetupToken]);
+
+  const fetchSetupDeployToken = useCallback(async (): Promise<string> => {
+    return fetchSetupToken('deploy');
+  }, [fetchSetupToken]);
 
   const handleCreateAdmin = async () => {
     if (!adminForm.username || !adminForm.password) {
@@ -231,7 +240,13 @@ export default function Setup() {
     }
     setSubmitting(true);
     try {
-      await api.post('/setup/init', adminForm);
+      const setupInitToken = await fetchSetupInitToken();
+      await api.post('/setup/init', adminForm, {
+        headers: {
+          'X-Setup-Init-Token': setupInitToken,
+          'X-Setup-Token': setupInitToken,
+        },
+      });
       toast.success(t.setup.adminCreated);
       setStep('headscale');
     } catch (e: any) {
