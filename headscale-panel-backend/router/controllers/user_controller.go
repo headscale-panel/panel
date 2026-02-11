@@ -35,7 +35,7 @@ func (u *UserController) Login(c *gin.Context) {
 		return
 	}
 
-	token, user, err := services.UserService.Login(&req)
+	token, user, err := services.UserService.LoginWithContext(c.Request.Context(), &req)
 	if err != nil {
 		serializer.Fail(c, err)
 		return
@@ -65,14 +65,18 @@ func (u *UserController) Login(c *gin.Context) {
 }
 
 func (u *UserController) GetInfo(c *gin.Context) {
-	userID, _ := c.Get("userID")
-	user, err := services.UserService.GetUserInfo(userID.(uint))
+	userID := c.GetUint("userID")
+	if userID == 0 {
+		serializer.Fail(c, serializer.ErrInvalidToken)
+		return
+	}
+	user, err := services.UserService.GetUserInfo(userID)
 	if err != nil {
 		serializer.Fail(c, err)
 		return
 	}
 
-	permissions, err := services.UserService.GetUserPermissions(userID.(uint))
+	permissions, err := services.UserService.GetUserPermissions(userID)
 	if err != nil {
 		serializer.Fail(c, err)
 		return

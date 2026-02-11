@@ -59,7 +59,7 @@ func (s *dnsService) Create(actorUserID uint, req *CreateDNSRecordRequest) (*mod
 	}
 
 	if err := model.DB.Create(&record).Error; err != nil {
-		return nil, serializer.ErrDatabase
+		return nil, serializer.ErrDatabase.WithError(err)
 	}
 
 	// 同步到文件
@@ -73,6 +73,17 @@ func (s *dnsService) Create(actorUserID uint, req *CreateDNSRecordRequest) (*mod
 func (s *dnsService) List(actorUserID uint, req *ListDNSRecordRequest) ([]model.DNSRecord, int64, error) {
 	if err := RequirePermission(actorUserID, "dns:record:list"); err != nil {
 		return nil, 0, err
+	}
+
+	// Normalize pagination parameters
+	if req.Page <= 0 {
+		req.Page = 1
+	}
+	if req.PageSize <= 0 {
+		req.PageSize = 10
+	}
+	if req.PageSize > 200 {
+		req.PageSize = 200
 	}
 
 	var records []model.DNSRecord
@@ -90,12 +101,12 @@ func (s *dnsService) List(actorUserID uint, req *ListDNSRecordRequest) ([]model.
 	}
 
 	if err := query.Count(&total).Error; err != nil {
-		return nil, 0, serializer.ErrDatabase
+		return nil, 0, serializer.ErrDatabase.WithError(err)
 	}
 
 	offset := (req.Page - 1) * req.PageSize
 	if err := query.Offset(offset).Limit(req.PageSize).Order("created_at DESC").Find(&records).Error; err != nil {
-		return nil, 0, serializer.ErrDatabase
+		return nil, 0, serializer.ErrDatabase.WithError(err)
 	}
 
 	return records, total, nil
@@ -108,7 +119,7 @@ func (s *dnsService) Update(actorUserID uint, req *UpdateDNSRecordRequest) (*mod
 
 	var record model.DNSRecord
 	if err := model.DB.First(&record, req.ID).Error; err != nil {
-		return nil, serializer.ErrDatabase
+		return nil, serializer.ErrDatabase.WithError(err)
 	}
 
 	updates := map[string]interface{}{}
@@ -127,7 +138,7 @@ func (s *dnsService) Update(actorUserID uint, req *UpdateDNSRecordRequest) (*mod
 
 	if len(updates) > 0 {
 		if err := model.DB.Model(&record).Updates(updates).Error; err != nil {
-			return nil, serializer.ErrDatabase
+			return nil, serializer.ErrDatabase.WithError(err)
 		}
 	}
 
@@ -150,7 +161,7 @@ func (s *dnsService) Delete(actorUserID uint, id uint) error {
 	}
 
 	if err := model.DB.Delete(&model.DNSRecord{}, id).Error; err != nil {
-		return serializer.ErrDatabase
+		return serializer.ErrDatabase.WithError(err)
 	}
 
 	// 同步到文件
@@ -164,7 +175,7 @@ func (s *dnsService) Get(actorUserID uint, id uint) (*model.DNSRecord, error) {
 
 	var record model.DNSRecord
 	if err := model.DB.First(&record, id).Error; err != nil {
-		return nil, serializer.ErrDatabase
+		return nil, serializer.ErrDatabase.WithError(err)
 	}
 	return &record, nil
 }
@@ -177,7 +188,7 @@ func (s *dnsService) SyncToFile(actorUserID uint) error {
 
 	var records []model.DNSRecord
 	if err := model.DB.Find(&records).Error; err != nil {
-		return serializer.ErrDatabase
+		return serializer.ErrDatabase.WithError(err)
 	}
 
 	extraRecords := make([]ExtraRecord, len(records))

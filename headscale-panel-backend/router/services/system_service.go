@@ -68,8 +68,18 @@ func (s *systemService) UpdateUser(actorUserID uint, id uint, email string, grou
 		return serializer.ErrDatabase.WithError(err)
 	}
 
+	// Only admins can change group assignments; prevent privilege escalation
+	if groupID != 0 && groupID != user.GroupID {
+		if err := RequireAdmin(actorUserID); err != nil {
+			return serializer.NewError(serializer.CodeNoPermissionErr, "only admins can change user group", nil)
+		}
+		if actorUserID == id {
+			return serializer.NewError(serializer.CodeParamErr, "cannot change your own group", nil)
+		}
+		user.GroupID = groupID
+	}
+
 	user.Email = email
-	user.GroupID = groupID // 0 means ungrouped
 	user.DisplayName = displayName
 	if password != "" {
 		user.Password = password
@@ -84,6 +94,10 @@ func (s *systemService) UpdateUser(actorUserID uint, id uint, email string, grou
 func (s *systemService) DeleteUser(actorUserID uint, id uint) error {
 	if err := RequirePermission(actorUserID, "system:user:delete"); err != nil {
 		return err
+	}
+
+	if actorUserID == id {
+		return serializer.NewError(serializer.CodeParamErr, "cannot delete your own account", nil)
 	}
 
 	if err := model.DB.Delete(&model.User{}, id).Error; err != nil {

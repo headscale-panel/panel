@@ -5,13 +5,15 @@ import (
 	"encoding/json"
 	"errors"
 	"headscale-panel/model"
-	"headscale-panel/pkg/headscale"
 	v1 "headscale-panel/pkg/proto/headscale/v1"
 	"headscale-panel/pkg/utils/serializer"
 	"strings"
+	"sync"
 )
 
-type aclService struct{}
+type aclService struct {
+	mu sync.Mutex
+}
 
 var ACLService = &aclService{}
 
@@ -25,10 +27,15 @@ func (s *aclService) GetPolicyWithContext(ctx context.Context, actorUserID uint)
 		return nil, err
 	}
 
+	client, err := headscaleServiceClient()
+	if err != nil {
+		return nil, err
+	}
+
 	queryCtx, cancel := withServiceTimeout(ctx)
 	defer cancel()
 
-	resp, err := headscale.GlobalClient.Service.GetPolicy(queryCtx, &v1.GetPolicyRequest{})
+	resp, err := client.GetPolicy(queryCtx, &v1.GetPolicyRequest{})
 	if err != nil {
 		return nil, err
 	}
@@ -51,6 +58,11 @@ func (s *aclService) UpdatePolicyWithContext(ctx context.Context, actorUserID ui
 		return err
 	}
 
+	client, err := headscaleServiceClient()
+	if err != nil {
+		return err
+	}
+
 	policyBytes, err := json.MarshalIndent(policy, "", "  ")
 	if err != nil {
 		return err
@@ -59,7 +71,7 @@ func (s *aclService) UpdatePolicyWithContext(ctx context.Context, actorUserID ui
 	queryCtx, cancel := withServiceTimeout(ctx)
 	defer cancel()
 
-	_, err = headscale.GlobalClient.Service.SetPolicy(queryCtx, &v1.SetPolicyRequest{
+	_, err = client.SetPolicy(queryCtx, &v1.SetPolicyRequest{
 		Policy: string(policyBytes),
 	})
 	return err
@@ -75,10 +87,15 @@ func (s *aclService) SetPolicyRawWithContext(ctx context.Context, actorUserID ui
 		return err
 	}
 
+	client, err := headscaleServiceClient()
+	if err != nil {
+		return err
+	}
+
 	queryCtx, cancel := withServiceTimeout(ctx)
 	defer cancel()
 
-	_, err := headscale.GlobalClient.Service.SetPolicy(queryCtx, &v1.SetPolicyRequest{
+	_, err = client.SetPolicy(queryCtx, &v1.SetPolicyRequest{
 		Policy: policyJSON,
 	})
 	return err
@@ -182,6 +199,9 @@ func (s *aclService) SyncResourcesAsHostsWithContext(ctx context.Context, actorU
 		return err
 	}
 
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	// Get current policy
 	policy, err := s.GetPolicyWithContext(ctx, actorUserID)
 	if err != nil {
@@ -215,6 +235,9 @@ func (s *aclService) AddRuleWithContext(ctx context.Context, actorUserID uint, n
 		return err
 	}
 
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	policy, err := s.GetPolicyWithContext(ctx, actorUserID)
 	if err != nil {
 		return err
@@ -243,6 +266,9 @@ func (s *aclService) UpdateRuleByIndexWithContext(ctx context.Context, actorUser
 	if err := RequirePermission(actorUserID, "headscale:acl:update"); err != nil {
 		return err
 	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
 	policy, err := s.GetPolicyWithContext(ctx, actorUserID)
 	if err != nil {
@@ -276,6 +302,9 @@ func (s *aclService) DeleteRuleByIndexWithContext(ctx context.Context, actorUser
 		return err
 	}
 
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	policy, err := s.GetPolicyWithContext(ctx, actorUserID)
 	if err != nil {
 		return err
@@ -299,6 +328,9 @@ func (s *aclService) GenerateWithContext(ctx context.Context, actorUserID uint) 
 	if err := RequirePermission(actorUserID, "headscale:acl:generate"); err != nil {
 		return nil, err
 	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
 	// Get current policy from Headscale
 	policy, err := s.GetPolicyWithContext(ctx, actorUserID)

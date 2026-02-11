@@ -3,7 +3,6 @@ package services
 import (
 	"context"
 	"headscale-panel/model"
-	"headscale-panel/pkg/headscale"
 	v1 "headscale-panel/pkg/proto/headscale/v1"
 )
 
@@ -46,10 +45,15 @@ func (s *dashboardService) GetOverviewWithContext(ctx context.Context, actorUser
 		return nil, err
 	}
 
+	client, err := headscaleServiceClient()
+	if err != nil {
+		return nil, err
+	}
+
 	queryCtx, cancel := withServiceTimeout(ctx)
 	defer cancel()
 
-	nodesResp, err := headscale.GlobalClient.Service.ListNodes(queryCtx, &v1.ListNodesRequest{})
+	nodesResp, err := client.ListNodes(queryCtx, &v1.ListNodesRequest{})
 	if err != nil {
 		return nil, err
 	}
@@ -87,10 +91,15 @@ func (s *dashboardService) GetTopologyWithContext(ctx context.Context, actorUser
 		Children: []*DashboardTopologyNode{},
 	}
 
+	client, err := headscaleServiceClient()
+	if err != nil {
+		return nil, err
+	}
+
 	queryCtx, cancel := withServiceTimeout(ctx)
 	defer cancel()
 
-	nodesResp, err := headscale.GlobalClient.Service.ListNodes(queryCtx, &v1.ListNodesRequest{})
+	nodesResp, err := client.ListNodes(queryCtx, &v1.ListNodesRequest{})
 	if err != nil {
 		return nil, err
 	}

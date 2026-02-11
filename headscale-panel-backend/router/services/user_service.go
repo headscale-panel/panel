@@ -108,6 +108,10 @@ func (s *userService) RegisterWithContext(ctx context.Context, req *RegisterRequ
 }
 
 func (s *userService) Login(req *LoginRequest) (string, *model.User, error) {
+	return s.LoginWithContext(context.Background(), req)
+}
+
+func (s *userService) LoginWithContext(ctx context.Context, req *LoginRequest) (string, *model.User, error) {
 	var user model.User
 	if err := model.DB.Preload("Group").Where("username = ?", req.Username).First(&user).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -166,6 +170,10 @@ func (s *userService) GenerateTOTP(userID uint) (string, string, error) {
 		return "", "", serializer.ErrUserNotFound
 	}
 
+	if user.TOTPEnabled {
+		return "", "", serializer.NewError(serializer.CodeParamErr, "TOTP is already enabled; disable it first", nil)
+	}
+
 	key, err := totp.Generate(totp.GenerateOpts{
 		Issuer:      "HeadscalePanel",
 		AccountName: user.Username,
@@ -174,8 +182,8 @@ func (s *userService) GenerateTOTP(userID uint) (string, string, error) {
 		return "", "", err
 	}
 
-	// Save secret temporarily or return it to be saved after verification?
-	// Usually we save it but mark as disabled until verified.
+	// Persist the secret in pending state; TOTPEnabled stays false until
+	// the user proves possession of the code via EnableTOTP.
 	user.TOTPSecret = key.Secret()
 	if err := model.DB.Save(&user).Error; err != nil {
 		return "", "", serializer.ErrDatabase.WithError(err)

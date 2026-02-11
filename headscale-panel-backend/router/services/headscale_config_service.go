@@ -346,7 +346,7 @@ func normalizeOIDCAllowlist(values []string) map[string]struct{} {
 
 func (s *headscaleConfigService) defaultConfig() *HeadscaleConfigFile {
 	return &HeadscaleConfigFile{
-		ServerURL:                      "https://hs.bokro.cn",
+		ServerURL:                      "https://headscale.example.com",
 		ListenAddr:                     "0.0.0.0:8080",
 		MetricsListenAddr:              "0.0.0.0:9090",
 		GRPCListenAddr:                 "0.0.0.0:50443",
@@ -356,7 +356,7 @@ func (s *headscaleConfigService) defaultConfig() *HeadscaleConfigFile {
 			PrivateKeyPath: "./noise_private.key",
 		},
 		Prefixes: PrefixesConfig{
-			V4:         "100.100.0.0/16",
+			V4:         "100.64.0.0/10",
 			V6:         "fd7a:115c:a1e0::/48",
 			Allocation: "sequential",
 		},
@@ -368,7 +368,7 @@ func (s *headscaleConfigService) defaultConfig() *HeadscaleConfigFile {
 				RegionName: "Headscale Embedded DERP",
 				STUNAddr:   "0.0.0.0:3478",
 			},
-			URLs:              []string{},
+			URLs:              []string{"https://controlplane.tailscale.com/derpmap/default"},
 			Paths:             []string{"/etc/headscale/derp.yaml"},
 			AutoUpdateEnabled: true,
 			UpdateFrequency:   "24h",
@@ -381,11 +381,11 @@ func (s *headscaleConfigService) defaultConfig() *HeadscaleConfigFile {
 			},
 		},
 		DNS: DNSConfig{
-			BaseDomain:       "bokro.network",
+			BaseDomain:       "example.com",
 			MagicDNS:         true,
 			OverrideLocalDNS: true,
 			Nameservers: NameserversConfig{
-				Global: []string{"223.5.5.5", "114.114.114.114", "2400:3200::1", "2400:3200:baba::1"},
+				Global: []string{"1.1.1.1", "8.8.8.8"},
 			},
 			ExtraRecordsPath: "/var/lib/headscale/extra-records.json",
 		},
@@ -394,8 +394,8 @@ func (s *headscaleConfigService) defaultConfig() *HeadscaleConfigFile {
 		},
 		OIDC: OIDCConfig{
 			OnlyStartIfOIDCIsAvailable: false,
-			Issuer:                     "https://auth.bokro.cn",
-			Scope:                      []string{"openid", "profile", "email", "groups"},
+			Issuer:                     "",
+			Scope:                      []string{"openid", "profile", "email"},
 			EmailVerifiedRequired:      true,
 			PKCE: PKCEConfig{
 				Enabled: false,

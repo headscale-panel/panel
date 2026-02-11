@@ -3,13 +3,17 @@ package services
 import (
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/x509"
 	"encoding/base64"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"headscale-panel/model"
 	"headscale-panel/pkg/conf"
 	"math/big"
 	"net/url"
+	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -38,10 +42,10 @@ var OIDCService = &oidcService{
 }
 
 func (s *oidcService) Init() error {
-	// Generate RSA key for signing tokens
-	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	// Load or generate persisted RSA signing key
+	key, err := s.loadOrCreatePrivateKey()
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to initialize OIDC signing key: %w", err)
 	}
 	s.privateKey = key
 
@@ -438,4 +442,62 @@ func validateRedirectURI(uri string) (string, error) {
 		return "", fmt.Errorf("redirect URI must be absolute: %s", normalized)
 	}
 	return normalized, nil
+}
+
+// signingKeyPath returns the file path for the persisted OIDC signing key.
+// It stores the key alongside the application database so backups naturally
+// include both data and key material.
+func (s *oidcService) signingKeyPath() string {
+	dbPath := conf.Conf.DB.Path
+	if dbPath == "" {
+		dbPath = "headscale-panel.db"
+	}
+	return filepath.Join(filepath.Dir(dbPath), "oidc_signing_key.pem")
+}
+
+// loadOrCreatePrivateKey loads an existing RSA private key from disk, or
+// generates a new 2048-bit key and persists it in PEM format with 0600
+// permissions. This ensures OIDC tokens remain valid across restarts.
+func (s *oidcService) loadOrCreatePrivateKey() (*rsa.PrivateKey, error) {
+	keyPath := s.signingKeyPath()
+
+	// Try loading existing key
+	pemData, err := os.ReadFile(keyPath)
+	if err == nil {
+		block, _ := pem.Decode(pemData)
+		if block == nil {
+			return nil, fmt.Errorf("invalid PEM data in %s", keyPath)
+		}
+		key, err := x509.ParsePKCS1PrivateKey(block.Bytes)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse private key from %s: %w", keyPath, err)
+		}
+		return key, nil
+	}
+
+	if !os.IsNotExist(err) {
+		return nil, fmt.Errorf("failed to read signing key %s: %w", keyPath, err)
+	}
+
+	// Generate new key
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate RSA key: %w", err)
+	}
+
+	// Ensure directory exists
+	if err := os.MkdirAll(filepath.Dir(keyPath), 0700); err != nil {
+		return nil, fmt.Errorf("failed to create key directory: %w", err)
+	}
+
+	// Persist
+	pemBlock := &pem.Block{
+		Type:  "RSA PRIVATE KEY",
+		Bytes: x509.MarshalPKCS1PrivateKey(key),
+	}
+	if err := os.WriteFile(keyPath, pem.EncodeToMemory(pemBlock), 0600); err != nil {
+		return nil, fmt.Errorf("failed to write signing key to %s: %w", keyPath, err)
+	}
+
+	return key, nil
 }

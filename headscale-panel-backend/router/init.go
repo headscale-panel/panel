@@ -1,23 +1,32 @@
 package router
 
 import (
+	"headscale-panel/pkg/conf"
 	"headscale-panel/router/controllers"
 	"headscale-panel/router/middleware"
 	"headscale-panel/router/services"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
+	"time"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+	"github.com/sirupsen/logrus"
 )
 
 func InitRouter() *gin.Engine {
 	r := gin.Default()
 
-	config := cors.DefaultConfig()
-	config.AllowAllOrigins = true
-	config.AddAllowHeaders("Authorization")
-	r.Use(cors.New(config))
+	corsConfig := cors.DefaultConfig()
+	if conf.Conf.System.Release {
+		corsConfig.AllowOrigins = buildAllowedOrigins()
+	} else {
+		corsConfig.AllowAllOrigins = true
+	}
+	corsConfig.AddAllowHeaders("Authorization", "X-Setup-Bootstrap-Token", "X-Setup-Init-Token", "X-Setup-Deploy-Token", "X-Setup-Token", "X-Bootstrap-Token")
+	r.Use(cors.New(corsConfig))
 
 	// Serve compiled frontend files (SPA with fallback to index.html)
 	frontendDir := os.Getenv("FRONTEND_DIR")
@@ -32,9 +41,10 @@ func InitRouter() *gin.Engine {
 
 	api := r.Group("/api/v1")
 	{
+		authLimiter := middleware.NewRateLimiter(20, 1*time.Minute)
 		userController := controllers.NewUserController()
-		api.POST("/register", userController.Register)
-		api.POST("/login", userController.Login)
+		api.POST("/register", middleware.RateLimitMiddleware(authLimiter), userController.Register)
+		api.POST("/login", middleware.RateLimitMiddleware(authLimiter), userController.Login)
 
 		setupController := controllers.NewSetupController()
 		api.GET("/setup/status", setupController.GetStatus)
@@ -146,7 +156,10 @@ func InitRouter() *gin.Engine {
 			auth.POST("/connection/generate", middleware.PermissionMiddleware("headscale:machine:list"), connectionController.GenerateConnectionCommands)
 			auth.POST("/connection/pre-auth-key", middleware.PermissionMiddleware("headscale:preauthkey:create"), connectionController.GeneratePreAuthKey)
 
-			dockerService, _ := services.NewDockerService()
+			dockerService, dErr := services.NewDockerService()
+			if dErr != nil {
+				logrus.WithError(dErr).Warn("Docker service not available, docker endpoints will return errors")
+			}
 			dockerController := controllers.NewDockerController(dockerService)
 			auth.GET("/docker/containers", middleware.AdminOnlyMiddleware(), middleware.PermissionMiddleware("docker:container:list"), dockerController.ListContainers)
 			auth.GET("/docker/containers/:name", middleware.AdminOnlyMiddleware(), middleware.PermissionMiddleware("docker:container:get"), dockerController.GetContainer)
@@ -186,4 +199,27 @@ func InitRouter() *gin.Engine {
 	}
 
 	return r
+}
+
+func buildAllowedOrigins() []string {
+	origins := make(map[string]struct{})
+
+	baseURL := strings.TrimSpace(conf.Conf.System.BaseURL)
+	if baseURL != "" {
+		if parsed, err := url.Parse(baseURL); err == nil && parsed.Scheme != "" && parsed.Host != "" {
+			origins[parsed.Scheme+"://"+parsed.Host] = struct{}{}
+		}
+	}
+
+	// Common local development origins
+	origins["http://localhost:5173"] = struct{}{}
+	origins["http://localhost:3000"] = struct{}{}
+	origins["http://127.0.0.1:5173"] = struct{}{}
+	origins["http://127.0.0.1:3000"] = struct{}{}
+
+	result := make([]string, 0, len(origins))
+	for origin := range origins {
+		result = append(result, origin)
+	}
+	return result
 }
