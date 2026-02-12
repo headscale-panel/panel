@@ -48,8 +48,13 @@ func InitRouter() *gin.Engine {
 
 		setupController := controllers.NewSetupController()
 		api.GET("/setup/status", setupController.GetStatus)
+		api.POST("/setup/preflight", setupController.Preflight)
 		api.POST("/setup/init", setupController.Initialize)
 		api.POST("/setup/deploy", setupController.DeployContainer)
+		api.POST("/setup/reverse-proxy/config", setupController.GenerateReverseProxyConfig)
+		api.POST("/setup/compose", setupController.GenerateComposeFile)
+		api.POST("/setup/connectivity-check", setupController.ConnectivityCheck)
+		api.POST("/setup/generate-compose", setupController.GenerateComposeFromConfig)
 
 		authController := controllers.NewAuthController()
 		api.GET("/auth/oidc-status", authController.OIDCStatus)

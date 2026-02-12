@@ -70,7 +70,11 @@ var (
 				"/var/run/headscale",
 				"/etc/localtime",
 			),
-			AllowedEnvKeys:  map[string]struct{}{},
+			AllowedEnvKeys: setOf(
+				"HEADSCALE_DATABASE_TYPE",
+				"HEADSCALE_DATABASE_URL",
+				"HEADSCALE_API_KEY",
+			),
 			AllowedCommands: [][]string{{"serve"}},
 		},
 		"headscale/headscale:latest": {
@@ -87,7 +91,11 @@ var (
 				"/var/run/headscale",
 				"/etc/localtime",
 			),
-			AllowedEnvKeys:  map[string]struct{}{},
+			AllowedEnvKeys: setOf(
+				"HEADSCALE_DATABASE_TYPE",
+				"HEADSCALE_DATABASE_URL",
+				"HEADSCALE_API_KEY",
+			),
 			AllowedCommands: [][]string{{"serve"}},
 		},
 		"fredliang/derper": {
@@ -103,10 +111,63 @@ var (
 			AllowedEnvKeys: setOf(
 				"DERP_DOMAIN",
 				"DERP_ADDR",
+				"DERP_REGION_CODE",
 				"DERP_CERT_MODE",
 				"DERP_VERIFY_CLIENTS",
 			),
 			AllowedCommands: nil,
+		},
+		"nginx:1.27-alpine": {
+			AllowedContainerPorts: setOf("80/tcp", "443/tcp"),
+			AllowedHostPathPrefix: []string{
+				"./deploy/nginx/conf.d",
+				"./deploy/nginx/certbot/www",
+				"./deploy/nginx/certbot/conf",
+				"/usr/share/zoneinfo/",
+			},
+			AllowedContainerPaths: setOf(
+				"/etc/nginx/conf.d",
+				"/var/www/certbot",
+				"/etc/letsencrypt",
+				"/etc/localtime",
+			),
+			AllowedEnvKeys:  map[string]struct{}{},
+			AllowedCommands: nil,
+		},
+		"nginx:stable-alpine": {
+			AllowedContainerPorts: setOf("80/tcp", "443/tcp"),
+			AllowedHostPathPrefix: []string{
+				"./deploy/nginx/conf.d",
+				"./deploy/nginx/certbot/www",
+				"./deploy/nginx/certbot/conf",
+				"/usr/share/zoneinfo/",
+			},
+			AllowedContainerPaths: setOf(
+				"/etc/nginx/conf.d",
+				"/var/www/certbot",
+				"/etc/letsencrypt",
+				"/etc/localtime",
+			),
+			AllowedEnvKeys:  map[string]struct{}{},
+			AllowedCommands: nil,
+		},
+		"certbot/certbot:latest": {
+			AllowedContainerPorts: map[string]struct{}{},
+			AllowedHostPathPrefix: []string{
+				"./deploy/nginx/certbot/www",
+				"./deploy/nginx/certbot/conf",
+			},
+			AllowedContainerPaths: setOf(
+				"/var/www/certbot",
+				"/etc/letsencrypt",
+			),
+			AllowedEnvKeys: setOf(
+				"CERTBOT_EMAIL",
+				"CERTBOT_DOMAINS",
+			),
+			AllowedCommands: [][]string{
+				{"sh", "-c", "trap exit TERM; while :; do certbot certonly --webroot -w /var/www/certbot --agree-tos --no-eff-email --email \"$CERTBOT_EMAIL\" -d \"$CERTBOT_DOMAINS\" || true; certbot renew --webroot -w /var/www/certbot --quiet || true; sleep 12h & wait $!; done"},
+			},
 		},
 	}
 )

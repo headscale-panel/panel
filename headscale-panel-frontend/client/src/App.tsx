@@ -1,7 +1,7 @@
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/NotFound";
-import { Route, Switch, Router as WouterRouter } from "wouter";
+import { Route, Switch, Router as WouterRouter, useLocation } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import ProtectedRoute from "./components/ProtectedRoute";
 import { ThemeProvider } from "./contexts/ThemeContext";
@@ -20,9 +20,64 @@ import ServerControl from "./pages/ServerControl";
 import Register from "./pages/Register";
 import DNS from "./pages/DNS";
 import Setup from "./pages/Setup";
+import SetupWelcome from "./pages/SetupWelcome";
+import api from "./lib/api";
+import { useState, useEffect, type ReactNode } from "react";
+import { Loader2 } from "lucide-react";
 
 /** All frontend routes live under /panel */
 const BASE = '/panel';
+
+/**
+ * Guard: if the system has not been initialized yet, redirect every page
+ * (except /setup itself) to /setup.
+ */
+function SetupGuard({ children }: { children: ReactNode }) {
+  const [checking, setChecking] = useState(true);
+  const [initialized, setInitialized] = useState(true); // assume true to avoid flash
+  const [location, setLocation] = useLocation();
+
+  useEffect(() => {
+    api
+      .get('/setup/status')
+      .then((data: unknown) => {
+        const d = data as Record<string, unknown>;
+        const init = Boolean(d?.initialized);
+        setInitialized(init);
+        if (!init && !location.startsWith('/setup')) {
+          setLocation('/setup');
+        }
+      })
+      .catch(() => {
+        // On error assume initialized so users aren't blocked
+        setInitialized(true);
+      })
+      .finally(() => setChecking(false));
+    // Run once on mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (!checking && !initialized && !location.startsWith('/setup')) {
+      setLocation('/setup');
+    }
+  }, [checking, initialized, location, setLocation]);
+
+  if (checking) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+        <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+      </div>
+    );
+  }
+
+  // If not initialized and not on /setup, render nothing (redirect pending)
+  if (!initialized && !location.startsWith('/setup')) {
+    return null;
+  }
+
+  return <>{children}</>;
+}
 
 function AppRoutes() {
   return (
@@ -30,7 +85,8 @@ function AppRoutes() {
       {/* Public routes */}
       <Route path="/login" component={Login} />
       <Route path="/register" component={Register} />
-      <Route path="/setup" component={Setup} />
+      <Route path="/setup" component={SetupWelcome} />
+      <Route path="/setup/wizard" component={Setup} />
 
       {/* Protected routes */}
       <Route path="/">
@@ -107,7 +163,9 @@ function App() {
           <TooltipProvider>
             <Toaster />
             <WouterRouter base={BASE}>
-              <AppRoutes />
+              <SetupGuard>
+                <AppRoutes />
+              </SetupGuard>
             </WouterRouter>
           </TooltipProvider>
         </ThemeProvider>
