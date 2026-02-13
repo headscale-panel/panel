@@ -1739,13 +1739,13 @@ services:
 		if enableSSL && sslMode != "none" {
 			sb.WriteString("      - \"443:443\"\n")
 		}
-		sb.WriteString(fmt.Sprintf(`    volumes:
+		sb.WriteString(`    volumes:
       - ../nginx/conf.d:/etc/nginx/conf.d
-`
+`)
 		if enableSSL && sslMode != "none" {
 			sb.WriteString(`      - ../nginx/certbot/www:/var/www/certbot
       - ../nginx/certbot/conf:/etc/letsencrypt
-`)`)
+`)
 		}
 		sb.WriteString(fmt.Sprintf(`      - /usr/share/zoneinfo/%s:/etc/localtime:ro
     networks:
