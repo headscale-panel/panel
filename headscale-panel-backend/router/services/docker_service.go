@@ -672,6 +672,24 @@ func (s *DockerService) deployContainer(ctx context.Context, req DeployRequest) 
 			return progress, err
 		}
 
+		// Create host directory if it doesn't exist (for bind mounts)
+		if !filepath.IsAbs(hostPath) {
+			// Convert relative path to absolute
+			absPath, err := filepath.Abs(hostPath)
+			if err != nil {
+				return progress, serializer.WrapFileSystemError(err, "resolve absolute path", hostPath)
+			}
+			hostPath = absPath
+		}
+
+		// Only create directory for local paths (not system paths like /usr/share)
+		if !strings.HasPrefix(hostPath, "/usr/") && !strings.HasPrefix(hostPath, "/etc/") && !strings.HasPrefix(hostPath, "/var/run/") {
+			if err := os.MkdirAll(hostPath, 0755); err != nil {
+				return progress, serializer.WrapFileSystemError(err, "create mount directory", hostPath)
+			}
+			progress = append(progress, DeployProgress{Step: "prepare", Message: fmt.Sprintf("Created mount directory: %s", hostPath)})
+		}
+
 		mounts = append(mounts, mount.Mount{
 			Type:     mount.TypeBind,
 			Source:   hostPath,
@@ -940,16 +958,6 @@ func normalizeHostMountPath(hostPath string) (string, error) {
 		return "", serializer.NewError(serializer.CodeParamErr, "path traversal is not allowed", nil)
 	}
 
-	// Docker bind mounts require absolute paths.
-	// Convert relative paths (e.g. "./headscale/config" → "/app/data/headscale/config")
-	if !filepath.IsAbs(cleaned) {
-		cwd, err := os.Getwd()
-		if err != nil {
-			return "", serializer.NewError(serializer.CodeInternalError, "failed to resolve working directory", err)
-		}
-		cleaned = filepath.Join(cwd, cleaned)
-	}
-
 	return cleaned, nil
 }
 
@@ -1005,21 +1013,23 @@ func isDangerousHostPath(path string) bool {
 }
 
 func isAllowedHostPath(path string, prefixes []string) bool {
+	normalizedPath := normalizeRelativePath(path)
+
 	for _, allowedPrefix := range prefixes {
 		prefix := strings.TrimSpace(allowedPrefix)
 		if prefix == "" {
 			continue
 		}
-
-		// Resolve the allowed prefix to absolute (same logic as normalizeHostMountPath)
-		cleanPrefix := filepath.Clean(prefix)
-		if !filepath.IsAbs(cleanPrefix) {
-			if cwd, err := os.Getwd(); err == nil {
-				cleanPrefix = filepath.Join(cwd, cleanPrefix)
+		if strings.HasPrefix(prefix, "/") {
+			cleanPrefix := filepath.Clean(prefix)
+			if path == cleanPrefix || strings.HasPrefix(path, cleanPrefix+"/") {
+				return true
 			}
+			continue
 		}
 
-		if path == cleanPrefix || strings.HasPrefix(path, cleanPrefix+"/") {
+		normalizedPrefix := normalizeRelativePath(prefix)
+		if normalizedPath == normalizedPrefix || strings.HasPrefix(normalizedPath, normalizedPrefix+"/") {
 			return true
 		}
 	}
