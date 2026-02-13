@@ -1396,23 +1396,36 @@ func validateProxyHost(value string) (string, error) {
 }
 
 func renderNginxConfig(panelDomain, headscaleHost, derpHost string, backendPort, headscalePort, derpPort int, enableSSL bool, sslCertMode string) string {
+	// Panel is served at headscaleHost/panel, headscale API at headscaleHost/
+	// When panelDomain == headscaleHost (or panelDomain is empty), use a single merged server block.
+	// The common proxy headers block:
+	proxyHeaders := `      proxy_set_header Host $host;
+      proxy_set_header X-Real-IP $remote_addr;
+      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+      proxy_set_header REMOTE-HOST $remote_addr;
+      proxy_set_header Upgrade $http_upgrade;
+      proxy_set_header Connection "upgrade";
+      proxy_set_header X-Forwarded-Proto $scheme;
+      proxy_http_version 1.1;
+      add_header X-Cache $upstream_cache_status;
+      add_header Strict-Transport-Security "max-age=31536000";
+      add_header Cache-Control no-cache;`
+
 	mode := normalizeSSLCertMode(sslCertMode, false)
+
 	if !enableSSL || mode == "none" {
 		var derpBlock string
-		if derpHost != "" && derpPort > 0 {
+		if derpHost != "" && derpPort > 0 && derpHost != headscaleHost {
 			derpBlock = fmt.Sprintf(`
 server {
     listen 80;
     server_name %s;
     location / {
       proxy_pass http://127.0.0.1:%d;
-      proxy_set_header Host $host;
-      proxy_set_header X-Real-IP $remote_addr;
-      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-      proxy_set_header X-Forwarded-Proto $scheme;
+%s
     }
 }
-`, derpHost, derpPort)
+`, derpHost, derpPort, proxyHeaders)
 		}
 
 		return fmt.Sprintf(`map $http_upgrade $connection_upgrade {
@@ -1423,34 +1436,24 @@ server {
 server {
     listen 80;
     server_name %s;
-    location / {
-      proxy_pass http://127.0.0.1:%d;
-      proxy_http_version 1.1;
-      proxy_set_header Upgrade $http_upgrade;
-      proxy_set_header Connection $connection_upgrade;
-      proxy_set_header Host $host;
-      proxy_set_header X-Real-IP $remote_addr;
-      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-      proxy_set_header X-Forwarded-Proto $scheme;
-    }
-}
 
-server {
-    listen 80;
-    server_name %s;
+    # Headscale API
     location / {
       proxy_pass http://127.0.0.1:%d;
-      proxy_set_header Host $host;
-      proxy_set_header X-Real-IP $remote_addr;
-      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-      proxy_set_header X-Forwarded-Proto $scheme;
+%s
+    }
+
+    # Panel
+    location /panel {
+      proxy_pass http://127.0.0.1:%d;
+%s
     }
 }
 %s
 # NOTE:
 # 1) DERP STUN is UDP and cannot be proxied by this HTTP server block.
 # 2) Open/forward UDP directly on your edge proxy/L4 load balancer.
-`, panelDomain, backendPort, headscaleHost, headscalePort, derpBlock)
+`, headscaleHost, headscalePort, proxyHeaders, backendPort, proxyHeaders, derpBlock)
 	}
 
 	certRoot := "/etc/letsencrypt/live"
@@ -1463,7 +1466,7 @@ server {
 	}
 
 	var derpHTTPServer, derpHTTPSServer string
-	if derpHost != "" && derpPort > 0 {
+	if derpHost != "" && derpPort > 0 && derpHost != headscaleHost {
 		derpHTTPServer = fmt.Sprintf(`
 server {
     listen 80;
@@ -1482,13 +1485,10 @@ server {
     ssl_certificate_key %s/%s/privkey.pem;
     location / {
       proxy_pass http://127.0.0.1:%d;
-      proxy_set_header Host $host;
-      proxy_set_header X-Real-IP $remote_addr;
-      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-      proxy_set_header X-Forwarded-Proto $scheme;
+%s
     }
 }
-`, derpHost, certRoot, derpHost, certRoot, derpHost, derpPort)
+`, derpHost, certRoot, derpHost, certRoot, derpHost, derpPort, proxyHeaders)
 	}
 
 	return fmt.Sprintf(`map $http_upgrade $connection_upgrade {
@@ -1509,37 +1509,17 @@ server {
     server_name %s;
     ssl_certificate %s/%s/fullchain.pem;
     ssl_certificate_key %s/%s/privkey.pem;
+
+    # Headscale API
     location / {
       proxy_pass http://127.0.0.1:%d;
-      proxy_http_version 1.1;
-      proxy_set_header Upgrade $http_upgrade;
-      proxy_set_header Connection $connection_upgrade;
-      proxy_set_header Host $host;
-      proxy_set_header X-Real-IP $remote_addr;
-      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-      proxy_set_header X-Forwarded-Proto $scheme;
+%s
     }
-}
 
-server {
-    listen 80;
-    server_name %s;
-%s    location / {
-      return 301 https://$host$request_uri;
-    }
-}
-
-server {
-    listen 443 ssl http2;
-    server_name %s;
-    ssl_certificate %s/%s/fullchain.pem;
-    ssl_certificate_key %s/%s/privkey.pem;
-    location / {
+    # Panel
+    location /panel {
       proxy_pass http://127.0.0.1:%d;
-      proxy_set_header Host $host;
-      proxy_set_header X-Real-IP $remote_addr;
-      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-      proxy_set_header X-Forwarded-Proto $scheme;
+%s
     }
 }
 %s
@@ -1547,8 +1527,10 @@ server {
 # NOTE:
 # 1) DERP STUN is UDP and cannot be proxied by this HTTP server block.
 # 2) Open/forward UDP directly on your edge proxy/L4 load balancer.
-`, panelDomain, acmeLocation, panelDomain, certRoot, panelDomain, certRoot, panelDomain, backendPort,
-		headscaleHost, acmeLocation, headscaleHost, certRoot, headscaleHost, certRoot, headscaleHost, headscalePort,
+`, headscaleHost, acmeLocation,
+		headscaleHost, certRoot, headscaleHost, certRoot, headscaleHost,
+		headscalePort, proxyHeaders,
+		backendPort, proxyHeaders,
 		derpHTTPServer, derpHTTPSServer)
 }
 

@@ -1954,7 +1954,25 @@ grpc_allow_insecure: true`}</pre>
                 </div>
 
                 <div>
-                  <p className="text-xs text-muted-foreground mb-2">{t.setup.targetCompose}</p>
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-xs text-muted-foreground">{t.setup.targetCompose}</p>
+                    <div className="flex gap-1.5">
+                      <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => copyToClipboard(composePreview)}>
+                        <Copy className="h-3 w-3 mr-1" />{t.setup.copyCompose}
+                      </Button>
+                      <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => {
+                        const blob = new Blob([composePreview], { type: 'text/yaml' });
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = 'docker-compose.yml';
+                        a.click();
+                        URL.revokeObjectURL(url);
+                      }}>
+                        <Download className="h-3 w-3 mr-1" />{t.setup.downloadCompose}
+                      </Button>
+                    </div>
+                  </div>
                   <CommandPreview code={composePreview} onCopy={copyToClipboard} />
                 </div>
 

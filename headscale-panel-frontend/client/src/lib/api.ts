@@ -26,13 +26,15 @@ api.interceptors.request.use(
 
 api.interceptors.response.use(
   (response) => {
-    const { code, msg, data } = response.data;
+    const { code, msg, data, error: rawError } = response.data;
     if (code === 0) {
       return data;
     }
     // Business error - show backend error message
     const t = getTranslations();
-    const message = msg || t.common.errors.requestFailed;
+    // Include raw error detail when available (non-release mode)
+    const detail = rawError ? `${msg || t.common.errors.requestFailed}: ${rawError}` : (msg || t.common.errors.requestFailed);
+    const message = detail;
     // Suppress toast for setup endpoints - errors are handled inline by the setup wizard
     const isSetupRequest = response.config?.url?.includes('/setup/');
     if (code === 401) {
