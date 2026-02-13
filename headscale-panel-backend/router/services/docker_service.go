@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"headscale-panel/pkg/utils/serializer"
 	"io"
-	"os"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -121,7 +120,9 @@ var (
 		"nginx:1.27-alpine": {
 			AllowedContainerPorts: setOf("80/tcp", "443/tcp"),
 			AllowedHostPathPrefix: []string{
-				"./deploy/nginx/",
+				"./deploy/nginx/conf.d",
+				"./deploy/nginx/certbot/www",
+				"./deploy/nginx/certbot/conf",
 				"/usr/share/zoneinfo/",
 			},
 			AllowedContainerPaths: setOf(
@@ -136,7 +137,9 @@ var (
 		"nginx:stable-alpine": {
 			AllowedContainerPorts: setOf("80/tcp", "443/tcp"),
 			AllowedHostPathPrefix: []string{
-				"./deploy/nginx/",
+				"./deploy/nginx/conf.d",
+				"./deploy/nginx/certbot/www",
+				"./deploy/nginx/certbot/conf",
 				"/usr/share/zoneinfo/",
 			},
 			AllowedContainerPaths: setOf(
@@ -151,7 +154,8 @@ var (
 		"certbot/certbot:latest": {
 			AllowedContainerPorts: map[string]struct{}{},
 			AllowedHostPathPrefix: []string{
-				"./deploy/nginx/",
+				"./deploy/nginx/certbot/www",
+				"./deploy/nginx/certbot/conf",
 			},
 			AllowedContainerPaths: setOf(
 				"/var/www/certbot",
@@ -661,54 +665,15 @@ func (s *DockerService) deployContainer(ctx context.Context, req DeployRequest) 
 	}
 
 	mounts := make([]mount.Mount, 0, len(req.Volumes))
-	hostDataDir := strings.TrimSpace(os.Getenv("HOST_DATA_DIR"))
 	for hostPath, containerPath := range req.Volumes {
 		targetPath, readOnly, err := parseContainerMountTarget(containerPath)
 		if err != nil {
 			return progress, err
 		}
 
-		// Resolve the actual host path for Docker daemon.
-		// When Panel runs inside a container, relative paths like "./headscale/config"
-		// resolve to container-internal paths (e.g. /app/headscale/config), but Docker
-		// daemon needs the real host path. HOST_DATA_DIR tells us where the data dir
-		// is on the host machine.
-		actualHostPath := hostPath
-		if filepath.IsAbs(hostPath) {
-			// Already absolute (e.g. /usr/share/zoneinfo/..., /var/run/tailscale)
-			actualHostPath = hostPath
-		} else if hostDataDir != "" {
-			// Relative path + HOST_DATA_DIR configured: map to host filesystem
-			// e.g. "./headscale/config" -> "/root/headscale-panel/data/headscale/config"
-			cleanRel := filepath.Clean(hostPath)
-			cleanRel = strings.TrimPrefix(cleanRel, "./")
-			cleanRel = strings.TrimPrefix(cleanRel, ".")
-			actualHostPath = filepath.Join(hostDataDir, cleanRel)
-		} else {
-			// No HOST_DATA_DIR, resolve to absolute path (works when Panel runs on host)
-			absPath, err := filepath.Abs(hostPath)
-			if err != nil {
-				return progress, serializer.WrapFileSystemError(err, "resolve absolute path", hostPath)
-			}
-			actualHostPath = absPath
-		}
-
-		// Create directory on the local filesystem (inside container) so config files can be written.
-		// For the Docker daemon, the actual mount source is actualHostPath on the host.
-		if !strings.HasPrefix(actualHostPath, "/usr/") && !strings.HasPrefix(actualHostPath, "/var/run/") {
-			// Also create the directory inside the container if it's a mapped path
-			if hostDataDir != "" && !filepath.IsAbs(hostPath) {
-				localPath, _ := filepath.Abs(hostPath)
-				if localPath != "" {
-					_ = os.MkdirAll(localPath, 0755)
-				}
-			}
-			progress = append(progress, DeployProgress{Step: "prepare", Message: fmt.Sprintf("Mount: %s -> %s", actualHostPath, targetPath)})
-		}
-
 		mounts = append(mounts, mount.Mount{
 			Type:     mount.TypeBind,
-			Source:   actualHostPath,
+			Source:   hostPath,
 			Target:   targetPath,
 			ReadOnly: readOnly,
 		})
@@ -726,6 +691,13 @@ func (s *DockerService) deployContainer(ctx context.Context, req DeployRequest) 
 		Env:          env,
 		ExposedPorts: exposedPorts,
 		Cmd:          req.Command,
+	}
+
+	// If command starts with "sh" or "/bin/sh", override entrypoint to ensure
+	// the command is executed as a shell script, not passed to the image's default entrypoint.
+	if len(req.Command) > 0 && (req.Command[0] == "sh" || req.Command[0] == "/bin/sh") {
+		containerConfig.Entrypoint = []string{req.Command[0]}
+		containerConfig.Cmd = req.Command[1:]
 	}
 
 	hostConfig := &container.HostConfig{

@@ -1517,8 +1517,9 @@ server {
 	}
 
 	// Initial config: HTTP-only with ACME challenge support.
-	// After certificates are obtained, user should run the provided enable-ssl script.
-	return fmt.Sprintf(`map $http_upgrade $connection_upgrade {
+	// After certificates are obtained, user should enable SSL config.
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf(`map $http_upgrade $connection_upgrade {
     default upgrade;
     '' close;
 }
@@ -1540,19 +1541,30 @@ server {
 %s
     }
 }
-%s
-%s
+`, headscaleHost, acmeLocation,
+		headscalePort, proxyHeaders,
+		backendPort, proxyHeaders))
+
+	sb.WriteString(derpHTTPServer)
+	sb.WriteString(derpHTTPSServer)
+
+	// Append SSL activation instructions as comments (no format specifiers)
+	sb.WriteString(fmt.Sprintf(`
 # =============================================================================
 # SSL CONFIGURATION (activate after certificates are obtained)
 # =============================================================================
 # After certbot has obtained certificates, replace the HTTP server block above
-# with the following configuration and reload nginx (docker exec headscale-nginx nginx -s reload):
+# with the following configuration and reload nginx:
+#   docker exec headscale-nginx nginx -s reload
 #
 # server {
 #     listen 80;
 #     server_name %s;
-# %s    location / {
-#       return 301 https://$$host$$request_uri;
+#     location ^~ /.well-known/acme-challenge/ {
+#         root /var/www/certbot;
+#     }
+#     location / {
+#         return 301 https://$host$request_uri;
 #     }
 # }
 #
@@ -1563,25 +1575,23 @@ server {
 #     ssl_certificate_key %s/%s/privkey.pem;
 #
 #     location / {
-#       proxy_pass http://127.0.0.1:%d;
+#         proxy_pass http://127.0.0.1:%d;
 #     }
 #
 #     location /panel {
-#       proxy_pass http://127.0.0.1:%d;
+#         proxy_pass http://127.0.0.1:%d;
 #     }
 # }
 # =============================================================================
 # NOTE:
 # 1) DERP STUN is UDP and cannot be proxied by this HTTP server block.
 # 2) Open/forward UDP directly on your edge proxy/L4 load balancer.
-`, headscaleHost, acmeLocation,
-		headscalePort, proxyHeaders,
-		backendPort, proxyHeaders,
-		derpHTTPServer, derpHTTPSServer,
-		headscaleHost, acmeLocation,
+`, headscaleHost,
 		headscaleHost, certRoot, headscaleHost, certRoot, headscaleHost,
 		headscalePort,
-		backendPort)
+		backendPort))
+
+	return sb.String()
 }
 
 func normalizeSSLCertMode(mode string, deployCertbot bool) string {
@@ -1786,7 +1796,7 @@ services:
 			if derpHost = strings.TrimSpace(derpHost); derpHost != "" {
 				domains = append(domains, derpHost)
 			}
-			sb.WriteString(fmt.Sprintf(`
+				sb.WriteString(fmt.Sprintf(`
   certbot:
     image: certbot/certbot:latest
     container_name: %s
@@ -1838,6 +1848,14 @@ func writeSetupControllerConfigFiles(headscaleConfigPath, headscaleConfigContent
 	extraRecordsPath := filepath.Join(headscaleDataDir, "extra-records.json")
 	if _, err := os.Stat(extraRecordsPath); os.IsNotExist(err) {
 		if err := os.WriteFile(extraRecordsPath, []byte("[]"), 0644); err != nil {
+			return err
+		}
+	}
+
+	// Create policy.json required by Headscale (policy.path)
+	policyPath := filepath.Join(headscaleDataDir, "policy.json")
+	if _, err := os.Stat(policyPath); os.IsNotExist(err) {
+		if err := os.WriteFile(policyPath, []byte("{}"), 0644); err != nil {
 			return err
 		}
 	}
