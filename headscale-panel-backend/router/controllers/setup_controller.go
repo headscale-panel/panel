@@ -749,7 +749,7 @@ func (s *SetupController) GenerateReverseProxyConfig(ctx *gin.Context) {
 	}
 
 	nginxConfig := renderNginxConfig(panelDomain, headscaleHost, derpHost, backendPort, headscalePort, derpPort, enableSSL, sslCertMode)
-	configPath := filepath.Clean("./data/nginx/conf.d/headscale-panel.setup.conf")
+	configPath := filepath.Clean("./deploy/nginx/conf.d/headscale-panel.setup.conf")
 
 	writeFile := true
 	if req.WriteFile != nil {
@@ -762,13 +762,13 @@ func (s *SetupController) GenerateReverseProxyConfig(ctx *gin.Context) {
 			return
 		}
 		if enableSSL {
-			if err := os.MkdirAll(filepath.Clean("./data/nginx/certbot/www"), 0755); err != nil {
-				wrappedErr := serializer.WrapFileSystemError(err, "create certbot webroot directory", "./data/nginx/certbot/www")
+			if err := os.MkdirAll(filepath.Clean("./deploy/nginx/certbot/www"), 0755); err != nil {
+				wrappedErr := serializer.WrapFileSystemError(err, "create certbot webroot directory", "./deploy/nginx/certbot/www")
 				serializer.Fail(ctx, serializer.NewError(serializer.CodeFileSystemError, wrappedErr.Error(), err))
 				return
 			}
-			if err := os.MkdirAll(filepath.Clean("./data/nginx/certbot/conf"), 0755); err != nil {
-				wrappedErr := serializer.WrapFileSystemError(err, "create certbot cert directory", "./data/nginx/certbot/conf")
+			if err := os.MkdirAll(filepath.Clean("./deploy/nginx/certbot/conf"), 0755); err != nil {
+				wrappedErr := serializer.WrapFileSystemError(err, "create certbot cert directory", "./deploy/nginx/certbot/conf")
 				serializer.Fail(ctx, serializer.NewError(serializer.CodeFileSystemError, wrappedErr.Error(), err))
 				return
 			}
@@ -848,9 +848,9 @@ func (s *SetupController) GenerateComposeFile(ctx *gin.Context) {
 		writeFile = *req.WriteFile
 	}
 
-	configPath := filepath.Clean("./data/deploy/docker-compose.setup.yaml")
-	headscaleConfigPath := filepath.Clean("./data/headscale/config/config.yaml")
-	derpConfigPath := filepath.Clean("./data/headscale/config/derp.yaml")
+	configPath := filepath.Clean("./deploy/docker-compose.setup.yaml")
+	headscaleConfigPath := filepath.Clean("./headscale/config/config.yaml")
+	derpConfigPath := filepath.Clean("./headscale/config/derp.yaml")
 	serverURL := ""
 	if h := strings.TrimSpace(req.HeadscaleHost); h != "" {
 		serverURL = "https://" + h
@@ -862,15 +862,18 @@ func (s *SetupController) GenerateComposeFile(ctx *gin.Context) {
 	}
 	derpConfigContent := renderSetupDERPConfig(derpDomain)
 	if writeFile {
-		// Create all necessary directories
+		// Create all necessary directories (these are container-internal paths)
+		// The Panel container has volumes mapped:
+		//   host: ./data/deploy    -> container: /app/deploy
+		//   host: ./data/headscale -> container: /app/headscale
 		directoriesToCreate := []string{
-			filepath.Dir(configPath),                  // data/deploy
-			"./data/headscale/config",                // headscale config
-			"./data/headscale/data",                  // headscale data
-			"./data/headscale/run",                   // headscale run
-			"./data/nginx/conf.d",                    // nginx config
-			"./data/nginx/certbot/www",               // certbot webroot
-			"./data/nginx/certbot/conf",              // certbot conf
+			filepath.Dir(configPath),           // deploy/
+			"./headscale/config",              // headscale config
+			"./headscale/data",               // headscale data
+			"./headscale/run",                // headscale run
+			"./deploy/nginx/conf.d",          // nginx config
+			"./deploy/nginx/certbot/www",     // certbot webroot
+			"./deploy/nginx/certbot/conf",    // certbot conf
 		}
 		for _, dir := range directoriesToCreate {
 			if err := os.MkdirAll(dir, 0755); err != nil {
@@ -1635,10 +1638,10 @@ func renderComposeFromConfig(
 		hsContainerName = "headscale-server"
 	}
 	if strings.TrimSpace(hsConfigPath) == "" {
-		hsConfigPath = "../headscale/config"
+		hsConfigPath = "./headscale/config"
 	}
 	if strings.TrimSpace(hsDataPath) == "" {
-		hsDataPath = "../headscale/data"
+		hsDataPath = "./headscale/data"
 	}
 	if strings.TrimSpace(hsTimezone) == "" {
 		hsTimezone = "Asia/Shanghai"
@@ -1687,7 +1690,7 @@ services:
     volumes:
       - %s:/etc/headscale
       - %s:/var/lib/headscale
-      - ../headscale/run:/var/run/headscale
+      - ./headscale/run:/var/run/headscale
       - /usr/share/zoneinfo/%s:/etc/localtime:ro
     ports:
       - "%s:8080"
@@ -1740,11 +1743,11 @@ services:
 			sb.WriteString("      - \"443:443\"\n")
 		}
 		sb.WriteString(`    volumes:
-      - ../nginx/conf.d:/etc/nginx/conf.d
+      - ./deploy/nginx/conf.d:/etc/nginx/conf.d
 `)
 		if enableSSL && sslMode != "none" {
-			sb.WriteString(`      - ../nginx/certbot/www:/var/www/certbot
-      - ../nginx/certbot/conf:/etc/letsencrypt
+			sb.WriteString(`      - ./deploy/nginx/certbot/www:/var/www/certbot
+      - ./deploy/nginx/certbot/conf:/etc/letsencrypt
 `)
 		}
 		sb.WriteString(fmt.Sprintf(`      - /usr/share/zoneinfo/%s:/etc/localtime:ro
@@ -1785,8 +1788,8 @@ services:
           sleep 12h & wait $!;
         done
     volumes:
-      - ../nginx/certbot/www:/var/www/certbot
-      - ../nginx/certbot/conf:/etc/letsencrypt
+      - ./deploy/nginx/certbot/www:/var/www/certbot
+      - ./deploy/nginx/certbot/conf:/etc/letsencrypt
     networks:
       - private
 `, certbotContainerName, strings.TrimSpace(certbotEmail), strings.Join(domains, ",")))
