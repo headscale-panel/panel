@@ -33,7 +33,10 @@ api.interceptors.response.use(
     // Business error - show backend error message
     const t = getTranslations();
     // Include raw error detail when available (non-release mode)
-    const detail = rawError ? `${msg || t.common.errors.requestFailed}: ${rawError}` : (msg || t.common.errors.requestFailed);
+    let detail = msg || t.common.errors.requestFailed;
+    if (rawError) {
+      detail = `${detail}\n\n${rawError}`;
+    }
     const message = detail;
     // Suppress toast for setup endpoints - errors are handled inline by the setup wizard
     const isSetupRequest = response.config?.url?.includes('/setup/');
@@ -49,7 +52,12 @@ api.interceptors.response.use(
       }
     } else {
       if (!isSetupRequest) {
-        toast.error(message);
+        // For server errors (50000), show more detailed message
+        if (code === 50000) {
+          toast.error(message, { duration: 6000 });
+        } else {
+          toast.error(message);
+        }
       }
     }
     return Promise.reject(new Error(message));

@@ -503,7 +503,7 @@ func (s *DockerService) PullImageWithContext(ctx context.Context, imageName stri
 
 	reader, err := s.client.ImagePull(queryCtx, imageName, image.PullOptions{})
 	if err != nil {
-		return nil, fmt.Errorf("failed to pull image %s: %w", imageName, err)
+		return nil, serializer.WrapDockerError(err, fmt.Sprintf("pull image %s", imageName))
 	}
 	defer reader.Close()
 
@@ -712,7 +712,7 @@ func (s *DockerService) deployContainer(ctx context.Context, req DeployRequest) 
 
 	resp, err := s.client.ContainerCreate(queryCtx, containerConfig, hostConfig, networkingConfig, nil, req.ContainerName)
 	if err != nil {
-		return progress, fmt.Errorf("failed to create container: %w", err)
+		return progress, serializer.WrapDockerError(err, fmt.Sprintf("create container %s", req.ContainerName))
 	}
 
 	progress = append(progress, DeployProgress{Step: "create", Message: fmt.Sprintf("Container created: %s", resp.ID[:12])})
@@ -720,7 +720,7 @@ func (s *DockerService) deployContainer(ctx context.Context, req DeployRequest) 
 	// 5. Start container
 	progress = append(progress, DeployProgress{Step: "start", Message: "Starting container ..."})
 	if err := s.client.ContainerStart(queryCtx, resp.ID, container.StartOptions{}); err != nil {
-		return progress, fmt.Errorf("failed to start container: %w", err)
+		return progress, serializer.WrapDockerError(err, fmt.Sprintf("start container %s", req.ContainerName))
 	}
 
 	progress = append(progress, DeployProgress{Step: "done", Message: fmt.Sprintf("Container %s is running", req.ContainerName)})

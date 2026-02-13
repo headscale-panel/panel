@@ -757,21 +757,25 @@ func (s *SetupController) GenerateReverseProxyConfig(ctx *gin.Context) {
 	}
 	if writeFile {
 		if err := os.MkdirAll(filepath.Dir(configPath), 0755); err != nil {
-			serializer.Fail(ctx, serializer.NewError(serializer.CodeFileSystemError, "failed to create nginx config directory", err))
+			wrappedErr := serializer.WrapFileSystemError(err, "create nginx config directory", filepath.Dir(configPath))
+			serializer.Fail(ctx, serializer.NewError(serializer.CodeFileSystemError, wrappedErr.Error(), err))
 			return
 		}
 		if enableSSL {
 			if err := os.MkdirAll(filepath.Clean("./deploy/nginx/certbot/www"), 0755); err != nil {
-				serializer.Fail(ctx, serializer.NewError(serializer.CodeFileSystemError, "failed to create certbot webroot directory", err))
+				wrappedErr := serializer.WrapFileSystemError(err, "create certbot webroot directory", "./deploy/nginx/certbot/www")
+				serializer.Fail(ctx, serializer.NewError(serializer.CodeFileSystemError, wrappedErr.Error(), err))
 				return
 			}
 			if err := os.MkdirAll(filepath.Clean("./deploy/nginx/certbot/conf"), 0755); err != nil {
-				serializer.Fail(ctx, serializer.NewError(serializer.CodeFileSystemError, "failed to create certbot cert directory", err))
+				wrappedErr := serializer.WrapFileSystemError(err, "create certbot cert directory", "./deploy/nginx/certbot/conf")
+				serializer.Fail(ctx, serializer.NewError(serializer.CodeFileSystemError, wrappedErr.Error(), err))
 				return
 			}
 		}
 		if err := os.WriteFile(configPath, []byte(nginxConfig), 0644); err != nil {
-			serializer.Fail(ctx, serializer.NewError(serializer.CodeFileSystemError, "failed to write nginx config file", err))
+			wrappedErr := serializer.WrapFileSystemError(err, "write nginx config file", configPath)
+			serializer.Fail(ctx, serializer.NewError(serializer.CodeFileSystemError, wrappedErr.Error(), err))
 			return
 		}
 	}
@@ -859,15 +863,18 @@ func (s *SetupController) GenerateComposeFile(ctx *gin.Context) {
 	derpConfigContent := renderSetupDERPConfig(derpDomain)
 	if writeFile {
 		if err := os.MkdirAll(filepath.Dir(configPath), 0755); err != nil {
-			serializer.Fail(ctx, serializer.NewError(serializer.CodeFileSystemError, "failed to create compose directory", err))
+			wrappedErr := serializer.WrapFileSystemError(err, "create compose directory", filepath.Dir(configPath))
+			serializer.Fail(ctx, serializer.NewError(serializer.CodeFileSystemError, wrappedErr.Error(), err))
 			return
 		}
 		if err := os.WriteFile(configPath, []byte(content), 0644); err != nil {
-			serializer.Fail(ctx, serializer.NewError(serializer.CodeFileSystemError, "failed to write compose file", err))
+			wrappedErr := serializer.WrapFileSystemError(err, "write compose file", configPath)
+			serializer.Fail(ctx, serializer.NewError(serializer.CodeFileSystemError, wrappedErr.Error(), err))
 			return
 		}
 		if err := writeSetupControllerConfigFiles(headscaleConfigPath, headscaleConfigContent, derpConfigPath, derpConfigContent); err != nil {
-			serializer.Fail(ctx, serializer.NewError(serializer.CodeFileSystemError, "failed to write headscale config files", err))
+			wrappedErr := serializer.WrapFileSystemError(err, "write headscale config files", headscaleConfigPath)
+			serializer.Fail(ctx, serializer.NewError(serializer.CodeFileSystemError, wrappedErr.Error(), err))
 			return
 		}
 	}
@@ -933,15 +940,25 @@ func (s *SetupController) DeployContainer(ctx *gin.Context) {
 
 	dockerService, err := services.NewDockerService()
 	if err != nil {
-		serializer.Fail(ctx, serializer.NewError(serializer.CodeInternalError, "Docker service not available", err))
+		// Enhanced error message for Docker connection issues
+		errorMsg := fmt.Sprintf("Docker service not available: %v. Please ensure Docker is running and accessible.", err)
+		serializer.Fail(ctx, serializer.NewError(serializer.CodeInternalError, errorMsg, err))
 		return
 	}
 
+	// Log deployment attempt
+	fmt.Printf("[Setup] Deploying container: image=%s, name=%s\n", req.Image, req.ContainerName)
+
 	progress, err := dockerService.DeployContainerUnsafeWithContext(ctx.Request.Context(), req)
 	if err != nil {
-		serializer.Fail(ctx, serializer.NewError(serializer.CodeInternalError, "container deployment failed", err))
+		// Enhanced error message for deployment failures
+		errorMsg := fmt.Sprintf("Container deployment failed for %s: %v", req.ContainerName, err)
+		fmt.Printf("[Setup] ERROR: %s\n", errorMsg)
+		serializer.Fail(ctx, serializer.NewError(serializer.CodeInternalError, errorMsg, err))
 		return
 	}
+
+	fmt.Printf("[Setup] Container deployed successfully: %s\n", req.ContainerName)
 
 	serializer.Success(ctx, gin.H{
 		"progress": progress,

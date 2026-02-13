@@ -222,7 +222,27 @@ function generateRandomToken(length: number): string {
 
 function getErrorMessage(err: unknown, fallback: string): string {
   if (err instanceof Error && err.message) {
-    return err.message;
+    // Extract more detailed error messages
+    const message = err.message;
+    
+    // Check for common error patterns and provide helpful hints
+    if (message.includes('Docker') || message.includes('docker')) {
+      return message + '\n\n💡 提示：请确保 Docker 服务正在运行，并且当前用户有权限访问 Docker。';
+    }
+    if (message.includes('permission denied') || message.includes('Permission denied')) {
+      return message + '\n\n💡 提示：请检查文件系统权限，确保应用有读写权限。';
+    }
+    if (message.includes('port') && message.includes('already')) {
+      return message + '\n\n💡 提示：端口已被占用，请检查是否有其他服务正在使用该端口。';
+    }
+    if (message.includes('timeout') || message.includes('Timeout')) {
+      return message + '\n\n💡 提示：网络超时，请检查网络连接或稍后重试。';
+    }
+    if (message.includes('not found') || message.includes('Not found')) {
+      return message + '\n\n💡 提示：资源未找到，请检查配置是否正确。';
+    }
+    
+    return message;
   }
   return fallback;
 }
@@ -2210,9 +2230,21 @@ grpc_allow_insecure: true`}</pre>
             <p className="text-base font-semibold text-foreground mt-5">{phaseText || t.setup.provisioning}</p>
             <p className="text-xs text-muted-foreground mt-1 uppercase tracking-wider">{provisionPhase}</p>
             {deployLog.length > 0 && (
-              <div className="mt-3 text-left max-h-28 overflow-auto border rounded p-2 text-[11px] text-muted-foreground bg-muted/50">
-                {deployLog.slice(-5).map((line, idx) => (
-                  <div key={`${line.step}-${idx}`} className="truncate">{line.message}</div>
+              <div className="mt-3 text-left max-h-40 overflow-auto border rounded p-2 text-[11px] bg-muted/50">
+                {deployLog.slice(-8).map((line, idx) => (
+                  <div 
+                    key={`${line.step}-${idx}`} 
+                    className={`py-0.5 ${
+                      line.error || line.step === 'error' 
+                        ? 'text-red-600 dark:text-red-400 font-medium' 
+                        : line.step === 'done' 
+                        ? 'text-green-600 dark:text-green-400' 
+                        : 'text-muted-foreground'
+                    }`}
+                  >
+                    {line.error || line.step === 'error' ? '❌ ' : line.step === 'done' ? '✅ ' : '▸ '}
+                    {line.message}
+                  </div>
                 ))}
               </div>
             )}

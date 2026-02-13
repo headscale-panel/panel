@@ -221,3 +221,121 @@ func (e *AggregateError) Aggregate() error {
 
 	return NewError(CodeBatchOperationNotFullyCompleted, msg, e)
 }
+
+// EnhanceError 增强错误消息，添加上下文信息
+func EnhanceError(err error, context string) AppError {
+	if err == nil {
+		return NewError(CodeInternalError, context, nil)
+	}
+
+	// 如果已经是 AppError，保持原有的错误码
+	var appErr AppError
+	if errors.As(err, &appErr) {
+		return NewError(appErr.Code, fmt.Sprintf("%s: %s", context, appErr.Msg), appErr.RawError)
+	}
+
+	// 根据错误内容判断错误类型
+	errMsg := err.Error()
+	code := CodeInternalError
+
+	if containsAny(errMsg, "connection refused", "dial") {
+		code = CodeNetworkError
+	} else if containsAny(errMsg, "permission denied", "access denied") {
+		code = CodeFileSystemError
+	} else if containsAny(errMsg, "no such file", "not found") {
+		code = CodeFileSystemError
+	} else if containsAny(errMsg, "timeout", "deadline exceeded") {
+		code = CodeNetworkError
+	} else if containsAny(errMsg, "already exists", "already in use", "conflict") {
+		code = CodeConflict
+	}
+
+	return NewError(code, fmt.Sprintf("%s: %s", context, errMsg), err)
+}
+
+// WrapDockerError 包装 Docker 相关错误
+func WrapDockerError(err error, operation string) AppError {
+	if err == nil {
+		return NewError(CodeInternalError, operation, nil)
+	}
+
+	errMsg := err.Error()
+	var hint string
+
+	if containsAny(errMsg, "connection refused") {
+		hint = "Docker daemon may not be running. Please ensure Docker is running and accessible."
+	} else if containsAny(errMsg, "not found") {
+		hint = "Image or container not found in registry. Please check the image name."
+	} else if containsAny(errMsg, "timeout") {
+		hint = "Network timeout. Please check your internet connection."
+	} else if containsAny(errMsg, "permission denied") {
+		hint = "Permission denied. Please check Docker socket permissions."
+	} else if containsAny(errMsg, "port is already allocated", "address already in use") {
+		hint = "Port is already in use by another service. Please check port availability."
+	}
+
+	msg := fmt.Sprintf("%s failed: %s", operation, errMsg)
+	if hint != "" {
+		msg = fmt.Sprintf("%s. %s", msg, hint)
+	}
+
+	return NewError(CodeThirdPartyServiceError, msg, err)
+}
+
+// WrapFileSystemError 包装文件系统相关错误
+func WrapFileSystemError(err error, operation string, path string) AppError {
+	if err == nil {
+		return NewError(CodeFileSystemError, fmt.Sprintf("%s at %s", operation, path), nil)
+	}
+
+	errMsg := err.Error()
+	var hint string
+
+	if containsAny(errMsg, "permission denied") {
+		hint = "Please check filesystem permissions."
+	} else if containsAny(errMsg, "no such file") {
+		hint = "File or directory does not exist."
+	} else if containsAny(errMsg, "read-only") {
+		hint = "Filesystem is read-only."
+	} else if containsAny(errMsg, "no space left") {
+		hint = "No space left on device."
+	}
+
+	msg := fmt.Sprintf("%s at %s: %s", operation, path, errMsg)
+	if hint != "" {
+		msg = fmt.Sprintf("%s. %s", msg, hint)
+	}
+
+	return NewError(CodeFileSystemError, msg, err)
+}
+
+// containsAny 检查字符串是否包含任意一个子串（不区分大小写）
+func containsAny(s string, substrs ...string) bool {
+	lower := fmt.Sprintf("%s", s)
+	for _, substr := range substrs {
+		if len(substr) > 0 && len(lower) > 0 {
+			// 简单的包含检查，不区分大小写
+			for i := 0; i <= len(lower)-len(substr); i++ {
+				match := true
+				for j := 0; j < len(substr); j++ {
+					c1 := lower[i+j]
+					c2 := substr[j]
+					if c1 >= 'A' && c1 <= 'Z' {
+						c1 += 32
+					}
+					if c2 >= 'A' && c2 <= 'Z' {
+						c2 += 32
+					}
+					if c1 != c2 {
+						match = false
+						break
+					}
+				}
+				if match {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}

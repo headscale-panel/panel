@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @import "tw-animate-css";
+@import "./styles/modern-theme.css";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -197,5 +198,29 @@
   }
   .dark .hover-lift:hover {
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  }
+  
+  /* UniFi-style smooth transitions */
+  .transition-unifi {
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  
+  /* UniFi-style glow effect */
+  .glow-blue {
+    box-shadow: 0 0 20px rgba(0, 111, 255, 0.3);
+  }
+  
+  /* UniFi-style pulse for status indicators */
+  .pulse-online {
+    animation: pulse-green 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+  
+  @keyframes pulse-green {
+    0%, 100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.6;
+    }
   }
 }
