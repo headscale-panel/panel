@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"headscale-panel/pkg/utils/serializer"
 	"io"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -664,6 +665,7 @@ func (s *DockerService) deployContainer(ctx context.Context, req DeployRequest) 
 		portBindings[cPort] = []nat.PortBinding{{HostPort: strconv.Itoa(hostNum)}}
 	}
 
+	hostDataDir := os.Getenv("HOST_DATA_DIR")
 	mounts := make([]mount.Mount, 0, len(req.Volumes))
 	for hostPath, containerPath := range req.Volumes {
 		targetPath, readOnly, err := parseContainerMountTarget(containerPath)
@@ -671,9 +673,31 @@ func (s *DockerService) deployContainer(ctx context.Context, req DeployRequest) 
 			return progress, err
 		}
 
+		// Resolve host path to absolute path
+		var actualHostPath string
+		cleanRel := normalizeRelativePath(hostPath)
+
+		if filepath.IsAbs(hostPath) {
+			actualHostPath = hostPath
+		} else if hostDataDir != "" {
+			// Map relative path to host-side absolute path using HOST_DATA_DIR
+			actualHostPath = filepath.Join(hostDataDir, cleanRel)
+		} else {
+			// Fallback to local absolute path if no HOST_DATA_DIR
+			actualHostPath, _ = filepath.Abs(hostPath)
+		}
+
+		// Ensure the directory exists locally (inside Panel container)
+		// We use the relative path directly which is resolved against current working directory (/app)
+		if !strings.HasPrefix(actualHostPath, "/usr/") && !strings.HasPrefix(actualHostPath, "/etc/") && !strings.HasPrefix(actualHostPath, "/var/run/") {
+			if err := os.MkdirAll(hostPath, 0755); err != nil {
+				return progress, serializer.WrapFileSystemError(err, "create mount directory", hostPath)
+			}
+		}
+
 		mounts = append(mounts, mount.Mount{
 			Type:     mount.TypeBind,
-			Source:   hostPath,
+			Source:   actualHostPath,
 			Target:   targetPath,
 			ReadOnly: readOnly,
 		})
