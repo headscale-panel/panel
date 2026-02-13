@@ -1005,23 +1005,21 @@ func isDangerousHostPath(path string) bool {
 }
 
 func isAllowedHostPath(path string, prefixes []string) bool {
-	normalizedPath := normalizeRelativePath(path)
-
 	for _, allowedPrefix := range prefixes {
 		prefix := strings.TrimSpace(allowedPrefix)
 		if prefix == "" {
 			continue
 		}
-		if strings.HasPrefix(prefix, "/") {
-			cleanPrefix := filepath.Clean(prefix)
-			if path == cleanPrefix || strings.HasPrefix(path, cleanPrefix+"/") {
-				return true
+
+		// Resolve the allowed prefix to absolute (same logic as normalizeHostMountPath)
+		cleanPrefix := filepath.Clean(prefix)
+		if !filepath.IsAbs(cleanPrefix) {
+			if cwd, err := os.Getwd(); err == nil {
+				cleanPrefix = filepath.Join(cwd, cleanPrefix)
 			}
-			continue
 		}
 
-		normalizedPrefix := normalizeRelativePath(prefix)
-		if normalizedPath == normalizedPrefix || strings.HasPrefix(normalizedPath, normalizedPrefix+"/") {
+		if path == cleanPrefix || strings.HasPrefix(path, cleanPrefix+"/") {
 			return true
 		}
 	}
