@@ -35,7 +35,7 @@ services:
       # ── 数据库 ──
       - DB_PATH=/app/data/data.db
       # ── JWT ──
-      - JWT_SECRET=change-me-to-a-random-string
+      - JWT_SECRET=c11111-hange-me-to-a-random-string
       - JWT_EXPIRE=24
       # ── Headscale gRPC 连接 ──
       - HEADSCALE_GRPC_ADDR=headscale-server:50443

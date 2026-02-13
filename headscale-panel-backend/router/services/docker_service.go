@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"headscale-panel/pkg/utils/serializer"
 	"io"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -937,6 +938,16 @@ func normalizeHostMountPath(hostPath string) (string, error) {
 
 	if strings.HasPrefix(cleaned, "..") || strings.Contains(cleaned, "/../") {
 		return "", serializer.NewError(serializer.CodeParamErr, "path traversal is not allowed", nil)
+	}
+
+	// Docker bind mounts require absolute paths.
+	// Convert relative paths (e.g. "./headscale/config" → "/app/data/headscale/config")
+	if !filepath.IsAbs(cleaned) {
+		cwd, err := os.Getwd()
+		if err != nil {
+			return "", serializer.NewError(serializer.CodeInternalError, "failed to resolve working directory", err)
+		}
+		cleaned = filepath.Join(cwd, cleaned)
 	}
 
 	return cleaned, nil
