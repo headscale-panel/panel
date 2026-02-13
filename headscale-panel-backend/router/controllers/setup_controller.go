@@ -862,27 +862,11 @@ func (s *SetupController) GenerateComposeFile(ctx *gin.Context) {
 	}
 	derpConfigContent := renderSetupDERPConfig(derpDomain)
 	if writeFile {
-		// Create all necessary directories (these are container-internal paths)
-		// The Panel container has volumes mapped:
-		//   host: ./data/deploy    -> container: /app/deploy
-		//   host: ./data/headscale -> container: /app/headscale
-		directoriesToCreate := []string{
-			filepath.Dir(configPath),           // deploy/
-			"./headscale/config",              // headscale config
-			"./headscale/data",               // headscale data
-			"./headscale/run",                // headscale run
-			"./deploy/nginx/conf.d",          // nginx config
-			"./deploy/nginx/certbot/www",     // certbot webroot
-			"./deploy/nginx/certbot/conf",    // certbot conf
+		if err := os.MkdirAll(filepath.Dir(configPath), 0755); err != nil {
+			wrappedErr := serializer.WrapFileSystemError(err, "create compose directory", filepath.Dir(configPath))
+			serializer.Fail(ctx, serializer.NewError(serializer.CodeFileSystemError, wrappedErr.Error(), err))
+			return
 		}
-		for _, dir := range directoriesToCreate {
-			if err := os.MkdirAll(dir, 0755); err != nil {
-				wrappedErr := serializer.WrapFileSystemError(err, "create directory", dir)
-				serializer.Fail(ctx, serializer.NewError(serializer.CodeFileSystemError, wrappedErr.Error(), err))
-				return
-			}
-		}
-
 		if err := os.WriteFile(configPath, []byte(content), 0644); err != nil {
 			wrappedErr := serializer.WrapFileSystemError(err, "write compose file", configPath)
 			serializer.Fail(ctx, serializer.NewError(serializer.CodeFileSystemError, wrappedErr.Error(), err))
@@ -1498,6 +1482,12 @@ server {
 `
 	}
 
+	// Generate an HTTP-only config first for initial certificate acquisition.
+	// After certbot obtains the certificate, nginx should be reloaded with SSL config.
+	// We use ssl_certificate with if_not_empty trick or generate a startup script.
+	// Better approach: generate HTTP-only config initially, then provide an SSL config
+	// that gets activated after certificates are obtained.
+
 	var derpHTTPServer, derpHTTPSServer string
 	if derpHost != "" && derpPort > 0 && derpHost != headscaleHost {
 		derpHTTPServer = fmt.Sprintf(`
@@ -1505,44 +1495,39 @@ server {
     listen 80;
     server_name %s;
 %s    location / {
-      return 301 https://$host$request_uri;
-    }
-}
-`, derpHost, acmeLocation)
-
-		derpHTTPSServer = fmt.Sprintf(`
-server {
-    listen 443 ssl http2;
-    server_name %s;
-    ssl_certificate %s/%s/fullchain.pem;
-    ssl_certificate_key %s/%s/privkey.pem;
-    location / {
       proxy_pass http://127.0.0.1:%d;
 %s
     }
 }
-`, derpHost, certRoot, derpHost, certRoot, derpHost, derpPort, proxyHeaders)
+`, derpHost, acmeLocation, derpPort, proxyHeaders)
+
+		derpHTTPSServer = fmt.Sprintf(`
+# SSL config for %s - will be activated after certificate is obtained
+# To activate: uncomment the block below and reload nginx (nginx -s reload)
+# server {
+#     listen 443 ssl http2;
+#     server_name %s;
+#     ssl_certificate %s/%s/fullchain.pem;
+#     ssl_certificate_key %s/%s/privkey.pem;
+#     location / {
+#       proxy_pass http://127.0.0.1:%d;
+#     }
+# }
+`, derpHost, derpHost, certRoot, derpHost, certRoot, derpHost, derpPort)
 	}
 
+	// Initial config: HTTP-only with ACME challenge support.
+	// After certificates are obtained, user should run the provided enable-ssl script.
 	return fmt.Sprintf(`map $http_upgrade $connection_upgrade {
     default upgrade;
     '' close;
 }
 
+# HTTP server - handles traffic and ACME challenges for certificate issuance
 server {
     listen 80;
     server_name %s;
-%s    location / {
-      return 301 https://$host$request_uri;
-    }
-}
-
-server {
-    listen 443 ssl http2;
-    server_name %s;
-    ssl_certificate %s/%s/fullchain.pem;
-    ssl_certificate_key %s/%s/privkey.pem;
-
+%s
     # Headscale API
     location / {
       proxy_pass http://127.0.0.1:%d;
@@ -1557,14 +1542,46 @@ server {
 }
 %s
 %s
+# =============================================================================
+# SSL CONFIGURATION (activate after certificates are obtained)
+# =============================================================================
+# After certbot has obtained certificates, replace the HTTP server block above
+# with the following configuration and reload nginx (docker exec headscale-nginx nginx -s reload):
+#
+# server {
+#     listen 80;
+#     server_name %s;
+# %s    location / {
+#       return 301 https://$$host$$request_uri;
+#     }
+# }
+#
+# server {
+#     listen 443 ssl http2;
+#     server_name %s;
+#     ssl_certificate %s/%s/fullchain.pem;
+#     ssl_certificate_key %s/%s/privkey.pem;
+#
+#     location / {
+#       proxy_pass http://127.0.0.1:%d;
+#     }
+#
+#     location /panel {
+#       proxy_pass http://127.0.0.1:%d;
+#     }
+# }
+# =============================================================================
 # NOTE:
 # 1) DERP STUN is UDP and cannot be proxied by this HTTP server block.
 # 2) Open/forward UDP directly on your edge proxy/L4 load balancer.
 `, headscaleHost, acmeLocation,
-		headscaleHost, certRoot, headscaleHost, certRoot, headscaleHost,
 		headscalePort, proxyHeaders,
 		backendPort, proxyHeaders,
-		derpHTTPServer, derpHTTPSServer)
+		derpHTTPServer, derpHTTPSServer,
+		headscaleHost, acmeLocation,
+		headscaleHost, certRoot, headscaleHost, certRoot, headscaleHost,
+		headscalePort,
+		backendPort)
 }
 
 func normalizeSSLCertMode(mode string, deployCertbot bool) string {
@@ -1742,9 +1759,9 @@ services:
 		if enableSSL && sslMode != "none" {
 			sb.WriteString("      - \"443:443\"\n")
 		}
-		sb.WriteString(`    volumes:
+		sb.WriteString(fmt.Sprintf(`    volumes:
       - ./deploy/nginx/conf.d:/etc/nginx/conf.d
-`)
+`))
 		if enableSSL && sslMode != "none" {
 			sb.WriteString(`      - ./deploy/nginx/certbot/www:/var/www/certbot
       - ./deploy/nginx/certbot/conf:/etc/letsencrypt
@@ -1777,15 +1794,15 @@ services:
     environment:
       CERTBOT_EMAIL: %s
       CERTBOT_DOMAINS: %s
+    entrypoint: /bin/sh
     command:
-      - sh
       - -c
-      - >-
+      - |
         trap exit TERM;
         while :; do
-          certbot certonly --webroot -w /var/www/certbot --agree-tos --no-eff-email --email "$CERTBOT_EMAIL" -d "$CERTBOT_DOMAINS" || true;
+          certbot certonly --webroot -w /var/www/certbot --agree-tos --no-eff-email --email "$$CERTBOT_EMAIL" -d "$$CERTBOT_DOMAINS" || true;
           certbot renew --webroot -w /var/www/certbot --quiet || true;
-          sleep 12h & wait $!;
+          sleep 12h & wait $$!;
         done
     volumes:
       - ./deploy/nginx/certbot/www:/var/www/certbot
@@ -1812,6 +1829,19 @@ func writeSetupControllerConfigFiles(headscaleConfigPath, headscaleConfigContent
 	if err := os.WriteFile(derpConfigPath, []byte(derpConfigContent), 0644); err != nil {
 		return err
 	}
+
+	// Create extra-records.json required by Headscale (dns.extra_records_path)
+	headscaleDataDir := filepath.Clean(filepath.Join(filepath.Dir(headscaleConfigPath), "..", "data"))
+	if err := os.MkdirAll(headscaleDataDir, 0755); err != nil {
+		return err
+	}
+	extraRecordsPath := filepath.Join(headscaleDataDir, "extra-records.json")
+	if _, err := os.Stat(extraRecordsPath); os.IsNotExist(err) {
+		if err := os.WriteFile(extraRecordsPath, []byte("[]"), 0644); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 
