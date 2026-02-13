@@ -33,34 +33,53 @@ api.interceptors.response.use(
     // Business error - show backend error message
     const t = getTranslations();
     const message = msg || t.common.errors.requestFailed;
+    // Suppress toast for setup endpoints - errors are handled inline by the setup wizard
+    const isSetupRequest = response.config?.url?.includes('/setup/');
     if (code === 401) {
-      useAuthStore.getState().clearAuth();
-      toast.error(t.common.errors.sessionExpired);
-      window.location.href = '/panel/login';
+      if (!isSetupRequest) {
+        useAuthStore.getState().clearAuth();
+        toast.error(t.common.errors.sessionExpired);
+        window.location.href = '/panel/login';
+      }
     } else if (code === 403) {
-      toast.error(t.common.errors.forbidden);
+      if (!isSetupRequest) {
+        toast.error(t.common.errors.forbidden);
+      }
     } else {
-      toast.error(message);
+      if (!isSetupRequest) {
+        toast.error(message);
+      }
     }
     return Promise.reject(new Error(message));
   },
   (error) => {
     const t = getTranslations();
+    const isSetupRequest = error.config?.url?.includes('/setup/');
     if (error.response) {
       const { status } = error.response;
       if (status === 401) {
-        useAuthStore.getState().clearAuth();
-        toast.error(t.common.errors.sessionExpired);
-        window.location.href = '/panel/login';
+        if (!isSetupRequest) {
+          useAuthStore.getState().clearAuth();
+          toast.error(t.common.errors.sessionExpired);
+          window.location.href = '/panel/login';
+        }
       } else if (status === 403) {
-        toast.error(t.common.errors.forbidden);
+        if (!isSetupRequest) {
+          toast.error(t.common.errors.forbidden);
+        }
       } else if (status >= 500) {
-        toast.error(t.common.errors.serverError);
+        if (!isSetupRequest) {
+          toast.error(t.common.errors.serverError);
+        }
       } else {
-        toast.error(error.response.data?.msg || t.common.errors.requestFailed);
+        if (!isSetupRequest) {
+          toast.error(error.response.data?.msg || t.common.errors.requestFailed);
+        }
       }
     } else if (error.request) {
-      toast.error(t.common.errors.networkError);
+      if (!isSetupRequest) {
+        toast.error(t.common.errors.networkError);
+      }
     }
     return Promise.reject(error);
   }

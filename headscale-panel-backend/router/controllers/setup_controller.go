@@ -3,9 +3,11 @@ package controllers
 import (
 	"context"
 	"crypto/subtle"
+	"crypto/tls"
 	"fmt"
 	"headscale-panel/model"
 	"headscale-panel/pkg/conf"
+	v1 "headscale-panel/pkg/proto/headscale/v1"
 	"headscale-panel/pkg/utils/serializer"
 	"headscale-panel/router/services"
 	"net"
@@ -19,6 +21,10 @@ import (
 	dockercontainer "github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
 	"github.com/gin-gonic/gin"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/metadata"
 )
 
 type SetupController struct{}
@@ -54,7 +60,7 @@ func (s *SetupController) GetStatus(ctx *gin.Context) {
 		"setup_window_deadline": "",
 		"bootstrap_configured":  isSetupBootstrapConfigured(),
 	}
-	if state.WindowDeadline != nil {
+	if state.State == model.SetupStateInitWindow && state.WindowDeadline != nil {
 		resp["setup_window_deadline"] = state.WindowDeadline.UTC().Format(time.RFC3339)
 	}
 
@@ -212,6 +218,8 @@ func (s *SetupController) ConnectivityCheck(ctx *gin.Context) {
 		HeadscaleGRPCAddr string `json:"headscale_grpc_addr"`
 		HeadscaleHTTPAddr string `json:"headscale_http_addr"`
 		APIKey            string `json:"api_key"`
+		StrictAPI         bool   `json:"strict_api"`
+		GRPCAllowInsecure *bool  `json:"grpc_allow_insecure"`
 	}
 	if ctx.Request.ContentLength > 0 {
 		if err := ctx.ShouldBindJSON(&req); err != nil {
@@ -221,36 +229,62 @@ func (s *SetupController) ConnectivityCheck(ctx *gin.Context) {
 	}
 
 	results := make([]gin.H, 0, 3)
+	normalizedGRPCAddr := strings.TrimSpace(req.HeadscaleGRPCAddr)
+	normalizedHTTPAddr := strings.TrimSpace(req.HeadscaleHTTPAddr)
 
 	// Check Headscale HTTP connectivity
-	if addr := strings.TrimSpace(req.HeadscaleHTTPAddr); addr != "" {
-		if !strings.Contains(addr, ":") {
-			addr = addr + ":28080"
+	if normalizedHTTPAddr != "" {
+		if !strings.Contains(normalizedHTTPAddr, ":") {
+			normalizedHTTPAddr = normalizedHTTPAddr + ":28080"
 		}
-		ok, detail := checkTCPConnect(ctx.Request.Context(), addr)
+		ok, detail := checkTCPConnect(ctx.Request.Context(), normalizedHTTPAddr)
 		results = append(results, gin.H{
 			"name":      "headscale_http",
-			"address":   addr,
+			"address":   normalizedHTTPAddr,
 			"reachable": ok,
 			"detail":    detail,
 		})
 	}
 
 	// Check Headscale gRPC connectivity
-	if addr := strings.TrimSpace(req.HeadscaleGRPCAddr); addr != "" {
-		if !strings.Contains(addr, ":") {
-			addr = addr + ":28081"
+	if normalizedGRPCAddr != "" {
+		if !strings.Contains(normalizedGRPCAddr, ":") {
+			normalizedGRPCAddr = normalizedGRPCAddr + ":28081"
 		}
-		ok, detail := checkTCPConnect(ctx.Request.Context(), addr)
+		ok, detail := checkTCPConnect(ctx.Request.Context(), normalizedGRPCAddr)
 		results = append(results, gin.H{
 			"name":      "headscale_grpc",
-			"address":   addr,
+			"address":   normalizedGRPCAddr,
 			"reachable": ok,
 			"detail":    detail,
 		})
 	}
 
-	allReachable := true
+	if req.StrictAPI {
+		allowInsecure := true
+		if req.GRPCAllowInsecure != nil {
+			allowInsecure = *req.GRPCAllowInsecure
+		}
+
+		if normalizedGRPCAddr == "" {
+			results = append(results, gin.H{
+				"name":      "headscale_api",
+				"address":   "",
+				"reachable": false,
+				"detail":    "headscale gRPC address is required for API check",
+			})
+		} else {
+			ok, detail := checkHeadscaleAPIAccess(ctx.Request.Context(), normalizedGRPCAddr, req.APIKey, allowInsecure)
+			results = append(results, gin.H{
+				"name":      "headscale_api",
+				"address":   normalizedGRPCAddr,
+				"reachable": ok,
+				"detail":    detail,
+			})
+		}
+	}
+
+	allReachable := len(results) > 0
 	for _, r := range results {
 		if !r["reachable"].(bool) {
 			allReachable = false
@@ -261,6 +295,69 @@ func (s *SetupController) ConnectivityCheck(ctx *gin.Context) {
 	serializer.Success(ctx, gin.H{
 		"checks":        results,
 		"all_reachable": allReachable,
+	})
+}
+
+// ConnectivityPoll does repeated polling of the Headscale gRPC API until it responds.
+// The frontend calls this after containers are deployed. It polls up to maxAttempts
+// times with a short sleep between each attempt.
+func (s *SetupController) ConnectivityPoll(ctx *gin.Context) {
+	var req struct {
+		HeadscaleGRPCAddr string `json:"headscale_grpc_addr"`
+		APIKey            string `json:"api_key"`
+		GRPCAllowInsecure *bool  `json:"grpc_allow_insecure"`
+		MaxAttempts       int    `json:"max_attempts"`
+		IntervalSeconds   int    `json:"interval_seconds"`
+	}
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		serializer.Fail(ctx, serializer.ErrBind)
+		return
+	}
+
+	grpcAddr := strings.TrimSpace(req.HeadscaleGRPCAddr)
+	if grpcAddr == "" {
+		grpcAddr = "127.0.0.1:28081"
+	}
+	if !strings.Contains(grpcAddr, ":") {
+		grpcAddr = grpcAddr + ":28081"
+	}
+
+	allowInsecure := true
+	if req.GRPCAllowInsecure != nil {
+		allowInsecure = *req.GRPCAllowInsecure
+	}
+
+	maxAttempts := req.MaxAttempts
+	if maxAttempts <= 0 || maxAttempts > 30 {
+		maxAttempts = 10
+	}
+	interval := req.IntervalSeconds
+	if interval <= 0 || interval > 10 {
+		interval = 3
+	}
+
+	var lastDetail string
+	for i := 0; i < maxAttempts; i++ {
+		ok, detail := checkHeadscaleAPIAccess(ctx.Request.Context(), grpcAddr, req.APIKey, allowInsecure)
+		lastDetail = detail
+		if ok {
+			serializer.Success(ctx, gin.H{
+				"ready":    true,
+				"attempts": i + 1,
+				"detail":   detail,
+			})
+			return
+		}
+		if ctx.Request.Context().Err() != nil {
+			break
+		}
+		time.Sleep(time.Duration(interval) * time.Second)
+	}
+
+	serializer.Success(ctx, gin.H{
+		"ready":    false,
+		"attempts": maxAttempts,
+		"detail":   lastDetail,
 	})
 }
 
@@ -290,9 +387,12 @@ func (s *SetupController) GenerateComposeFromConfig(ctx *gin.Context) {
 		PanelDomain            string `json:"panel_domain"`
 		HeadscaleHost          string `json:"headscale_host"`
 		DerpHost               string `json:"derp_host"`
+		EnableSSL              *bool  `json:"enable_ssl"`
+		SSLCertMode            string `json:"ssl_cert_mode"`
 		DeployCertbot          bool   `json:"deploy_certbot"`
 		CertbotContainerName   string `json:"certbot_container_name"`
 		CertbotEmail           string `json:"certbot_email"`
+		NetworkSubnet          string `json:"network_subnet"`
 		WriteFile              *bool  `json:"write_file"`
 	}
 	if err := ctx.ShouldBindJSON(&req); err != nil {
@@ -325,6 +425,39 @@ func (s *SetupController) GenerateComposeFromConfig(ctx *gin.Context) {
 	if req.HeadscaleDBURL == "" {
 		req.HeadscaleDBURL = "./headscale/data/headscale.db"
 	}
+	if req.DerpContainerName == "" {
+		req.DerpContainerName = "headscale-derp"
+	}
+	if req.DerpDomain == "" {
+		req.DerpDomain = "derp1.bokro.cn"
+	}
+	if req.DerpPort == "" {
+		req.DerpPort = "26060"
+	}
+	if req.StunPort == "" {
+		req.StunPort = "33478"
+	}
+	if req.DerpCertMode == "" {
+		req.DerpCertMode = "letsencrypt"
+	}
+	if req.ProxyMode == "" {
+		req.ProxyMode = "built_in"
+	}
+	if req.NetworkSubnet == "" {
+		req.NetworkSubnet = "172.20.200.0/24"
+	}
+	if req.CertbotContainerName == "" {
+		req.CertbotContainerName = "headscale-certbot"
+	}
+
+	enableSSL := true
+	if req.EnableSSL != nil {
+		enableSSL = *req.EnableSSL
+	}
+	sslCertMode := normalizeSSLCertMode(req.SSLCertMode, req.DeployCertbot)
+	if !enableSSL {
+		sslCertMode = "none"
+	}
 
 	compose := renderComposeFromConfig(req.HeadscaleContainerName, req.HeadscaleHTTPPort, req.HeadscaleGRPCPort,
 		req.HeadscaleConfigPath, req.HeadscaleDataPath, req.HeadscaleTimezone,
@@ -332,7 +465,7 @@ func (s *SetupController) GenerateComposeFromConfig(ctx *gin.Context) {
 		req.DerpEnabled, req.DerpContainerName, req.DerpDomain, req.DerpPort, req.StunPort,
 		req.DerpRegionCode, req.DerpCertMode, req.DerpVerifyClients,
 		req.ProxyMode, req.NginxContainerName, req.PanelDomain, req.HeadscaleHost, req.DerpHost,
-		req.DeployCertbot, req.CertbotContainerName, req.CertbotEmail, req.HeadscaleTimezone)
+		enableSSL, sslCertMode, req.CertbotContainerName, req.CertbotEmail, req.HeadscaleTimezone, req.NetworkSubnet)
 
 	writeFile := false
 	if req.WriteFile != nil {
@@ -340,6 +473,14 @@ func (s *SetupController) GenerateComposeFromConfig(ctx *gin.Context) {
 	}
 
 	configPath := filepath.Clean("./deploy/docker-compose.generated.yaml")
+	headscaleConfigPath := filepath.Clean("./headscale/config/config.yaml")
+	derpConfigPath := filepath.Clean("./headscale/config/derp.yaml")
+	serverURL := "https://" + strings.TrimSpace(req.HeadscaleHost)
+	if strings.TrimSpace(req.HeadscaleHost) == "" {
+		serverURL = "https://hs.bokro.cn"
+	}
+	headscaleConfigContent := renderSetupHeadscaleConfig(serverURL, "", "")
+	derpConfigContent := renderSetupDERPConfig(req.DerpDomain)
 	if writeFile {
 		if err := os.MkdirAll(filepath.Dir(configPath), 0755); err != nil {
 			serializer.Fail(ctx, serializer.NewError(serializer.CodeFileSystemError, "failed to create compose directory", err))
@@ -349,12 +490,20 @@ func (s *SetupController) GenerateComposeFromConfig(ctx *gin.Context) {
 			serializer.Fail(ctx, serializer.NewError(serializer.CodeFileSystemError, "failed to write compose file", err))
 			return
 		}
+		if err := writeSetupControllerConfigFiles(headscaleConfigPath, headscaleConfigContent, derpConfigPath, derpConfigContent); err != nil {
+			serializer.Fail(ctx, serializer.NewError(serializer.CodeFileSystemError, "failed to write headscale config files", err))
+			return
+		}
 	}
 
 	serializer.Success(ctx, gin.H{
-		"compose_content": compose,
-		"compose_path":    configPath,
-		"written":         writeFile,
+		"compose_content":          compose,
+		"compose_path":             configPath,
+		"headscale_config_content": headscaleConfigContent,
+		"headscale_config_path":    headscaleConfigPath,
+		"derp_config_content":      derpConfigContent,
+		"derp_config_path":         derpConfigPath,
+		"written":                  writeFile,
 	})
 }
 
@@ -373,6 +522,8 @@ type ReverseProxyConfigRequest struct {
 	HeadscalePort string `json:"headscale_port" binding:"required"`
 	DerpPort      string `json:"derp_port"`
 	DerpStunPort  string `json:"derp_stun_port"`
+	EnableSSL     *bool  `json:"enable_ssl"`
+	SSLCertMode   string `json:"ssl_cert_mode"`
 	EnableCertbot bool   `json:"enable_certbot"`
 	WriteFile     *bool  `json:"write_file"`
 }
@@ -391,8 +542,11 @@ type SetupPreflightRequest struct {
 }
 
 type ComposeFileRequest struct {
-	Content   string `json:"content" binding:"required"`
-	WriteFile *bool  `json:"write_file"`
+	Content       string `json:"content" binding:"required"`
+	WriteFile     *bool  `json:"write_file"`
+	HeadscaleHost string `json:"headscale_host"`
+	DerpDomain    string `json:"derp_domain"`
+	BaseDomain    string `json:"base_domain"`
 }
 
 type setupPortCheck struct {
@@ -585,7 +739,16 @@ func (s *SetupController) GenerateReverseProxyConfig(ctx *gin.Context) {
 		}
 	}
 
-	nginxConfig := renderNginxConfig(panelDomain, headscaleHost, derpHost, backendPort, headscalePort, derpPort, req.EnableCertbot)
+	enableSSL := true
+	if req.EnableSSL != nil {
+		enableSSL = *req.EnableSSL
+	}
+	sslCertMode := normalizeSSLCertMode(req.SSLCertMode, req.EnableCertbot)
+	if !enableSSL {
+		sslCertMode = "none"
+	}
+
+	nginxConfig := renderNginxConfig(panelDomain, headscaleHost, derpHost, backendPort, headscalePort, derpPort, enableSSL, sslCertMode)
 	configPath := filepath.Clean("./deploy/nginx/conf.d/headscale-panel.setup.conf")
 
 	writeFile := true
@@ -597,13 +760,15 @@ func (s *SetupController) GenerateReverseProxyConfig(ctx *gin.Context) {
 			serializer.Fail(ctx, serializer.NewError(serializer.CodeFileSystemError, "failed to create nginx config directory", err))
 			return
 		}
-		if err := os.MkdirAll(filepath.Clean("./deploy/nginx/certbot/www"), 0755); err != nil {
-			serializer.Fail(ctx, serializer.NewError(serializer.CodeFileSystemError, "failed to create certbot webroot directory", err))
-			return
-		}
-		if err := os.MkdirAll(filepath.Clean("./deploy/nginx/certbot/conf"), 0755); err != nil {
-			serializer.Fail(ctx, serializer.NewError(serializer.CodeFileSystemError, "failed to create certbot cert directory", err))
-			return
+		if enableSSL {
+			if err := os.MkdirAll(filepath.Clean("./deploy/nginx/certbot/www"), 0755); err != nil {
+				serializer.Fail(ctx, serializer.NewError(serializer.CodeFileSystemError, "failed to create certbot webroot directory", err))
+				return
+			}
+			if err := os.MkdirAll(filepath.Clean("./deploy/nginx/certbot/conf"), 0755); err != nil {
+				serializer.Fail(ctx, serializer.NewError(serializer.CodeFileSystemError, "failed to create certbot cert directory", err))
+				return
+			}
 		}
 		if err := os.WriteFile(configPath, []byte(nginxConfig), 0644); err != nil {
 			serializer.Fail(ctx, serializer.NewError(serializer.CodeFileSystemError, "failed to write nginx config file", err))
@@ -621,16 +786,19 @@ func (s *SetupController) GenerateReverseProxyConfig(ctx *gin.Context) {
 	if derpStunPort > 0 {
 		notes = append(notes, fmt.Sprintf("derp stun: expose UDP %d directly (nginx stream/L4 proxy required)", derpStunPort))
 	}
-	if req.EnableCertbot {
-		notes = append(notes, "certbot enabled: run initial certificate issuance after nginx is up")
+	if !enableSSL {
+		notes = append(notes, "ssl disabled: nginx serves HTTP only")
+	} else if sslCertMode == "certbot" {
+		notes = append(notes, "ssl enabled with certbot: run initial certificate issuance after nginx is up")
 	} else {
-		notes = append(notes, "certbot skipped: provide TLS certificate manually or add certbot later")
+		notes = append(notes, "ssl enabled with manual upload: place certificates under ./deploy/nginx/certbot/conf/live/<domain>/fullchain.pem and privkey.pem")
 	}
 
 	serializer.Success(ctx, gin.H{
 		"config_path":   configPath,
 		"nginx_config":  nginxConfig,
 		"written":       writeFile,
+		"ssl_mode":      sslCertMode,
 		"proxy_targets": notes,
 	})
 }
@@ -677,6 +845,18 @@ func (s *SetupController) GenerateComposeFile(ctx *gin.Context) {
 	}
 
 	configPath := filepath.Clean("./deploy/docker-compose.setup.yaml")
+	headscaleConfigPath := filepath.Clean("./headscale/config/config.yaml")
+	derpConfigPath := filepath.Clean("./headscale/config/derp.yaml")
+	serverURL := ""
+	if h := strings.TrimSpace(req.HeadscaleHost); h != "" {
+		serverURL = "https://" + h
+	}
+	headscaleConfigContent := renderSetupHeadscaleConfig(serverURL, strings.TrimSpace(req.BaseDomain), "")
+	derpDomain := strings.TrimSpace(req.DerpDomain)
+	if derpDomain == "" {
+		derpDomain = "derp1.bokro.cn"
+	}
+	derpConfigContent := renderSetupDERPConfig(derpDomain)
 	if writeFile {
 		if err := os.MkdirAll(filepath.Dir(configPath), 0755); err != nil {
 			serializer.Fail(ctx, serializer.NewError(serializer.CodeFileSystemError, "failed to create compose directory", err))
@@ -686,11 +866,19 @@ func (s *SetupController) GenerateComposeFile(ctx *gin.Context) {
 			serializer.Fail(ctx, serializer.NewError(serializer.CodeFileSystemError, "failed to write compose file", err))
 			return
 		}
+		if err := writeSetupControllerConfigFiles(headscaleConfigPath, headscaleConfigContent, derpConfigPath, derpConfigContent); err != nil {
+			serializer.Fail(ctx, serializer.NewError(serializer.CodeFileSystemError, "failed to write headscale config files", err))
+			return
+		}
 	}
 
 	serializer.Success(ctx, gin.H{
-		"compose_path": configPath,
-		"written":      writeFile,
+		"compose_path":             configPath,
+		"headscale_config_path":    headscaleConfigPath,
+		"headscale_config_content": headscaleConfigContent,
+		"derp_config_path":         derpConfigPath,
+		"derp_config_content":      derpConfigContent,
+		"written":                  writeFile,
 	})
 }
 
@@ -919,6 +1107,7 @@ func detectSetupConfigFiles() []string {
 		"./deploy/docker-compose.setup.yaml",
 		"./deploy/nginx/conf.d/headscale-panel.setup.conf",
 		"./headscale/config/config.yaml",
+		"./headscale/config/derp.yaml",
 	}
 
 	found := make([]string, 0, len(paths))
@@ -1206,22 +1395,16 @@ func validateProxyHost(value string) (string, error) {
 	return host, nil
 }
 
-func renderNginxConfig(panelDomain, headscaleHost, derpHost string, backendPort, headscalePort, derpPort int, enableCertbot bool) string {
-	certbotLocation := ""
-	if enableCertbot {
-		certbotLocation = `    location ^~ /.well-known/acme-challenge/ {
-      root /var/www/certbot;
-    }
-`
-	}
-
-	var derpBlock string
-	if derpHost != "" && derpPort > 0 {
-		derpBlock = fmt.Sprintf(`
+func renderNginxConfig(panelDomain, headscaleHost, derpHost string, backendPort, headscalePort, derpPort int, enableSSL bool, sslCertMode string) string {
+	mode := normalizeSSLCertMode(sslCertMode, false)
+	if !enableSSL || mode == "none" {
+		var derpBlock string
+		if derpHost != "" && derpPort > 0 {
+			derpBlock = fmt.Sprintf(`
 server {
     listen 80;
     server_name %s;
-%s    location / {
+    location / {
       proxy_pass http://127.0.0.1:%d;
       proxy_set_header Host $host;
       proxy_set_header X-Real-IP $remote_addr;
@@ -1229,7 +1412,83 @@ server {
       proxy_set_header X-Forwarded-Proto $scheme;
     }
 }
-`, derpHost, certbotLocation, derpPort)
+`, derpHost, derpPort)
+		}
+
+		return fmt.Sprintf(`map $http_upgrade $connection_upgrade {
+    default upgrade;
+    '' close;
+}
+
+server {
+    listen 80;
+    server_name %s;
+    location / {
+      proxy_pass http://127.0.0.1:%d;
+      proxy_http_version 1.1;
+      proxy_set_header Upgrade $http_upgrade;
+      proxy_set_header Connection $connection_upgrade;
+      proxy_set_header Host $host;
+      proxy_set_header X-Real-IP $remote_addr;
+      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+      proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+
+server {
+    listen 80;
+    server_name %s;
+    location / {
+      proxy_pass http://127.0.0.1:%d;
+      proxy_set_header Host $host;
+      proxy_set_header X-Real-IP $remote_addr;
+      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+      proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+%s
+# NOTE:
+# 1) DERP STUN is UDP and cannot be proxied by this HTTP server block.
+# 2) Open/forward UDP directly on your edge proxy/L4 load balancer.
+`, panelDomain, backendPort, headscaleHost, headscalePort, derpBlock)
+	}
+
+	certRoot := "/etc/letsencrypt/live"
+	acmeLocation := ""
+	if mode == "certbot" {
+		acmeLocation = `    location ^~ /.well-known/acme-challenge/ {
+      root /var/www/certbot;
+    }
+`
+	}
+
+	var derpHTTPServer, derpHTTPSServer string
+	if derpHost != "" && derpPort > 0 {
+		derpHTTPServer = fmt.Sprintf(`
+server {
+    listen 80;
+    server_name %s;
+%s    location / {
+      return 301 https://$host$request_uri;
+    }
+}
+`, derpHost, acmeLocation)
+
+		derpHTTPSServer = fmt.Sprintf(`
+server {
+    listen 443 ssl http2;
+    server_name %s;
+    ssl_certificate %s/%s/fullchain.pem;
+    ssl_certificate_key %s/%s/privkey.pem;
+    location / {
+      proxy_pass http://127.0.0.1:%d;
+      proxy_set_header Host $host;
+      proxy_set_header X-Real-IP $remote_addr;
+      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+      proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+`, derpHost, certRoot, derpHost, certRoot, derpHost, derpPort)
 	}
 
 	return fmt.Sprintf(`map $http_upgrade $connection_upgrade {
@@ -1241,6 +1500,16 @@ server {
     listen 80;
     server_name %s;
 %s    location / {
+      return 301 https://$host$request_uri;
+    }
+}
+
+server {
+    listen 443 ssl http2;
+    server_name %s;
+    ssl_certificate %s/%s/fullchain.pem;
+    ssl_certificate_key %s/%s/privkey.pem;
+    location / {
       proxy_pass http://127.0.0.1:%d;
       proxy_http_version 1.1;
       proxy_set_header Upgrade $http_upgrade;
@@ -1256,6 +1525,16 @@ server {
     listen 80;
     server_name %s;
 %s    location / {
+      return 301 https://$host$request_uri;
+    }
+}
+
+server {
+    listen 443 ssl http2;
+    server_name %s;
+    ssl_certificate %s/%s/fullchain.pem;
+    ssl_certificate_key %s/%s/privkey.pem;
+    location / {
       proxy_pass http://127.0.0.1:%d;
       proxy_set_header Host $host;
       proxy_set_header X-Real-IP $remote_addr;
@@ -1264,10 +1543,25 @@ server {
     }
 }
 %s
+%s
 # NOTE:
 # 1) DERP STUN is UDP and cannot be proxied by this HTTP server block.
 # 2) Open/forward UDP directly on your edge proxy/L4 load balancer.
-`, panelDomain, certbotLocation, backendPort, headscaleHost, certbotLocation, headscalePort, derpBlock)
+`, panelDomain, acmeLocation, panelDomain, certRoot, panelDomain, certRoot, panelDomain, backendPort,
+		headscaleHost, acmeLocation, headscaleHost, certRoot, headscaleHost, certRoot, headscaleHost, headscalePort,
+		derpHTTPServer, derpHTTPSServer)
+}
+
+func normalizeSSLCertMode(mode string, deployCertbot bool) string {
+	normalized := strings.ToLower(strings.TrimSpace(mode))
+	switch normalized {
+	case "certbot", "manual", "none":
+		return normalized
+	}
+	if deployCertbot {
+		return "certbot"
+	}
+	return "manual"
 }
 
 func checkTCPConnect(ctx context.Context, addr string) (bool, string) {
@@ -1283,71 +1577,145 @@ func checkTCPConnect(ctx context.Context, addr string) (bool, string) {
 	return true, "reachable"
 }
 
+func checkHeadscaleAPIAccess(ctx context.Context, addr, apiKey string, allowInsecure bool) (bool, string) {
+	targetAddr := strings.TrimSpace(addr)
+	if targetAddr == "" {
+		return false, "headscale gRPC address is required"
+	}
+	token := strings.TrimSpace(apiKey)
+	if token == "" {
+		return false, "headscale api key is required"
+	}
+
+	var transport credentials.TransportCredentials
+	if allowInsecure {
+		transport = insecure.NewCredentials()
+	} else {
+		transport = credentials.NewTLS(&tls.Config{MinVersion: tls.VersionTLS12})
+	}
+
+	conn, err := grpc.NewClient(targetAddr, grpc.WithTransportCredentials(transport))
+	if err != nil {
+		return false, fmt.Sprintf("grpc client init failed: %v", err)
+	}
+	defer conn.Close()
+
+	client := v1.NewHeadscaleServiceClient(conn)
+	queryCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	queryCtx = metadata.AppendToOutgoingContext(queryCtx, "authorization", "Bearer "+token)
+
+	if _, err := client.ListUsers(queryCtx, &v1.ListUsersRequest{}); err != nil {
+		return false, fmt.Sprintf("headscale api request failed: %v", err)
+	}
+	return true, "headscale api reachable"
+}
+
 func renderComposeFromConfig(
 	hsContainerName, hsHTTPPort, hsGRPCPort, hsConfigPath, hsDataPath, hsTimezone,
-	hsDBDriver, hsDBURL, hsAPIKey string,
+	_ string, _, _ string,
 	derpEnabled bool, derpContainerName, derpDomain, derpPort, stunPort,
-	derpRegionCode, derpCertMode string, derpVerifyClients bool,
+	_, derpCertMode string, derpVerifyClients bool,
 	proxyMode, nginxContainerName, panelDomain, headscaleHost, derpHost string,
-	deployCertbot bool, certbotContainerName, certbotEmail, timezone string,
+	enableSSL bool, sslCertMode, certbotContainerName, certbotEmail, timezone, networkSubnet string,
 ) string {
-	var sb strings.Builder
-	sb.WriteString("version: \"3.9\"\nservices:\n")
+	if strings.TrimSpace(hsContainerName) == "" {
+		hsContainerName = "headscale-server"
+	}
+	if strings.TrimSpace(hsConfigPath) == "" {
+		hsConfigPath = "./headscale/config"
+	}
+	if strings.TrimSpace(hsDataPath) == "" {
+		hsDataPath = "./headscale/data"
+	}
+	if strings.TrimSpace(hsTimezone) == "" {
+		hsTimezone = "Asia/Shanghai"
+	}
+	if strings.TrimSpace(hsHTTPPort) == "" {
+		hsHTTPPort = "28080"
+	}
+	if strings.TrimSpace(hsGRPCPort) == "" {
+		hsGRPCPort = "28081"
+	}
+	if strings.TrimSpace(derpContainerName) == "" {
+		derpContainerName = "headscale-derp"
+	}
+	if strings.TrimSpace(derpDomain) == "" {
+		derpDomain = "derp1.bokro.cn"
+	}
+	if strings.TrimSpace(derpPort) == "" {
+		derpPort = "26060"
+	}
+	if strings.TrimSpace(stunPort) == "" {
+		stunPort = "33478"
+	}
+	if strings.TrimSpace(derpCertMode) == "" {
+		derpCertMode = "letsencrypt"
+	}
+	if strings.TrimSpace(networkSubnet) == "" {
+		networkSubnet = "172.20.200.0/24"
+	}
+	if strings.TrimSpace(timezone) == "" {
+		timezone = hsTimezone
+	}
 
-	// Headscale service
-	sb.WriteString(fmt.Sprintf(`  headscale:
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf(`networks:
+  private:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: %s
+services:
+  server:
     image: headscale/headscale:stable
     container_name: %s
-    command: ["serve"]
-    restart: unless-stopped
-    ports:
-      - "%s:8080"
-      - "%s:50443"
-    environment:
-      HEADSCALE_DATABASE_TYPE: %s
-      HEADSCALE_DATABASE_URL: %s
-      HEADSCALE_API_KEY: %s
+    networks:
+      - private
     volumes:
       - %s:/etc/headscale
       - %s:/var/lib/headscale
       - ./headscale/run:/var/run/headscale
       - /usr/share/zoneinfo/%s:/etc/localtime:ro
-    networks:
-      - private
-`, hsContainerName, hsHTTPPort, hsGRPCPort, hsDBDriver, hsDBURL, hsAPIKey,
-		hsConfigPath, hsDataPath, hsTimezone))
+    ports:
+      - "%s:8080"
+      - "%s:50443"
+    command: serve
+    restart: unless-stopped
+`, networkSubnet, hsContainerName, hsConfigPath, hsDataPath, hsTimezone, hsHTTPPort, hsGRPCPort))
 
-	// DERP service
-	if derpEnabled && derpContainerName != "" {
+	if derpEnabled {
+		sb.WriteString("    depends_on:\n      - derp\n")
+	}
+
+	if derpEnabled {
 		sb.WriteString(fmt.Sprintf(`
-  derper:
+  derp:
     image: fredliang/derper
     container_name: %s
-    restart: unless-stopped
-    ports:
-      - "%s:6060"
-      - "%s:3478/udp"
+    networks:
+      - private
     environment:
       DERP_DOMAIN: %s
       DERP_ADDR: :6060
-      DERP_REGION_CODE: %s
       DERP_CERT_MODE: %s
-      DERP_VERIFY_CLIENTS: "%v"
+      DERP_VERIFY_CLIENTS: %v
+    ports:
+      - "%s:6060"
+      - "%s:3478/udp"
     volumes:
       - /var/run/tailscale:/var/run/tailscale
       - /usr/share/zoneinfo/%s:/etc/localtime:ro
-    networks:
-      - private
-`, derpContainerName, derpPort, stunPort, derpDomain, derpRegionCode, derpCertMode,
-			derpVerifyClients, timezone))
+    restart: unless-stopped
+`, derpContainerName, derpDomain, derpCertMode, derpVerifyClients, derpPort, stunPort, timezone))
 	}
 
-	// Nginx service
 	if proxyMode == "built_in" {
-		ngxName := nginxContainerName
-		if ngxName == "" {
-			ngxName = "headscale-nginx"
+		sslMode := normalizeSSLCertMode(sslCertMode, false)
+		if strings.TrimSpace(nginxContainerName) == "" {
+			nginxContainerName = "headscale-nginx"
 		}
+
 		sb.WriteString(fmt.Sprintf(`
   nginx:
     image: nginx:1.27-alpine
@@ -1355,30 +1723,35 @@ func renderComposeFromConfig(
     restart: unless-stopped
     ports:
       - "80:80"
-      - "443:443"
-    volumes:
+`, nginxContainerName))
+		if enableSSL && sslMode != "none" {
+			sb.WriteString("      - \"443:443\"\n")
+		}
+		sb.WriteString(fmt.Sprintf(`    volumes:
       - ./deploy/nginx/conf.d:/etc/nginx/conf.d
-      - ./deploy/nginx/certbot/www:/var/www/certbot
+`))
+		if enableSSL && sslMode != "none" {
+			sb.WriteString(`      - ./deploy/nginx/certbot/www:/var/www/certbot
       - ./deploy/nginx/certbot/conf:/etc/letsencrypt
-      - /usr/share/zoneinfo/%s:/etc/localtime:ro
+`)
+		}
+		sb.WriteString(fmt.Sprintf(`      - /usr/share/zoneinfo/%s:/etc/localtime:ro
     networks:
       - private
-`, ngxName, timezone))
+`, timezone))
 
-		// Certbot service
-		if deployCertbot {
-			cbName := certbotContainerName
-			if cbName == "" {
-				cbName = "headscale-certbot"
+		if enableSSL && sslMode == "certbot" {
+			if strings.TrimSpace(certbotContainerName) == "" {
+				certbotContainerName = "headscale-certbot"
 			}
 			domains := make([]string, 0, 3)
-			if panelDomain != "" {
+			if panelDomain = strings.TrimSpace(panelDomain); panelDomain != "" {
 				domains = append(domains, panelDomain)
 			}
-			if headscaleHost != "" {
+			if headscaleHost = strings.TrimSpace(headscaleHost); headscaleHost != "" {
 				domains = append(domains, headscaleHost)
 			}
-			if derpHost != "" {
+			if derpHost = strings.TrimSpace(derpHost); derpHost != "" {
 				domains = append(domains, derpHost)
 			}
 			sb.WriteString(fmt.Sprintf(`
@@ -1404,10 +1777,105 @@ func renderComposeFromConfig(
       - ./deploy/nginx/certbot/conf:/etc/letsencrypt
     networks:
       - private
-`, cbName, certbotEmail, strings.Join(domains, ",")))
+`, certbotContainerName, strings.TrimSpace(certbotEmail), strings.Join(domains, ",")))
 		}
 	}
 
-	sb.WriteString("\nnetworks:\n  private:\n    name: private\n    driver: bridge\n")
 	return sb.String()
+}
+
+func writeSetupControllerConfigFiles(headscaleConfigPath, headscaleConfigContent, derpConfigPath, derpConfigContent string) error {
+	if err := os.MkdirAll(filepath.Dir(headscaleConfigPath), 0755); err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(derpConfigPath), 0755); err != nil {
+		return err
+	}
+	if err := os.WriteFile(headscaleConfigPath, []byte(headscaleConfigContent), 0644); err != nil {
+		return err
+	}
+	if err := os.WriteFile(derpConfigPath, []byte(derpConfigContent), 0644); err != nil {
+		return err
+	}
+	return nil
+}
+
+func renderSetupHeadscaleConfig(serverURL, baseDomain, oidcIssuer string) string {
+	if serverURL == "" {
+		serverURL = "https://hs.bokro.cn"
+	}
+	if baseDomain == "" {
+		baseDomain = "bokro.network"
+	}
+	if oidcIssuer == "" {
+		oidcIssuer = "https://auth.bokro.cn"
+	}
+	return fmt.Sprintf(`server_url: %s
+listen_addr: 0.0.0.0:8080
+metrics_listen_addr: 0.0.0.0:9090
+grpc_listen_addr: 0.0.0.0:50443
+grpc_allow_insecure: true
+
+noise:
+  private_key_path: ./noise_private.key
+prefixes:
+  v6: fd7a:115c:a1e0::/48
+  v4: 100.100.0.0/16
+  allocation: sequential
+derp:
+  server:
+    enabled: false
+  urls:
+    # - https://controlplane.tailscale.com/derpmap/default
+  paths:
+    - /etc/headscale/derp.yaml
+database:
+  type: sqlite
+  sqlite:
+    path: /var/lib/headscale/db.sqlite
+    write_ahead_log: true
+dns:
+  magic_dns: true
+  override_local_dns: true
+  base_domain: %s
+  nameservers:
+    global:
+      - 223.5.5.5
+      - 114.114.114.114
+      - 2400:3200::1
+      - 2400:3200:baba::1
+  extra_records_path: /var/lib/headscale/extra-records.json
+policy:
+  mode: database
+  path: /var/lib/headscale/policy.json
+oidc:
+  only_start_if_oidc_is_available: false
+  issuer: "%s"
+  client_id: ""
+  client_secret: ""
+  scope: ["openid", "profile", "email", "groups"]
+  pkce:
+    enabled: false
+    method: S256
+`, serverURL, baseDomain, oidcIssuer)
+}
+
+func renderSetupDERPConfig(derpDomain string) string {
+	host := strings.TrimSpace(derpDomain)
+	if host == "" {
+		host = "derp1.bokro.cn"
+	}
+	return fmt.Sprintf(`regions:
+  996:
+    regionid: 996
+    regioncode: gz_tencent
+    regionname: China Guangzhou Tencent Cloud
+    nodes:
+      - name: gz_tencent
+        regionid: 996
+        hostname: %s
+        stunport: 33478
+        stunonly: false
+        derpport: 443
+`, host)
 }

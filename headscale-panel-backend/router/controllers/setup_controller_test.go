@@ -3,6 +3,7 @@ package controllers
 import (
 	"headscale-panel/pkg/conf"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -55,5 +56,52 @@ func TestSetupBootstrapValidationWhenConfigured(t *testing.T) {
 	}
 	if !isSetupBootstrapAuthorized(okCtx) {
 		t.Fatal("isSetupBootstrapAuthorized() should return true with correct token")
+	}
+}
+
+func TestNormalizeSSLCertMode(t *testing.T) {
+	cases := []struct {
+		name          string
+		mode          string
+		deployCertbot bool
+		want          string
+	}{
+		{name: "explicit certbot", mode: "certbot", deployCertbot: false, want: "certbot"},
+		{name: "explicit manual", mode: "manual", deployCertbot: true, want: "manual"},
+		{name: "fallback certbot", mode: "", deployCertbot: true, want: "certbot"},
+		{name: "fallback manual", mode: "", deployCertbot: false, want: "manual"},
+	}
+
+	for _, tc := range cases {
+		got := normalizeSSLCertMode(tc.mode, tc.deployCertbot)
+		if got != tc.want {
+			t.Fatalf("%s: expected %q, got %q", tc.name, tc.want, got)
+		}
+	}
+}
+
+func TestRenderSetupConfigTemplates(t *testing.T) {
+	hsConfig := renderSetupHeadscaleConfig("", "", "")
+	if !strings.Contains(hsConfig, "grpc_allow_insecure: true") {
+		t.Fatal("renderSetupHeadscaleConfig() should include grpc_allow_insecure")
+	}
+	if !strings.Contains(hsConfig, "server_url: https://hs.bokro.cn") {
+		t.Fatal("renderSetupHeadscaleConfig() should include default server_url")
+	}
+
+	hsConfigCustom := renderSetupHeadscaleConfig("https://custom.example.com", "example.net", "https://auth.example.com")
+	if !strings.Contains(hsConfigCustom, "server_url: https://custom.example.com") {
+		t.Fatal("renderSetupHeadscaleConfig() should use custom server_url")
+	}
+	if !strings.Contains(hsConfigCustom, "base_domain: example.net") {
+		t.Fatal("renderSetupHeadscaleConfig() should use custom base_domain")
+	}
+	if !strings.Contains(hsConfigCustom, "issuer: \"https://auth.example.com\"") {
+		t.Fatal("renderSetupHeadscaleConfig() should use custom oidc issuer")
+	}
+
+	derpConfig := renderSetupDERPConfig("derp1.example.com")
+	if !strings.Contains(derpConfig, "hostname: derp1.example.com") {
+		t.Fatal("renderSetupDERPConfig() should use provided hostname")
 	}
 }

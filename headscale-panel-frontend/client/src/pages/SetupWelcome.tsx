@@ -4,15 +4,13 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useI18n, locales, useTranslation } from '@/i18n/index';
 import api from '@/lib/api';
-import { Loader2, Server, Shield, ArrowRight, Settings, RotateCcw, CheckCircle2 } from 'lucide-react';
+import { Loader2, Shield, ArrowRight, Settings, RotateCcw, CheckCircle2, Globe, Cpu, Network } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation } from 'wouter';
 import { toast } from 'sonner';
 
 interface SetupStatusResponse {
   initialized?: boolean;
-  setup_window_open?: boolean;
-  setup_window_deadline?: string;
   bootstrap_configured?: boolean;
 }
 
@@ -29,9 +27,6 @@ interface SetupPreflightResponse {
   bootstrap_configured?: boolean;
 }
 
-const COLOR_UNIFI_BLUE = '#006FFF';
-const COLOR_BG = '#F0F4F8';
-
 export default function SetupWelcome() {
   const t = useTranslation();
   const { locale, setLocale } = useI18n();
@@ -41,8 +36,6 @@ export default function SetupWelcome() {
   const [checking, setChecking] = useState(false);
   const [bootstrapConfigured, setBootstrapConfigured] = useState(false);
   const [setupBootstrapToken, setSetupBootstrapToken] = useState(() => sessionStorage.getItem('setup.bootstrapToken') || '');
-  const [setupWindowOpen, setSetupWindowOpen] = useState(true);
-  const [setupWindowDeadline, setSetupWindowDeadline] = useState('');
   const [preflight, setPreflight] = useState<SetupPreflightResponse | null>(null);
 
   useEffect(() => {
@@ -71,8 +64,6 @@ export default function SetupWelcome() {
       }
 
       setBootstrapConfigured(Boolean(status.bootstrap_configured));
-      setSetupWindowOpen(Boolean(status.setup_window_open));
-      setSetupWindowDeadline(String(status.setup_window_deadline || ''));
 
       const data = (await api.post(
         '/setup/preflight',
@@ -135,151 +126,159 @@ export default function SetupWelcome() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: COLOR_BG }}>
-        <Loader2 className="h-8 w-8 animate-spin" style={{ color: COLOR_UNIFI_BLUE }} />
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     );
   }
 
   return (
-    <div
-      className="min-h-screen"
-      style={{
-        backgroundColor: COLOR_BG,
-        backgroundImage:
-          'radial-gradient(circle at 10% -10%, rgba(0,92,255,0.10), transparent 45%), radial-gradient(circle at 90% 120%, rgba(2,132,199,0.10), transparent 35%)',
-      }}
-    >
-      <div className="mx-auto max-w-2xl p-4 md:p-8">
-        <div className="flex justify-end mb-4">
-          <select
-            value={locale}
-            onChange={(e) => setLocale(e.target.value)}
-            className="rounded-lg border border-slate-200 bg-white/80 backdrop-blur px-3 py-2 text-sm text-slate-600 shadow-sm transition hover:border-slate-300"
-          >
-            {Object.entries(locales).map(([code, meta]) => (
-              <option key={code} value={code}>
-                {meta.label}
-              </option>
-            ))}
-          </select>
+    <div className="min-h-screen bg-background flex flex-col">
+      {/* Top bar */}
+      <div className="flex items-center justify-between px-6 py-4 md:px-10 md:py-5 border-b">
+        <div className="flex items-center gap-2.5">
+          <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center">
+            <Shield className="h-4 w-4 text-primary-foreground" />
+          </div>
+          <span className="text-sm font-semibold text-foreground tracking-tight">Headscale Panel</span>
         </div>
+        <select
+          value={locale}
+          onChange={(e) => setLocale(e.target.value)}
+          className="rounded-md border border-input bg-background px-3 py-1.5 text-xs text-muted-foreground transition hover:border-primary/50 focus:outline-none focus:ring-2 focus:ring-ring/50"
+        >
+          {Object.entries(locales).map(([code, meta]) => (
+            <option key={code} value={code}>
+              {meta.label}
+            </option>
+          ))}
+        </select>
+      </div>
 
-        <Card className="rounded-2xl border border-slate-200/80 bg-white/95 backdrop-blur-sm p-8 md:p-10 shadow-[0_10px_40px_rgba(15,23,42,0.08)]">
-          <div className="flex flex-col items-center text-center">
-            <div
-              className="h-16 w-16 rounded-2xl flex items-center justify-center"
-              style={{ background: 'linear-gradient(135deg, #005CFF, #3B82F6)', boxShadow: '0 12px 30px rgba(0,92,255,0.28)' }}
-            >
-              <Shield className="h-8 w-8 text-white" />
+      {/* Main content */}
+      <div className="flex-1 flex items-center justify-center px-4 py-8">
+        <div className="w-full max-w-lg">
+          {/* Hero section */}
+          <div className="text-center mb-8">
+            <div className="inline-flex h-16 w-16 rounded-2xl bg-primary items-center justify-center shadow-lg shadow-primary/20 mb-5">
+              <Shield className="h-8 w-8 text-primary-foreground" />
             </div>
-            <h1 className="mt-5 text-2xl font-bold text-slate-900 tracking-tight">{t.setupWelcome.title}</h1>
-            <p className="mt-2 text-sm text-slate-500 max-w-md">{t.setupWelcome.subtitle}</p>
+            <h1 className="text-3xl font-bold text-foreground tracking-tight">{t.setupWelcome.title}</h1>
+            <p className="mt-3 text-sm text-muted-foreground max-w-md mx-auto leading-relaxed">{t.setupWelcome.subtitle}</p>
           </div>
 
-          {!setupWindowOpen && (
-            <div className="mt-6 rounded-xl border border-red-200 bg-red-50 p-4 text-xs text-red-700 flex items-start gap-2">
-              <span className="shrink-0 mt-0.5 h-4 w-4 rounded-full bg-red-100 flex items-center justify-center">
-                <span className="h-2 w-2 rounded-full bg-red-400" />
-              </span>
-              {t.setup.setupWindowClosed}{setupWindowDeadline ? ` (${setupWindowDeadline})` : ''}.
-            </div>
-          )}
-
-          {bootstrapConfigured && (
-            <div className="mt-6 rounded-xl border border-slate-200 bg-slate-50/70 p-5">
-              <Label className="text-slate-700 font-medium">{t.setup.bootstrapCredential}</Label>
-              <Input
-                className="mt-2 border-slate-200"
-                placeholder="X-Setup-Bootstrap-Token"
-                type="password"
-                value={setupBootstrapToken}
-                onChange={(e) => setSetupBootstrapToken(e.target.value)}
-              />
-              <p className="mt-1.5 text-xs text-slate-400">{t.setup.bootstrapHint}</p>
-            </div>
-          )}
-
-          <div className="mt-6">
-            <Card className="rounded-xl border border-slate-200 bg-slate-50/50 p-5">
-              <div className="flex items-center gap-2.5">
-                <div className={`h-8 w-8 rounded-lg flex items-center justify-center ${
-                  preflight?.health?.docker_available
-                    ? 'bg-emerald-100 text-emerald-600'
-                    : 'bg-slate-100 text-slate-400'
-                }`}>
-                  <Server className="h-4 w-4" />
+          {/* Feature showcase */}
+          <div className="space-y-3 mb-6">
+            {[
+              { icon: Globe, label: t.setup.welcomeFeature1Title, desc: t.setup.welcomeFeature1Desc },
+              { icon: Cpu, label: t.setup.welcomeFeature2Title, desc: t.setup.welcomeFeature2Desc },
+              { icon: Network, label: t.setup.welcomeFeature3Title, desc: t.setup.welcomeFeature3Desc },
+            ].map((feat) => (
+              <div key={feat.label} className="flex items-start gap-4 rounded-xl border bg-card shadow-sm p-4">
+                <div className="h-10 w-10 shrink-0 rounded-lg bg-primary/10 flex items-center justify-center">
+                  <feat.icon className="h-5 w-5 text-primary" />
                 </div>
-                <div>
-                  <span className="text-sm font-semibold text-slate-800">{t.setup.docker}</span>
-                  <p className="text-xs text-slate-500">
-                    {preflight?.health?.docker_available ? (
-                      <span className="text-emerald-600">{t.setup.healthy}</span>
-                    ) : (
-                      <span className="text-amber-500">{t.setup.attention}</span>
-                    )}
-                  </p>
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-foreground">{feat.label}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">{feat.desc}</p>
                 </div>
-                {preflight?.health?.docker_available && (
-                  <CheckCircle2 className="h-4 w-4 ml-auto text-emerald-500" />
-                )}
               </div>
-              <p className="mt-2 text-xs text-slate-400 pl-[42px]">{preflight?.health?.docker_detail || '-'}</p>
-            </Card>
+            ))}
           </div>
 
-          {hasExistingConfig && (
-            <div className="mt-5 rounded-xl border border-amber-200/80 bg-amber-50/60 p-4">
-              <p className="text-xs font-medium text-amber-700">{t.setupWelcome.existingConfigDetected}</p>
-              <div className="mt-2 text-xs text-amber-600/80 font-mono">
-                {(preflight?.existing_files || []).join(', ') || t.setup.noExistingFiles}
+          {/* Main card */}
+          <Card className="rounded-2xl shadow-lg border p-0">
+            {/* Bootstrap token */}
+            {bootstrapConfigured && (
+              <div className="px-6 pt-6">
+                <div className="rounded-lg border bg-muted/50 p-4">
+                  <Label className="text-xs font-medium">{t.setup.bootstrapCredential}</Label>
+                  <Input
+                    className="mt-2"
+                    placeholder="X-Setup-Bootstrap-Token"
+                    type="password"
+                    value={setupBootstrapToken}
+                    onChange={(e) => setSetupBootstrapToken(e.target.value)}
+                  />
+                  <p className="mt-1.5 text-[11px] text-muted-foreground">{t.setup.bootstrapHint}</p>
+                </div>
               </div>
-            </div>
-          )}
-
-          <div className="mt-8 space-y-3">
-            {hasExistingConfig ? (
-              <>
-                <Button
-                  className="w-full h-12 text-sm font-semibold rounded-xl shadow-lg transition-all hover:shadow-xl"
-                  style={{ backgroundColor: COLOR_UNIFI_BLUE, boxShadow: '0 10px 25px rgba(0,92,255,0.25)' }}
-                  onClick={proceedWithExisting}
-                >
-                  <Settings className="h-4 w-4 mr-2" />
-                  {t.setupWelcome.useExistingConfig}
-                  <ArrowRight className="h-4 w-4 ml-2" />
-                </Button>
-                <Button
-                  variant="outline"
-                  className="w-full h-11 text-sm rounded-xl border-slate-200 hover:bg-slate-50"
-                  onClick={restartFresh}
-                >
-                  <RotateCcw className="h-4 w-4 mr-2" />
-                  {t.setupWelcome.restartFresh}
-                </Button>
-              </>
-            ) : (
-              <Button
-                className="w-full h-12 text-sm font-semibold rounded-xl shadow-lg transition-all hover:shadow-xl"
-                style={{ backgroundColor: COLOR_UNIFI_BLUE, boxShadow: '0 10px 25px rgba(0,92,255,0.25)' }}
-                onClick={proceedToWizard}
-              >
-                {t.setupWelcome.startSetup}
-                <ArrowRight className="h-4 w-4 ml-2" />
-              </Button>
             )}
 
-            <Button
-              variant="ghost"
-              className="w-full text-sm text-slate-400 hover:text-slate-600"
-              onClick={runQuickCheck}
-              disabled={checking}
-            >
-              {checking && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              {t.setupWelcome.recheck}
-            </Button>
-          </div>
-        </Card>
+            {/* Docker status - only when available */}
+            {preflight?.health?.docker_available && (
+              <div className="px-6 pt-5">
+                <div className="rounded-lg border border-emerald-200 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-900/20 p-3.5 flex items-center gap-3">
+                  <div className="h-8 w-8 rounded-lg bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center shrink-0">
+                    <Cpu className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-foreground">Docker</span>
+                      <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
+                    </div>
+                    <p className="text-[11px] text-muted-foreground truncate mt-0.5">
+                      {preflight?.health?.docker_detail || '-'}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Existing config detected */}
+            {hasExistingConfig && (
+              <div className="px-6 pt-4">
+                <div className="rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-900/20 p-3.5">
+                  <p className="text-xs font-medium text-amber-700 dark:text-amber-300">{t.setupWelcome.existingConfigDetected}</p>
+                  <p className="text-[11px] text-amber-600/70 dark:text-amber-400/70 font-mono mt-1.5 truncate">
+                    {(preflight?.existing_files || []).join(', ') || t.setup.noExistingFiles}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Action buttons */}
+            <div className="p-6 space-y-2.5">
+              <Button
+                className="w-full h-11 text-sm font-semibold rounded-xl"
+                onClick={proceedToWizard}
+              >
+                <ArrowRight className="h-4 w-4 mr-2" />
+                {t.setupWelcome.oneClickDeploy}
+              </Button>
+              <Button
+                className="w-full h-10 text-sm rounded-xl"
+                variant="outline"
+                onClick={proceedWithExisting}
+              >
+                <Settings className="h-4 w-4 mr-2" />
+                {t.setupWelcome.useExistingConfig}
+              </Button>
+              {hasExistingConfig && (
+                <Button
+                  className="w-full h-9 text-xs"
+                  variant="ghost"
+                  onClick={restartFresh}
+                >
+                  <RotateCcw className="h-3.5 w-3.5 mr-1.5" />
+                  {t.setupWelcome.restartFresh}
+                </Button>
+              )}
+            </div>
+
+            {/* Recheck footer */}
+            <div className="border-t px-6 py-3 flex justify-center">
+              <button
+                className="text-[11px] text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1.5 disabled:opacity-50"
+                onClick={runQuickCheck}
+                disabled={checking}
+              >
+                {checking && <Loader2 className="h-3 w-3 animate-spin" />}
+                {t.setupWelcome.recheck}
+              </button>
+            </div>
+          </Card>
+        </div>
       </div>
     </div>
   );

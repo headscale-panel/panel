@@ -54,6 +54,7 @@ func InitRouter() *gin.Engine {
 		api.POST("/setup/reverse-proxy/config", setupController.GenerateReverseProxyConfig)
 		api.POST("/setup/compose", setupController.GenerateComposeFile)
 		api.POST("/setup/connectivity-check", setupController.ConnectivityCheck)
+		api.POST("/setup/connectivity-poll", setupController.ConnectivityPoll)
 		api.POST("/setup/generate-compose", setupController.GenerateComposeFromConfig)
 
 		authController := controllers.NewAuthController()
