@@ -10,29 +10,22 @@ import Dashboard from "./pages/Dashboard";
 import Login from "./pages/Login";
 import Devices from "./pages/Devices";
 import Users from "./pages/Users";
-import OIDCSettings from "./pages/OIDCSettings";
 import Routes from "./pages/Routes";
 import Resources from "./pages/Resources";
 import ACL from "./pages/ACL";
 import Metrics from "./pages/Metrics";
 import Settings from "./pages/Settings";
-import Register from "./pages/Register";
 import DNS from "./pages/DNS";
 import SetupWelcome from "./pages/SetupWelcome";
 import api from "./lib/api";
 import { useState, useEffect, type ReactNode } from "react";
 import { Loader2 } from "lucide-react";
 
-/** All frontend routes live under /panel */
 const BASE = '/panel';
 
-/**
- * Guard: if the system has not been initialized yet, redirect every page
- * (except /setup itself) to /setup.
- */
 function SetupGuard({ children }: { children: ReactNode }) {
   const [checking, setChecking] = useState(true);
-  const [initialized, setInitialized] = useState(true); // assume true to avoid flash
+  const [initialized, setInitialized] = useState(true);
   const [location, setLocation] = useLocation();
 
   useEffect(() => {
@@ -42,17 +35,10 @@ function SetupGuard({ children }: { children: ReactNode }) {
         const d = data as Record<string, unknown>;
         const init = Boolean(d?.initialized);
         setInitialized(init);
-        if (!init && !location.startsWith('/setup')) {
-          setLocation('/setup');
-        }
+        if (!init && !location.startsWith('/setup')) setLocation('/setup');
       })
-      .catch(() => {
-        // On error assume initialized so users aren't blocked
-        setInitialized(true);
-      })
+      .catch(() => setInitialized(true))
       .finally(() => setChecking(false));
-    // Run once on mount
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -63,16 +49,13 @@ function SetupGuard({ children }: { children: ReactNode }) {
 
   if (checking) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50">
-        <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     );
   }
 
-  // If not initialized and not on /setup, render nothing (redirect pending)
-  if (!initialized && !location.startsWith('/setup')) {
-    return null;
-  }
+  if (!initialized && !location.startsWith('/setup')) return null;
 
   return <>{children}</>;
 }
@@ -80,73 +63,41 @@ function SetupGuard({ children }: { children: ReactNode }) {
 function AppRoutes() {
   return (
     <Switch>
-      {/* Public routes */}
       <Route path="/login" component={Login} />
-      <Route path="/register" component={Register} />
       <Route path="/setup" component={SetupWelcome} />
-      <Route path="/setup/wizard" component={SetupWelcome} />
 
-      {/* Protected routes */}
       <Route path="/">
-        <ProtectedRoute>
-          <Dashboard />
-        </ProtectedRoute>
+        <ProtectedRoute><Dashboard /></ProtectedRoute>
       </Route>
       <Route path="/devices">
-        <ProtectedRoute>
-          <Devices />
-        </ProtectedRoute>
+        <ProtectedRoute><Devices /></ProtectedRoute>
       </Route>
       <Route path="/users">
-        <ProtectedRoute requireAdmin>
-          <Users />
-        </ProtectedRoute>
-      </Route>
-      <Route path="/oidc">
-        <ProtectedRoute>
-          <OIDCSettings />
-        </ProtectedRoute>
+        <ProtectedRoute requireAdmin><Users /></ProtectedRoute>
       </Route>
       <Route path="/routes">
-        <ProtectedRoute>
-          <Routes />
-        </ProtectedRoute>
+        <ProtectedRoute><Routes /></ProtectedRoute>
       </Route>
       <Route path="/resources">
-        <ProtectedRoute requireAdmin>
-          <Resources />
-        </ProtectedRoute>
+        <ProtectedRoute requireAdmin><Resources /></ProtectedRoute>
       </Route>
       <Route path="/acl">
-        <ProtectedRoute requireAdmin>
-          <ACL />
-        </ProtectedRoute>
+        <ProtectedRoute requireAdmin><ACL /></ProtectedRoute>
       </Route>
       <Route path="/metrics">
-        <ProtectedRoute requireAdmin>
-          <Metrics />
-        </ProtectedRoute>
+        <ProtectedRoute requireAdmin><Metrics /></ProtectedRoute>
       </Route>
       <Route path="/settings">
-        <ProtectedRoute>
-          <Settings />
-        </ProtectedRoute>
+        <ProtectedRoute><Settings /></ProtectedRoute>
       </Route>
       <Route path="/dns">
-        <ProtectedRoute requireAdmin>
-          <DNS />
-        </ProtectedRoute>
+        <ProtectedRoute requireAdmin><DNS /></ProtectedRoute>
       </Route>
       <Route path="/404" component={NotFound} />
       <Route component={NotFound} />
     </Switch>
   );
 }
-
-// NOTE: About Theme
-// - First choose a default theme according to your design style (dark or light bg), than change color palette in index.css
-//   to keep consistent foreground/background color across components
-// - If you want to make theme switchable, pass `switchable` ThemeProvider and use `useTheme` hook
 
 function App() {
   return (

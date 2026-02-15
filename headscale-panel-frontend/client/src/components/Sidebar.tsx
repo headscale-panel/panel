@@ -38,9 +38,7 @@ export default function Sidebar({ collapsed = false }: SidebarProps) {
   const { user, clearAuth } = useAuthStore();
 
   const isAdmin = user?.role === 'admin';
-  const visibleMenuItems = menuItems.filter(
-    (item) => !item.adminOnly || isAdmin
-  );
+  const visibleMenuItems = menuItems.filter((item) => !item.adminOnly || isAdmin);
 
   const displayName = user?.display_name || user?.username || t.sidebar.defaultUser;
   const email = user?.email || '';
@@ -58,45 +56,35 @@ export default function Sidebar({ collapsed = false }: SidebarProps) {
         collapsed ? 'w-16' : 'w-60'
       )}
     >
-      {/* Logo */}
       <div className="h-16 flex items-center justify-center border-b border-border px-4">
         {collapsed ? (
           <Activity className="w-8 h-8 text-primary" />
         ) : (
-          <div className="flex items-center gap-2">
-            <span className="text-xl font-bold text-foreground">Headscale Panel</span>
-          </div>
+          <span className="text-xl font-bold text-foreground">Headscale Panel</span>
         )}
       </div>
 
-      {/* Menu Items */}
       <nav className="p-2 space-y-1">
         {visibleMenuItems.map((item) => {
           const Icon = item.icon;
           const isActive = location === item.path;
-
           return (
             <Link key={item.path} href={item.path}>
               <div
                 className={cn(
                   'flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer transition-all duration-200',
                   'hover:bg-accent hover:text-accent-foreground',
-                  isActive
-                    ? 'bg-primary text-primary-foreground shadow-sm'
-                    : 'text-muted-foreground'
+                  isActive ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground'
                 )}
               >
                 <Icon className="w-5 h-5 flex-shrink-0" />
-                {!collapsed && (
-                  <span className="text-sm font-medium">{t.sidebar[item.key]}</span>
-                )}
+                {!collapsed && <span className="text-sm font-medium">{t.sidebar[item.key]}</span>}
               </div>
             </Link>
           );
         })}
       </nav>
 
-      {/* User Info */}
       <div className="absolute bottom-0 left-0 right-0 border-t border-border">
         {collapsed ? (
           <div className="p-2 space-y-2 flex flex-col items-center">
@@ -118,12 +106,8 @@ export default function Sidebar({ collapsed = false }: SidebarProps) {
                 <span className="text-sm font-semibold text-primary">{avatarLetter}</span>
               </div>
               <div className="flex-1 min-w-0">
-                <div className="text-sm font-medium text-foreground truncate">
-                  {displayName}
-                </div>
-                <div className="text-xs text-muted-foreground truncate">
-                  {email}
-                </div>
+                <div className="text-sm font-medium text-foreground truncate">{displayName}</div>
+                <div className="text-xs text-muted-foreground truncate">{email}</div>
               </div>
               <button
                 onClick={handleLogout}

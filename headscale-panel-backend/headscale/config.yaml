@@ -1,7 +1,7 @@
 server_url: https://vpn.bokro.cn
 listen_addr: 0.0.0.0:8080
 metrics_listen_addr: 0.0.0.0:9090
-grpc_listen_addr: 0.0.0.0:50443
+grpc_listen_addr: 100.100.0.5:28081
 grpc_allow_insecure: true
 noise:
     private_key_path: ./noise_private.key
@@ -48,5 +48,6 @@ oidc:
         - profile
         - email
         - groups
+    expiry: 180d
     pkce:
         method: S256

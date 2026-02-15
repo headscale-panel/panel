@@ -266,7 +266,7 @@ export default function Resources() {
                 {loading ? (
                   <TableRow>
                     <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
-                      {t.common.loading}
+                      {t.common.status.loading}
                     </TableCell>
                   </TableRow>
                 ) : filteredResources.length === 0 ? (
