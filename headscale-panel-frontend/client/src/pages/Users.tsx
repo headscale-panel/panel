@@ -4,23 +4,23 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useLocation } from 'wouter';
 import {
   Edit,
-  FolderTree,
   Laptop,
-  MoreVertical,
+  Loader2,
   Plus,
   RefreshCw,
   Route,
   Search,
   Trash2,
   User,
+  UserCheck,
   UserPlus,
   Users,
   UsersRound,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
+import { Card } from '@/components/ui/card';
+
 import {
   Dialog,
   DialogContent,
@@ -42,7 +42,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -56,7 +55,7 @@ import {
 } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import DashboardLayout from '@/components/DashboardLayout';
-import { systemUsersAPI, groupsAPI, aclAPI } from '@/lib/api';
+import { systemUsersAPI, groupsAPI, aclAPI, panelSettingsAPI, devicesAPI } from '@/lib/api';
 import { useTranslation } from '@/i18n/index';
 
 // ACL Group from policy
@@ -83,6 +82,7 @@ interface UserData {
   group?: Group;
   is_active: boolean;
   profile_pic_url?: string;
+  provider?: string; // "local" | "headscale" | "oidc"
 }
 
 export default function UsersPage() {
@@ -118,6 +118,13 @@ export default function UsersPage() {
   });
   const [newGroupName, setNewGroupName] = useState('');
   const [editGroupName, setEditGroupName] = useState('');
+  const [onlineUsers, setOnlineUsers] = useState<Set<string>>(new Set());
+  const [oidcStatus, setOidcStatus] = useState({
+    oidc_enabled: false,
+    third_party: false,
+    builtin: false,
+    password_required: true,
+  });
 
   useEffect(() => {
     loadData();
@@ -126,11 +133,18 @@ export default function UsersPage() {
   const loadData = async () => {
     try {
       setLoading(true);
-      const [usersRes, groupsRes, policyRes] = await Promise.all([
+      const [usersRes, groupsRes, policyRes, oidcStatusRes, devicesRes] = await Promise.all([
         systemUsersAPI.list({ pageSize: 1000 }),
         groupsAPI.list({ pageSize: 100 }),
-        aclAPI.getPolicy().catch(() => null)
+        aclAPI.getPolicy().catch(() => null),
+        panelSettingsAPI.getOIDCStatus().catch(() => null),
+        devicesAPI.list({ pageSize: 1000 }).catch(() => null),
       ]);
+      
+      // Set OIDC status (distinguishes builtin vs third-party)
+      if (oidcStatusRes) {
+        setOidcStatus(oidcStatusRes as any);
+      }
       
       const userList = (usersRes as any).list || [];
       setUsers(Array.isArray(userList) ? userList : []);
@@ -157,9 +171,9 @@ export default function UsersPage() {
         }));
         console.log('ACL Groups loaded (alt path):', parsedGroups);
         setAclGroups(parsedGroups);
-      } else if (policyRes?.groups) {
+      } else if ((policyRes as any)?.groups) {
         // Try another alternative path
-        const policyGroups: Record<string, string[]> = policyRes.groups;
+        const policyGroups: Record<string, string[]> = (policyRes as any).groups;
         const parsedGroups: ACLGroup[] = Object.entries(policyGroups).map(([key, members]) => ({
           name: key.replace(/^group:/, ''), // Remove "group:" prefix
           members: members,
@@ -167,6 +181,18 @@ export default function UsersPage() {
         console.log('ACL Groups loaded (direct):', parsedGroups);
         setAclGroups(parsedGroups);
       } else {
+      }
+
+      // Build online users set from devices data
+      if (devicesRes) {
+        const deviceList = (devicesRes as any)?.list || [];
+        const onlineSet = new Set<string>();
+        for (const device of deviceList) {
+          if (device.online && device.user?.name) {
+            onlineSet.add(device.user.name);
+          }
+        }
+        setOnlineUsers(onlineSet);
       }
       
     } catch (error: any) {
@@ -255,8 +281,8 @@ export default function UsersPage() {
   });
 
   const handleCreateUser = async () => {
-    if (!newUser.username || !newUser.password) {
-      toast.error(t.users.requiredFields);
+    if (!newUser.username || (oidcStatus.password_required && !newUser.password)) {
+      toast.error(oidcStatus.password_required ? t.users.requiredFields : t.users.requiredFieldsOidc);
       return;
     }
 
@@ -399,21 +425,37 @@ export default function UsersPage() {
     setLocation(`/routes?user=${user.headscale_name || user.username}`);
   };
 
+  const onlineCount = users.filter(u => onlineUsers.has(u.headscale_name || u.username)).length;
+
+  if (loading) {
+    return (
+      <DashboardLayout>
+        <div className="flex items-center justify-center h-64">
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        </div>
+      </DashboardLayout>
+    );
+  }
+
   return (
     <DashboardLayout>
       <TooltipProvider>
-      <div className="space-y-6 animate-in fade-in duration-500">
+      <div className="space-y-6 animate-fade-in">
         {/* Page Header */}
-        <div className="flex justify-between items-center">
+        <div className="flex items-center justify-between">
           <div>
-              <h1 className="text-2xl font-bold text-foreground">{t.users.title}</h1>
+            <h1 className="text-2xl font-bold text-foreground">{t.users.title}</h1>
             <p className="text-muted-foreground mt-1">{t.users.description}</p>
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" onClick={loadData} disabled={loading}>
-              <RefreshCw className={cn("h-4 w-4 mr-2", loading && "animate-spin")} />
-              {t.common.actions.refresh}
-            </Button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="outline" onClick={loadData} disabled={loading}>
+                  <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>{t.common.actions.refresh}</TooltipContent>
+            </Tooltip>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button>
@@ -435,15 +477,24 @@ export default function UsersPage() {
           </div>
         </div>
 
-        {/* Stats - Compact style matching Routes page */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        {/* Stats row — ACL card style */}
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
           <Card className="p-5 hover:shadow-lg transition-shadow">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">{t.users.totalUsers}</p>
                 <p className="text-2xl font-bold mt-1">{users.length}</p>
               </div>
-              <Users className="h-8 w-8 text-blue-500 opacity-80" />
+              <Users className="h-8 w-8 opacity-80 text-blue-500" />
+            </div>
+          </Card>
+          <Card className="p-5 hover:shadow-lg transition-shadow">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">{t.users.onlineUsers}</p>
+                <p className="text-2xl font-bold mt-1">{onlineCount}</p>
+              </div>
+              <UserCheck className="h-8 w-8 opacity-80 text-green-500" />
             </div>
           </Card>
           <Card className="p-5 hover:shadow-lg transition-shadow">
@@ -452,7 +503,7 @@ export default function UsersPage() {
                 <p className="text-sm text-muted-foreground">{t.users.groups}</p>
                 <p className="text-2xl font-bold mt-1">{groups.length}</p>
               </div>
-              <FolderTree className="h-8 w-8 text-purple-500 opacity-80" />
+              <UsersRound className="h-8 w-8 opacity-80 text-violet-500" />
             </div>
           </Card>
           <Card className="p-5 hover:shadow-lg transition-shadow">
@@ -461,7 +512,7 @@ export default function UsersPage() {
                 <p className="text-sm text-muted-foreground">{t.users.grouped}</p>
                 <p className="text-2xl font-bold mt-1">{users.filter(u => aclGroups.some(g => userMatchesAclGroup(u, g.name))).length}</p>
               </div>
-              <UsersRound className="h-8 w-8 text-green-500 opacity-80" />
+              <UserPlus className="h-8 w-8 opacity-80 text-emerald-500" />
             </div>
           </Card>
           <Card className="p-5 hover:shadow-lg transition-shadow">
@@ -470,61 +521,52 @@ export default function UsersPage() {
                 <p className="text-sm text-muted-foreground">{t.users.ungrouped}</p>
                 <p className="text-2xl font-bold mt-1">{getUngroupedUsers().length}</p>
               </div>
-              <User className="h-8 w-8 text-orange-500 opacity-80" />
+              <User className="h-8 w-8 opacity-80 text-gray-500" />
             </div>
           </Card>
         </div>
 
-        {/* Main Content - Tree + List Layout */}
-        <div className="grid grid-cols-12 gap-6">
-          {/* Left Panel - Tree View */}
-          <Card className="col-span-12 lg:col-span-3 gap-0">
-            <CardHeader className="pb-4 border-b border-border/60">
-              <CardTitle className="text-lg flex items-center gap-2">
-                <FolderTree className="w-5 h-5" />
-                {t.users.treeTitle}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-0">
-              <ScrollArea className="h-[500px]">
-                <div className="p-2">
+        {/* Main Content — Tree + List */}
+        <div className="grid grid-cols-12 gap-4">
+          {/* Left Panel — Sidebar tree */}
+          <div className="col-span-12 lg:col-span-3">
+            <Card className="p-0 overflow-hidden">
+              <div className="px-4 py-3 border-b">
+                <p className="text-sm font-medium text-muted-foreground uppercase tracking-wider">{t.users.treeTitle}</p>
+              </div>
+              <ScrollArea className="h-[520px]">
+                <div className="p-1.5 space-y-0.5">
                   {/* All Users */}
-                  <motion.div
-                    whileHover={{ x: 2 }}
+                  <button
                     className={cn(
-                      "flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer transition-colors",
+                      "w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-left transition-colors text-sm",
                       selectedGroupId === 'all' 
-                        ? "bg-primary text-primary-foreground" 
-                        : "hover:bg-muted"
+                        ? "bg-primary/10 text-primary font-medium" 
+                        : "text-foreground hover:bg-muted/60"
                     )}
                     onClick={() => setSelectedGroupId('all')}
                   >
-                    <Users className="w-4 h-4" />
-                    <span className="flex-1 font-medium">{t.users.allUsers}</span>
-                    <Badge variant="secondary" className="text-xs">
-                      {users.length}
-                    </Badge>
-                  </motion.div>
+                    <Users className="w-4 h-4 shrink-0 opacity-60" />
+                    <span className="flex-1 truncate">{t.users.allUsers}</span>
+                    <span className="text-xs tabular-nums text-muted-foreground">{users.length}</span>
+                  </button>
 
                   {/* Ungrouped Users */}
-                  <motion.div
-                    whileHover={{ x: 2 }}
+                  <button
                     className={cn(
-                      "flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer transition-colors",
+                      "w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-left transition-colors text-sm",
                       selectedGroupId === 'ungrouped' 
-                        ? "bg-primary text-primary-foreground" 
-                        : "hover:bg-muted"
+                        ? "bg-primary/10 text-primary font-medium" 
+                        : "text-foreground hover:bg-muted/60"
                     )}
                     onClick={() => setSelectedGroupId('ungrouped')}
                   >
-                    <User className="w-4 h-4" />
-                    <span className="flex-1">{t.users.ungroupedUsers}</span>
-                    <Badge variant="outline" className="text-xs">
-                      {getUngroupedUsers().length}
-                    </Badge>
-                  </motion.div>
+                    <User className="w-4 h-4 shrink-0 opacity-60" />
+                    <span className="flex-1 truncate">{t.users.ungroupedUsers}</span>
+                    <span className="text-xs tabular-nums text-muted-foreground">{getUngroupedUsers().length}</span>
+                  </button>
 
-                  <Separator className="my-2" />
+                  <Separator className="!my-2" />
 
                   {/* Database Groups */}
                   {groups.map((group) => {
@@ -532,153 +574,159 @@ export default function UsersPage() {
                     const isSelected = selectedGroupId === group.ID;
 
                     return (
-                      <motion.div
+                      <button
                         key={group.ID}
-                        whileHover={{ x: 2 }}
                         className={cn(
-                          "flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer transition-colors group/item",
+                          "w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-left transition-colors text-sm",
                           isSelected 
-                            ? "bg-primary text-primary-foreground" 
-                            : "hover:bg-muted"
+                            ? "bg-primary/10 text-primary font-medium" 
+                            : "text-foreground hover:bg-muted/60"
                         )}
                         onClick={() => setSelectedGroupId(group.ID)}
                       >
-                        <UsersRound className="w-4 h-4" />
+                        <UsersRound className="w-4 h-4 shrink-0 opacity-60" />
                         <span className="flex-1 truncate">{group.name}</span>
-                        <Badge variant={isSelected ? "secondary" : "outline"} className="text-xs">
-                          {memberCount}
-                        </Badge>
-                      </motion.div>
+                        <span className="text-xs tabular-nums text-muted-foreground">{memberCount}</span>
+                      </button>
                     );
                   })}
                 </div>
               </ScrollArea>
-            </CardContent>
-          </Card>
+            </Card>
+          </div>
 
-          {/* Right Panel - User List */}
-          <Card className="col-span-12 lg:col-span-9 gap-0">
-            <CardHeader className="pb-4 border-b border-border/60">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-lg">
-                  {selectedGroupId === 'all' && t.users.allUsers}
-                  {selectedGroupId === 'ungrouped' && t.users.ungroupedUsers}
-                  {typeof selectedGroupId === 'number' && 
-                    groups.find(g => g.ID === selectedGroupId)?.name
-                  }
-                  <span className="text-muted-foreground font-normal ml-2">
-                    ({filteredUsers.length})
-                  </span>
-                </CardTitle>
-                <div className="relative w-64">
-                  <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+          {/* Right Panel — User List */}
+          <div className="col-span-12 lg:col-span-9">
+            <Card className="p-0 overflow-hidden">
+              {/* List header */}
+              <div className="flex items-center justify-between px-4 py-3 border-b">
+                <div className="flex items-center gap-2">
+                  <h2 className="text-sm font-medium text-foreground">
+                    {selectedGroupId === 'all' && t.users.allUsers}
+                    {selectedGroupId === 'ungrouped' && t.users.ungroupedUsers}
+                    {typeof selectedGroupId === 'number' && 
+                      groups.find(g => g.ID === selectedGroupId)?.name
+                    }
+                  </h2>
+                  <span className="text-xs text-muted-foreground tabular-nums">{filteredUsers.length}</span>
+                </div>
+                <div className="relative w-56">
+                  <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
                   <Input
                     placeholder={t.users.searchPlaceholder}
-                    className="pl-8"
+                    className="pl-8 h-8 text-sm"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                   />
                 </div>
               </div>
-            </CardHeader>
-            <CardContent className="p-0">
-              <ScrollArea className="h-[500px]">
-                <div className="divide-y divide-border/60">
+
+              {/* User rows */}
+              <ScrollArea className="h-[520px]">
+                <div className="divide-y divide-border/50">
                   <AnimatePresence>
                     {loading ? (
-                      <div className="p-8 text-center text-muted-foreground">
+                      <div className="p-12 text-center text-sm text-muted-foreground">
                         {t.common.status.loading}
                       </div>
                     ) : filteredUsers.length === 0 ? (
-                      <div className="p-8 text-center text-muted-foreground">
+                      <div className="p-12 text-center text-sm text-muted-foreground">
                         {searchQuery ? t.users.noSearchResult : t.users.noUsers}
                       </div>
                     ) : (
                       filteredUsers.map((user, index) => (
                         <motion.div
                           key={user.ID}
-                          initial={{ opacity: 0, y: 10 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          exit={{ opacity: 0, y: -10 }}
-                          transition={{ delay: index * 0.02 }}
-                          className="flex items-center gap-4 p-4 hover:bg-muted/50 transition-colors group"
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          exit={{ opacity: 0 }}
+                          transition={{ delay: index * 0.015 }}
+                          className="flex items-center gap-3.5 px-4 py-3 hover:bg-muted/30 transition-colors group/row"
                         >
-                          <Avatar className="h-10 w-10">
-                            <AvatarFallback className="bg-primary/10 text-primary">
-                              {user.display_name?.[0]?.toUpperCase() || user.username[0]?.toUpperCase()}
-                            </AvatarFallback>
-                          </Avatar>
+                          {/* Avatar with online indicator */}
+                          <div className="relative shrink-0">
+                            <Avatar className="h-9 w-9">
+                              <AvatarFallback className="bg-muted text-muted-foreground text-xs font-medium">
+                                {(user.display_name || user.username).slice(0, 2).toUpperCase()}
+                              </AvatarFallback>
+                            </Avatar>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span
+                                  className={cn(
+                                    "absolute -bottom-0.5 -right-0.5 block h-3 w-3 rounded-full border-2 border-background",
+                                    onlineUsers.has(user.headscale_name || user.username)
+                                      ? "bg-green-500"
+                                      : "bg-gray-300 dark:bg-gray-600"
+                                  )}
+                                />
+                              </TooltipTrigger>
+                              <TooltipContent side="bottom">
+                                {onlineUsers.has(user.headscale_name || user.username)
+                                  ? t.common.status.online
+                                  : t.common.status.offline}
+                              </TooltipContent>
+                            </Tooltip>
+                          </div>
                           
+                          {/* Info */}
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2">
-                              <span className="font-medium truncate">
+                              <span className="text-sm font-medium text-foreground truncate">
                                 {user.display_name || user.username}
                               </span>
-                              {user.group && (
-                                <Badge variant="outline" className="text-xs">
-                                  {user.group.name}
-                                </Badge>
-                              )}
+                              {/* Provider — subtle inline text */}
+                              <span className={cn(
+                                "text-[11px] px-1.5 py-px rounded font-normal",
+                                user.provider === 'oidc' 
+                                  ? "text-blue-600 bg-blue-500/8 dark:text-blue-400 dark:bg-blue-500/15" 
+                                  : user.provider === 'headscale' 
+                                    ? "text-teal-600 bg-teal-500/8 dark:text-teal-400 dark:bg-teal-500/15" 
+                                    : "text-gray-500 bg-gray-500/8 dark:text-gray-400 dark:bg-gray-500/15"
+                              )}>
+                                {user.provider === 'oidc' ? 'OIDC' : 
+                                 user.provider === 'headscale' ? 'Headscale' : 
+                                 t.users.providerLocal}
+                              </span>
                             </div>
-                            <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                              <span className="truncate">{user.email || '-'}</span>
-                              {user.headscale_name && (
-                                <span className="font-mono text-xs bg-muted px-1.5 py-0.5 rounded">
-                                  {user.headscale_name}
-                                </span>
-                              )}
-                            </div>
+                            <p className="text-xs text-muted-foreground truncate mt-px">
+                              {user.email || user.username}
+                            </p>
                           </div>
 
-                          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          {/* Actions — show on hover */}
+                          <div className="flex items-center gap-0.5 opacity-0 group-hover/row:opacity-100 transition-opacity">
                             <Tooltip>
                               <TooltipTrigger asChild>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => handleViewDevices(user)}
-                                >
-                                  <Laptop className="w-4 h-4" />
+                                <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground" onClick={() => handleViewDevices(user)}>
+                                  <Laptop className="w-3.5 h-3.5" />
                                 </Button>
                               </TooltipTrigger>
-                              <TooltipContent>{t.users.viewDevices}</TooltipContent>
+                              <TooltipContent side="bottom">{t.users.viewDevices}</TooltipContent>
                             </Tooltip>
                             <Tooltip>
                               <TooltipTrigger asChild>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => handleViewRoutes(user)}
-                                >
-                                  <Route className="w-4 h-4" />
+                                <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground" onClick={() => handleViewRoutes(user)}>
+                                  <Route className="w-3.5 h-3.5" />
                                 </Button>
                               </TooltipTrigger>
-                              <TooltipContent>{t.users.viewRoutes}</TooltipContent>
+                              <TooltipContent side="bottom">{t.users.viewRoutes}</TooltipContent>
                             </Tooltip>
                             <Tooltip>
                               <TooltipTrigger asChild>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => handleEditUser(user)}
-                                >
-                                  <Edit className="w-4 h-4" />
+                                <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground" onClick={() => handleEditUser(user)}>
+                                  <Edit className="w-3.5 h-3.5" />
                                 </Button>
                               </TooltipTrigger>
-                              <TooltipContent>{t.users.editUser}</TooltipContent>
+                              <TooltipContent side="bottom">{t.users.editUser}</TooltipContent>
                             </Tooltip>
                             <Tooltip>
                               <TooltipTrigger asChild>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => handleDeleteUser(user)}
-                                  className="text-destructive hover:text-destructive"
-                                >
-                                  <Trash2 className="w-4 h-4" />
+                                <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive/60 hover:text-destructive hover:bg-destructive/10" onClick={() => handleDeleteUser(user)}>
+                                  <Trash2 className="w-3.5 h-3.5" />
                                 </Button>
                               </TooltipTrigger>
-                              <TooltipContent>{t.users.deleteUser}</TooltipContent>
+                              <TooltipContent side="bottom">{t.users.deleteUser}</TooltipContent>
                             </Tooltip>
                           </div>
                         </motion.div>
@@ -687,8 +735,8 @@ export default function UsersPage() {
                   </AnimatePresence>
                 </div>
               </ScrollArea>
-            </CardContent>
-          </Card>
+            </Card>
+          </div>
         </div>
 
         {/* Create User Dialog */}
@@ -700,9 +748,19 @@ export default function UsersPage() {
                 {t.users.createUserTitle}
               </DialogTitle>
               <DialogDescription>
-                {t.users.createUserDesc}
+                {oidcStatus.third_party ? t.users.createUserDescOidc : t.users.createUserDesc}
               </DialogDescription>
             </DialogHeader>
+            {oidcStatus.oidc_enabled && (
+              <div className={cn(
+                "rounded-lg border px-4 py-3 text-sm",
+                oidcStatus.third_party
+                  ? "border-blue-200 bg-blue-50 dark:bg-blue-950/30 dark:border-blue-800 text-blue-700 dark:text-blue-300"
+                  : "border-amber-200 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-800 text-amber-700 dark:text-amber-300"
+              )}>
+                {oidcStatus.third_party ? t.users.oidcModeHint : t.users.builtinOidcHint}
+              </div>
+            )}
             <div className="grid gap-4 py-4">
               <div className="grid grid-cols-4 items-center gap-4">
                 <Label htmlFor="create-username" className="text-right">{t.users.usernameLabel}</Label>
@@ -714,6 +772,7 @@ export default function UsersPage() {
                   placeholder={t.users.usernamePlaceholder}
                 />
               </div>
+              {oidcStatus.password_required && (
               <div className="grid grid-cols-4 items-center gap-4">
                 <Label htmlFor="create-password" className="text-right">{t.users.passwordLabel}</Label>
                 <Input
@@ -725,6 +784,7 @@ export default function UsersPage() {
                   placeholder={t.users.passwordPlaceholder}
                 />
               </div>
+              )}
               <div className="grid grid-cols-4 items-center gap-4">
                 <Label htmlFor="create-email" className="text-right">{t.users.emailLabel}</Label>
                 <Input
@@ -781,7 +841,43 @@ export default function UsersPage() {
                 {t.users.editUserDesc}
               </DialogDescription>
             </DialogHeader>
-            <div className="grid gap-4 py-4">
+            {selectedUser && (
+              <div className="rounded-lg border bg-muted/30 px-4 py-3 space-y-1.5">
+                <div className="flex items-center gap-3 text-sm">
+                  <span className="text-muted-foreground w-20 shrink-0">{t.users.usernameLabel.replace(' *', '')}</span>
+                  <span className="font-medium text-foreground">{selectedUser.username}</span>
+                </div>
+                {selectedUser.headscale_name && selectedUser.headscale_name !== selectedUser.username && (
+                  <div className="flex items-center gap-3 text-sm">
+                    <span className="text-muted-foreground w-20 shrink-0">Headscale</span>
+                    <span className="font-mono text-xs text-muted-foreground">{selectedUser.headscale_name}</span>
+                  </div>
+                )}
+                <div className="flex items-center gap-3 text-sm">
+                  <span className="text-muted-foreground w-20 shrink-0">{t.users.providerLabel}</span>
+                  <span className={cn(
+                    "text-xs px-1.5 py-px rounded",
+                    selectedUser.provider === 'oidc' ? "text-blue-600 bg-blue-500/10" :
+                    selectedUser.provider === 'headscale' ? "text-teal-600 bg-teal-500/10" :
+                    "text-gray-500 bg-gray-500/10"
+                  )}>
+                    {selectedUser.provider === 'oidc' ? 'OIDC' :
+                     selectedUser.provider === 'headscale' ? 'Headscale' :
+                     t.users.providerLocal}
+                  </span>
+                </div>
+              </div>
+            )}
+            <div className="grid gap-4 py-2">
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="edit-display-name" className="text-right">{t.users.displayNameLabel}</Label>
+                <Input
+                  id="edit-display-name"
+                  value={editUser.display_name}
+                  onChange={(e) => setEditUser({...editUser, display_name: e.target.value})}
+                  className="col-span-3"
+                />
+              </div>
               <div className="grid grid-cols-4 items-center gap-4">
                 <Label htmlFor="edit-email" className="text-right">{t.users.emailLabel}</Label>
                 <Input
@@ -819,15 +915,6 @@ export default function UsersPage() {
                     ))}
                   </SelectContent>
                 </Select>
-              </div>
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="edit-display-name" className="text-right">{t.users.displayNameLabel}</Label>
-                <Input
-                  id="edit-display-name"
-                  value={editUser.display_name}
-                  onChange={(e) => setEditUser({...editUser, display_name: e.target.value})}
-                  className="col-span-3"
-                />
               </div>
             </div>
             <DialogFooter>

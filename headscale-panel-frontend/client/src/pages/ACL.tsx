@@ -251,8 +251,8 @@ export default function ACL() {
       }
 
       // Devices - API returns { list: [...], total: N }
-      if (devicesRes?.list) {
-        const deviceList = devicesRes.list.map((d: any) => ({
+      if ((devicesRes as any)?.list) {
+        const deviceList = (devicesRes as any).list.map((d: any) => ({
           id: String(d.ID),
           givenName: d.given_name || d.name,
           name: d.name,
@@ -263,13 +263,13 @@ export default function ACL() {
       }
 
       // Resources - API returns { list: [...], total: N }
-      if (resourcesRes?.list) {
-        setResources(resourcesRes.list);
+      if ((resourcesRes as any)?.list) {
+        setResources((resourcesRes as any).list);
       }
 
       // Headscale Users - API returns array directly or { list: [...] }
       if (usersRes) {
-        const userList = Array.isArray(usersRes) ? usersRes : (usersRes.list || []);
+        const userList = Array.isArray(usersRes) ? usersRes : ((usersRes as any).list || []);
         const mappedUsers = userList.map((u: any) => ({
           id: String(u.ID || u.id),
           name: u.headscale_name || u.username || u.name,

@@ -1,19 +1,97 @@
 package services
 
 import (
+	"context"
+	"fmt"
 	"headscale-panel/model"
+	v1 "headscale-panel/pkg/proto/headscale/v1"
 	"headscale-panel/pkg/utils/serializer"
+
+	"github.com/sirupsen/logrus"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 type systemService struct{}
 
 var SystemService = new(systemService)
 
+// syncHeadscaleUsers fetches users from Headscale gRPC and upserts them into the panel DB.
+// This is best-effort: errors are logged but do not block the caller.
+func (s *systemService) syncHeadscaleUsers() {
+	client, err := headscaleServiceClient()
+	if err != nil {
+		logrus.WithError(err).Debug("syncHeadscaleUsers: cannot connect to Headscale, skipping sync")
+		return
+	}
+
+	ctx, cancel := withServiceTimeout(context.Background())
+	defer cancel()
+
+	resp, err := client.ListUsers(ctx, &v1.ListUsersRequest{})
+	if err != nil {
+		logrus.WithError(err).Warn("syncHeadscaleUsers: failed to list users from Headscale")
+		return
+	}
+
+	for _, hsUser := range resp.Users {
+		if hsUser.Name == "" {
+			continue
+		}
+		var existing model.User
+		if err := model.DB.Where("headscale_name = ?", hsUser.Name).First(&existing).Error; err != nil {
+			// User doesn't exist in panel DB — create it (ungrouped by default)
+			newUser := model.User{
+				Username:      hsUser.Name,
+				HeadscaleName: hsUser.Name,
+				DisplayName:   hsUser.DisplayName,
+				Email:         hsUser.Email,
+				Provider:      "headscale",
+			}
+			if hsUser.ProfilePicUrl != "" {
+				newUser.ProfilePicURL = hsUser.ProfilePicUrl
+			}
+			if createErr := model.DB.Create(&newUser).Error; createErr != nil {
+				// Skip duplicate username errors silently
+				continue
+			}
+		} else {
+			// Update display info if changed
+			updates := map[string]interface{}{}
+			if hsUser.DisplayName != "" && existing.DisplayName != hsUser.DisplayName {
+				updates["display_name"] = hsUser.DisplayName
+			}
+			if hsUser.Email != "" && existing.Email != hsUser.Email {
+				updates["email"] = hsUser.Email
+			}
+			if hsUser.ProfilePicUrl != "" && existing.ProfilePicURL != hsUser.ProfilePicUrl {
+				updates["profile_pic_url"] = hsUser.ProfilePicUrl
+			}
+			// Fix: headscale-synced users should not be in Admin group by default.
+			// Reset group_id to 0 for headscale users that were auto-assigned to Admin.
+			if existing.Provider == "headscale" && existing.GroupID != 0 {
+				var adminGroup model.Group
+				if err := model.DB.Where("name = ?", "Admin").First(&adminGroup).Error; err == nil {
+					if existing.GroupID == adminGroup.ID {
+						updates["group_id"] = 0
+					}
+				}
+			}
+			if len(updates) > 0 {
+				model.DB.Model(&existing).Updates(updates)
+			}
+		}
+	}
+}
+
 // User Management
 func (s *systemService) ListUsers(actorUserID uint, page, pageSize int) ([]model.User, int64, error) {
 	if err := RequirePermission(actorUserID, "system:user:list"); err != nil {
 		return nil, 0, err
 	}
+
+	// Auto-sync users from Headscale gRPC (best-effort)
+	s.syncHeadscaleUsers()
 
 	var users []model.User
 	var total int64
@@ -43,6 +121,31 @@ func (s *systemService) CreateUser(actorUserID uint, username, password, email s
 		return serializer.ErrUserNameExisted
 	}
 
+	// Determine provider based on OIDC settings
+	provider := "local"
+	if PanelSettingsService.IsOIDCEnabled() {
+		provider = "oidc"
+	} else {
+		// Create headscale user via gRPC when OIDC is not enabled
+		client, err := headscaleServiceClient()
+		if err != nil {
+			return fmt.Errorf("failed to connect to Headscale: %w", err)
+		}
+		ctx, cancel := withServiceTimeout(context.Background())
+		defer cancel()
+		_, err = client.CreateUser(ctx, &v1.CreateUserRequest{Name: username})
+		if err != nil {
+			// Ignore AlreadyExists errors
+			if st, ok := status.FromError(err); !ok || st.Code() != codes.AlreadyExists {
+				return serializer.NewError(
+					serializer.CodeThirdPartyServiceError,
+					"failed to create headscale user",
+					fmt.Errorf("headscale create user %q: %w", username, err),
+				)
+			}
+		}
+	}
+
 	user := model.User{
 		Username:      username,
 		Password:      password,
@@ -50,6 +153,7 @@ func (s *systemService) CreateUser(actorUserID uint, username, password, email s
 		GroupID:       groupID, // 0 means ungrouped
 		DisplayName:   displayName,
 		HeadscaleName: username,
+		Provider:      provider,
 	}
 
 	if err := model.DB.Create(&user).Error; err != nil {

@@ -47,7 +47,6 @@ oidc:
         - openid
         - profile
         - email
-        - groups
     expiry: 180d
     pkce:
         method: S256

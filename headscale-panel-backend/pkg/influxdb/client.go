@@ -79,6 +79,11 @@ func Close() {
 	bucket = ""
 }
 
+// IsConnected returns true if the InfluxDB client is initialized and ready.
+func IsConnected() bool {
+	return Client != nil && QueryAPI != nil
+}
+
 // WriteDeviceStatus writes device online status to InfluxDB
 func WriteDeviceStatus(userID, machineID, machineName, ipAddress string, online bool) {
 	if WriteAPI == nil {

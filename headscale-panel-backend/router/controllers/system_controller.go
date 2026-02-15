@@ -35,7 +35,7 @@ func (s *SystemController) ListUsers(c *gin.Context) {
 
 type CreateUserRequest struct {
 	Username    string `json:"username" binding:"required"`
-	Password    string `json:"password" binding:"required"`
+	Password    string `json:"password"`
 	Email       string `json:"email"`
 	GroupID     uint   `json:"group_id"`
 	DisplayName string `json:"display_name"`
@@ -45,6 +45,13 @@ func (s *SystemController) CreateUser(c *gin.Context) {
 	var req CreateUserRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		serializer.Fail(c, serializer.ErrBind)
+		return
+	}
+
+	// Password is required unless third-party OIDC is enabled.
+	// Built-in OIDC still uses panel passwords, so password is required.
+	if !services.PanelSettingsService.IsThirdPartyOIDCEnabled() && req.Password == "" {
+		serializer.Fail(c, serializer.NewError(serializer.CodeParamErr, "password is required", nil))
 		return
 	}
 

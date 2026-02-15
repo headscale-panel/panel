@@ -146,6 +146,7 @@ func InitRouter() *gin.Engine {
 			auth.GET("/metrics/device-status", middleware.PermissionMiddleware("metrics:device_status:view"), metricsController.GetDeviceStatus)
 			auth.GET("/metrics/device-status-history", middleware.PermissionMiddleware("metrics:device_status_history:view"), metricsController.GetDeviceStatusHistory)
 			auth.GET("/metrics/traffic", middleware.PermissionMiddleware("metrics:traffic:view"), metricsController.GetTrafficStats)
+			auth.GET("/metrics/influxdb-status", metricsController.GetInfluxDBStatus)
 
 			topologyController := &controllers.TopologyController{}
 			auth.GET("/topology", middleware.PermissionMiddleware("topology:view"), topologyController.GetTopology)
@@ -156,21 +157,22 @@ func InitRouter() *gin.Engine {
 			auth.POST("/connection/generate", middleware.PermissionMiddleware("headscale:machine:list"), connectionController.GenerateConnectionCommands)
 			auth.POST("/connection/pre-auth-key", middleware.PermissionMiddleware("headscale:preauthkey:create"), connectionController.GeneratePreAuthKey)
 
+			panelSettingsController := controllers.NewPanelSettingsController()
+			auth.GET("/panel/connection", middleware.PermissionMiddleware("headscale:config:view"), panelSettingsController.GetConnection)
+			auth.PUT("/panel/connection", middleware.PermissionMiddleware("headscale:config:update"), panelSettingsController.SaveConnection)
+			auth.POST("/panel/sync", middleware.PermissionMiddleware("headscale:acl:sync"), panelSettingsController.SyncData)
+			auth.GET("/panel/builtin-oidc", middleware.PermissionMiddleware("headscale:config:view"), panelSettingsController.GetBuiltinOIDC)
+			auth.POST("/panel/builtin-oidc", middleware.PermissionMiddleware("headscale:config:update"), panelSettingsController.EnableBuiltinOIDC)
+			auth.GET("/panel/oidc-settings", middleware.PermissionMiddleware("headscale:config:view"), panelSettingsController.GetOIDCSettings)
+			auth.PUT("/panel/oidc-settings", middleware.PermissionMiddleware("headscale:config:update"), panelSettingsController.SaveOIDCSettings)
+			auth.GET("/panel/oidc-status", panelSettingsController.GetOIDCStatus)
+
 			headscaleConfigController := controllers.NewHeadscaleConfigController()
 			auth.GET("/headscale/config", middleware.PermissionMiddleware("headscale:config:view"), headscaleConfigController.Get)
-			auth.PUT("/headscale/config", middleware.PermissionMiddleware("headscale:config:update"), headscaleConfigController.Update)
-			auth.POST("/headscale/config/preview", middleware.PermissionMiddleware("headscale:config:update"), headscaleConfigController.Preview)
+			auth.POST("/headscale/config/preview", middleware.PermissionMiddleware("headscale:config:view"), headscaleConfigController.Preview)
 
 			derpController := controllers.NewDERPController()
 			auth.GET("/headscale/derp", middleware.PermissionMiddleware("headscale:derp:view"), derpController.Get)
-			auth.PUT("/headscale/derp", middleware.PermissionMiddleware("headscale:derp:update"), derpController.Update)
-
-			auth.POST("/headscale/derp/regions", middleware.PermissionMiddleware("headscale:derp:update"), derpController.AddRegion)
-			auth.PUT("/headscale/derp/regions/:regionId", middleware.PermissionMiddleware("headscale:derp:update"), derpController.UpdateRegion)
-			auth.DELETE("/headscale/derp/regions/:regionId", middleware.PermissionMiddleware("headscale:derp:update"), derpController.DeleteRegion)
-			auth.POST("/headscale/derp/regions/:regionId/nodes", middleware.PermissionMiddleware("headscale:derp:update"), derpController.AddNode)
-			auth.PUT("/headscale/derp/regions/:regionId/nodes/:nodeIndex", middleware.PermissionMiddleware("headscale:derp:update"), derpController.UpdateNode)
-			auth.DELETE("/headscale/derp/regions/:regionId/nodes/:nodeIndex", middleware.PermissionMiddleware("headscale:derp:update"), derpController.DeleteNode)
 
 			dnsController := controllers.NewDNSController()
 			auth.GET("/dns/records", middleware.PermissionMiddleware("dns:record:list"), dnsController.List)

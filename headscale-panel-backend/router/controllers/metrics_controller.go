@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"fmt"
+	"headscale-panel/pkg/influxdb"
 	"headscale-panel/pkg/utils/serializer"
 	"headscale-panel/router/services"
 	"strconv"
@@ -152,4 +153,12 @@ func (c *MetricsController) GetTrafficStats(ctx *gin.Context) {
 	}
 
 	serializer.Success(ctx, stats)
+}
+
+// GetInfluxDBStatus returns whether InfluxDB is connected
+// GET /api/metrics/influxdb-status
+func (c *MetricsController) GetInfluxDBStatus(ctx *gin.Context) {
+	serializer.Success(ctx, gin.H{
+		"connected": influxdb.IsConnected(),
+	})
 }

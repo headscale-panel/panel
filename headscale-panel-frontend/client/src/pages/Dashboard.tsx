@@ -1,10 +1,10 @@
 import DashboardLayout from '@/components/DashboardLayout';
 import NetworkTopology from '@/components/NetworkTopology';
 import StatCard from '@/components/StatCard';
-import { dashboardAPI, devicesAPI, usersAPI, metricsAPI } from '@/lib/api';
+import { dashboardAPI, devicesAPI, usersAPI } from '@/lib/api';
 import { useTranslation } from '@/i18n/index';
 import { useWebSocketConnection, useDeviceStatusUpdates, useMetricsUpdates } from '@/hooks/useWebSocket';
-import { Activity, AlertTriangle, Server, Users, Wifi, WifiOff, RefreshCw } from 'lucide-react';
+import { Activity, Users, Wifi, WifiOff, RefreshCw, Globe } from 'lucide-react';
 import { useEffect, useState, useCallback } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -15,8 +15,7 @@ interface DashboardStats {
   onlineDevices: number;
   totalDevices: number;
   totalUsers: number;
-  totalTraffic: string;
-  alerts: number;
+  dnsRecordCount: number;
 }
 
 interface TopologyData {
@@ -52,8 +51,7 @@ export default function Dashboard() {
     onlineDevices: 0,
     totalDevices: 0,
     totalUsers: 0,
-    totalTraffic: '0 GB',
-    alerts: 0,
+    dnsRecordCount: 0,
   });
   const [topologyData, setTopologyData] = useState<TopologyData | null>(null);
 
@@ -103,10 +101,11 @@ export default function Dashboard() {
       }
 
       // Fetch data from multiple APIs in parallel
-      const [devicesRes, usersRes, topologyRes] = await Promise.allSettled([
+      const [devicesRes, usersRes, topologyRes, overviewRes] = await Promise.allSettled([
         devicesAPI.list({ page: 1, pageSize: 1000 }),
         usersAPI.list({ page: 1, pageSize: 1000 }),
         dashboardAPI.getTopologyWithACL(),
+        dashboardAPI.getOverview(),
       ]);
 
       // Process devices data for stats
@@ -117,6 +116,13 @@ export default function Dashboard() {
       let acl: TopologyData['acl'] = [];
       let policy: TopologyData['policy'] = undefined;
       let totalUsers = 0;
+      let dnsRecordCount = 0;
+
+      // Extract overview data if available
+      if (overviewRes.status === 'fulfilled' && overviewRes.value) {
+        const ov = overviewRes.value as any;
+        dnsRecordCount = ov.dns_record_count || 0;
+      }
 
       // Prefer topology API data (has correct string IDs and proper structure)
       if (topologyRes.status === 'fulfilled' && topologyRes.value) {
@@ -190,24 +196,10 @@ export default function Dashboard() {
         onlineDevices,
         totalDevices,
         totalUsers,
-        totalTraffic: '0 GB', // Will be updated from metrics API
-        alerts: 0,
+        dnsRecordCount,
       });
 
       setTopologyData({ users, devices, acl, policy });
-
-      // Try to get traffic stats
-      try {
-        const trafficRes = await metricsAPI.getTrafficStats();
-        if (trafficRes) {
-          const trafficData = trafficRes as any;
-          const totalBytes = trafficData.totalBytes || 0;
-          const trafficStr = formatBytes(totalBytes);
-          setStats((prev) => ({ ...prev, totalTraffic: trafficStr }));
-        }
-      } catch (e) {
-        // Ignore traffic stats error
-      }
 
       if (showToast) {
         toast.success(t.dashboard.dataRefreshed);
@@ -236,14 +228,6 @@ export default function Dashboard() {
 
   const handleRefresh = () => {
     loadData(true);
-  };
-
-  const formatBytes = (bytes: number): string => {
-    if (bytes === 0) return '0 B';
-    const k = 1024;
-    const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
 
   return (
@@ -297,7 +281,7 @@ export default function Dashboard() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
-          className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6"
+          className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"
         >
           <StatCard
             title={t.dashboard.onlineDevices}
@@ -312,17 +296,10 @@ export default function Dashboard() {
             subtitle={t.dashboard.activeUsers}
           />
           <StatCard
-            title={t.dashboard.totalTraffic}
-            value={stats.totalTraffic}
-            icon={Server}
-            subtitle={t.dashboard.monthlyTraffic}
-          />
-          <StatCard
-            title={t.dashboard.alerts}
-            value={stats.alerts}
-            icon={AlertTriangle}
-            className={stats.alerts > 0 ? 'border-destructive/20 bg-destructive/5' : ''}
-            subtitle={stats.alerts > 0 ? t.dashboard.needAction : t.dashboard.allGood}
+            title={t.dashboard.dnsCount}
+            value={stats.dnsRecordCount}
+            icon={Globe}
+            subtitle={t.dashboard.dnsSubtitle}
           />
         </motion.div>
 

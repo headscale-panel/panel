@@ -343,6 +343,9 @@ func (s *SetupController) Initialize(ctx *gin.Context) {
 		return
 	}
 
+	// Sync resources from Headscale ACL into local database during initialization
+	_ = services.HeadscaleService.SyncACL()
+
 	services.SetupGuardService.RevokeAllTokens()
 
 	resp := gin.H{

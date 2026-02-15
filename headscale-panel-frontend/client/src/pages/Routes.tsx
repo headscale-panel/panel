@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { toast } from 'sonner';
+import { useSearch } from 'wouter';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   RefreshCw,
@@ -70,9 +71,13 @@ const getRouteType = (destination: string) => {
 
 export default function Routes() {
   const t = useTranslation();
+  const search = useSearch();
   const [routes, setRoutes] = useState<Route[]>([]);
   const [loading, setLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState(() => {
+    const params = new URLSearchParams(search);
+    return params.get('user') || '';
+  });
   const [filterDevice, setFilterDevice] = useState<string>('all');
   const [filterStatus, setFilterStatus] = useState<string>('all');
 

@@ -646,6 +646,51 @@ func (s *headscaleService) SyncACLWithContext(ctx context.Context) error {
 		}
 	}
 
+	// Sync Users from Headscale
+	usersResp, err := client.ListUsers(queryCtx, &v1.ListUsersRequest{})
+	if err != nil {
+		return fmt.Errorf("failed to list users from Headscale: %w", err)
+	}
+
+	for _, hsUser := range usersResp.Users {
+		if hsUser.Name == "" {
+			continue
+		}
+		var existingUser model.User
+		if err := model.DB.Where("headscale_name = ?", hsUser.Name).First(&existingUser).Error; err != nil {
+			// User doesn't exist in panel DB - create it (ungrouped by default)
+			newUser := model.User{
+				Username:      hsUser.Name,
+				HeadscaleName: hsUser.Name,
+				DisplayName:   hsUser.DisplayName,
+				Email:         hsUser.Email,
+				Provider:      "headscale",
+			}
+			if hsUser.ProfilePicUrl != "" {
+				newUser.ProfilePicURL = hsUser.ProfilePicUrl
+			}
+			if createErr := model.DB.Create(&newUser).Error; createErr != nil {
+				// Skip duplicate username errors silently
+				continue
+			}
+		} else {
+			// User exists - update display info
+			updates := map[string]interface{}{}
+			if hsUser.DisplayName != "" && existingUser.DisplayName != hsUser.DisplayName {
+				updates["display_name"] = hsUser.DisplayName
+			}
+			if hsUser.Email != "" && existingUser.Email != hsUser.Email {
+				updates["email"] = hsUser.Email
+			}
+			if hsUser.ProfilePicUrl != "" && existingUser.ProfilePicURL != hsUser.ProfilePicUrl {
+				updates["profile_pic_url"] = hsUser.ProfilePicUrl
+			}
+			if len(updates) > 0 {
+				model.DB.Model(&existingUser).Updates(updates)
+			}
+		}
+	}
+
 	return nil
 }
 

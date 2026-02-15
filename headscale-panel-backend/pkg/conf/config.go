@@ -1,8 +1,11 @@
 package conf
 
 import (
+	"crypto/rand"
+	"encoding/base64"
 	"fmt"
 	"log"
+	"os"
 	"strings"
 
 	"github.com/joho/godotenv"
@@ -122,7 +125,14 @@ func Init(path string) {
 func validateSecurityConfig(cfg Config) error {
 	secret := strings.TrimSpace(cfg.JWT.Secret)
 	if secret == "" {
-		return fmt.Errorf("JWT_SECRET is required and cannot be empty")
+		// Auto-generate JWT secret and persist
+		generated, err := generateAndPersistSecret("JWT_SECRET", 48)
+		if err != nil {
+			return fmt.Errorf("failed to auto-generate JWT_SECRET: %w", err)
+		}
+		Conf.JWT.Secret = generated
+		secret = generated
+		log.Println("Auto-generated JWT_SECRET and saved to .env")
 	}
 
 	lowered := strings.ToLower(secret)
@@ -158,4 +168,52 @@ func validateSecurityConfig(cfg Config) error {
 	}
 
 	return nil
+}
+
+// generateAndPersistSecret generates a random base64 string and writes it to .env.
+func generateAndPersistSecret(key string, length int) (string, error) {
+	buf := make([]byte, length)
+	if _, err := rand.Read(buf); err != nil {
+		return "", fmt.Errorf("failed to generate random bytes: %w", err)
+	}
+	encoded := base64.RawURLEncoding.EncodeToString(buf)
+	if len(encoded) > length {
+		encoded = encoded[:length]
+	}
+
+	// Write to .env
+	envPath := ".env"
+	lines := []string{}
+	data, err := os.ReadFile(envPath)
+	if err == nil {
+		normalized := strings.ReplaceAll(string(data), "\r\n", "\n")
+		lines = strings.Split(normalized, "\n")
+	} else if !os.IsNotExist(err) {
+		return "", err
+	}
+
+	target := key + "="
+	found := false
+	for i, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, target) {
+			lines[i] = target + encoded
+			found = true
+			break
+		}
+	}
+	if !found {
+		lines = append(lines, target+encoded)
+	}
+
+	content := strings.Join(lines, "\n")
+	if !strings.HasSuffix(content, "\n") {
+		content += "\n"
+	}
+
+	if err := os.WriteFile(envPath, []byte(content), 0644); err != nil {
+		return "", err
+	}
+
+	return encoded, nil
 }

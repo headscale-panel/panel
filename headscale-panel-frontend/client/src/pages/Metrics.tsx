@@ -7,6 +7,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import DashboardLayout from '@/components/DashboardLayout';
+import { cn } from '@/lib/utils';
 import { Activity, Clock, Server, TrendingUp, AlertCircle } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import {
@@ -37,6 +38,7 @@ export default function Metrics() {
     totalOnline: 0,
     totalDevices: 0
   });
+  const [influxConnected, setInfluxConnected] = useState<boolean | null>(null);
 
   const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042'];
 
@@ -47,6 +49,10 @@ export default function Metrics() {
   const loadData = async () => {
     setLoading(true);
     try {
+      // Check InfluxDB connection status first
+      const influxStatus: any = await metricsAPI.getInfluxDBStatus().catch(() => ({ connected: false }));
+      setInfluxConnected(!!influxStatus?.connected);
+
       const end = new Date();
       const start = new Date();
       if (timeRange === '7d') start.setDate(end.getDate() - 7);
@@ -58,9 +64,9 @@ export default function Metrics() {
       const durationStats: any[] = await metricsAPI.getOnlineDurationStats({
         start: formatDate(start),
         end: formatDate(end)
-      }).catch(() => []);
+      }).then((r: any) => Array.isArray(r) ? r : r?.data || []).catch(() => []);
 
-      const deviceStatus: any[] = await metricsAPI.getDeviceStatus().catch(() => []);
+      const deviceStatus: any[] = await metricsAPI.getDeviceStatus().then((r: any) => Array.isArray(r) ? r : r?.data || []).catch(() => []);
 
       const totalDuration = durationStats.reduce((acc, curr) => acc + (curr.online_hours || 0), 0);
       const avgDuration = durationStats.length ? totalDuration / durationStats.length : 0;
@@ -147,8 +153,15 @@ export default function Metrics() {
             <div className="flex items-start justify-between">
               <div>
                 <p className="text-sm font-medium text-muted-foreground">{t.metrics.dataStatus}</p>
-                <p className="text-lg font-bold text-foreground mt-2">
-                   {loading ? t.metrics.updating : t.metrics.updated}
+                <p className={cn(
+                  "text-lg font-bold mt-2",
+                  loading ? "text-foreground" :
+                  influxConnected === false ? "text-orange-500" :
+                  "text-foreground"
+                )}>
+                   {loading ? t.metrics.updating : 
+                    influxConnected === false ? t.metrics.notConnected :
+                    t.metrics.updated}
                 </p>
               </div>
               <div className="w-12 h-12 rounded-lg bg-blue-500/10 flex items-center justify-center">

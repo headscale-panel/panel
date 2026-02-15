@@ -198,6 +198,7 @@ export const metricsAPI = {
     api.get('/metrics/traffic', {
       params: { machine_id: params?.machineId, start: params?.start, end: params?.end },
     }),
+  getInfluxDBStatus: () => api.get('/metrics/influxdb-status'),
 };
 
 export const connectionAPI = {
@@ -250,21 +251,28 @@ export const resourcesAPI = {
 
 export const headscaleConfigAPI = {
   get: () => api.get('/headscale/config'),
-  update: (config: any) => api.put('/headscale/config', config),
   preview: (config: any) => api.post('/headscale/config/preview', config),
+};
+
+export const panelSettingsAPI = {
+  getConnection: () => api.get('/panel/connection'),
+  saveConnection: (data: { grpc_addr: string; api_key?: string; insecure: boolean }) =>
+    api.put('/panel/connection', data),
+  syncData: () => api.post('/panel/sync'),
+  getBuiltinOIDC: () => api.get('/panel/builtin-oidc'),
+  enableBuiltinOIDC: () => api.post('/panel/builtin-oidc'),
+  getOIDCSettings: () => api.get('/panel/oidc-settings'),
+  saveOIDCSettings: (data: any) => api.put('/panel/oidc-settings', data),
+  getOIDCStatus: () => api.get('/panel/oidc-status') as Promise<{
+    oidc_enabled: boolean;
+    third_party: boolean;
+    builtin: boolean;
+    password_required: boolean;
+  }>,
 };
 
 export const derpAPI = {
   get: () => api.get('/headscale/derp'),
-  update: (derpMap: any) => api.put('/headscale/derp', derpMap),
-  addRegion: (region: any) => api.post('/headscale/derp/regions', region),
-  updateRegion: (regionId: number, region: any) => api.put(`/headscale/derp/regions/${regionId}`, region),
-  deleteRegion: (regionId: number) => api.delete(`/headscale/derp/regions/${regionId}`),
-  addNode: (regionId: number, node: any) => api.post(`/headscale/derp/regions/${regionId}/nodes`, node),
-  updateNode: (regionId: number, nodeIndex: number, node: any) =>
-    api.put(`/headscale/derp/regions/${regionId}/nodes/${nodeIndex}`, node),
-  deleteNode: (regionId: number, nodeIndex: number) =>
-    api.delete(`/headscale/derp/regions/${regionId}/nodes/${nodeIndex}`),
 };
 
 export interface DNSRecord {

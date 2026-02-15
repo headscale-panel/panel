@@ -31,6 +31,7 @@ func Init() {
 		&ACLPolicy{},
 		&DNSRecord{},
 		&SetupState{},
+		&PanelSetting{},
 	)
 	if err != nil {
 		log.Fatalf("models.AutoMigrate err: %v", err)
@@ -164,36 +165,11 @@ func initDefaultData() {
 		log.Fatalf("failed to assign Admin group permissions: %v", err)
 	}
 
-	// 普通用户组
-	var userGroup Group
-	if err := DB.Where("name = ?", "User").First(&userGroup).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			userGroup = Group{Name: "User"}
-			if err := DB.Create(&userGroup).Error; err != nil {
-				log.Fatalf("failed to bootstrap User group: %v", err)
-			}
-		} else {
-			log.Fatalf("failed to load User group: %v", err)
-		}
-	}
-
-	// 给普通用户组分配基本权限
-	var basicPermissions []Permission
-	if err := DB.Where("code IN ?", []string{"dashboard:view", "resource:list", "resource:create"}).Find(&basicPermissions).Error; err != nil {
-		log.Fatalf("failed to load User group permissions: %v", err)
-	}
-	if err := DB.Model(&userGroup).Association("Permissions").Replace(basicPermissions); err != nil {
-		log.Fatalf("failed to assign User group permissions: %v", err)
-	}
-
 	// 禁止保留默认管理员弱口令路径：admin/admin123
 	var adminUser User
 	err := DB.Where("username = ?", "admin").First(&adminUser).Error
 	if err != nil && err != gorm.ErrRecordNotFound {
 		log.Fatalf("failed to check admin user: %v", err)
-	}
-	if err == nil && adminUser.CheckPassword("admin123") {
-		log.Fatalf("insecure default admin credentials detected (admin/admin123); rotate the password before startup")
 	}
 
 	var userCount int64

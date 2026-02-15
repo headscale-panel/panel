@@ -16,6 +16,7 @@ type OverviewResponse struct {
 	ResourceCount     int64 `json:"resource_count"`
 	DeviceCount       int64 `json:"device_count"`
 	OnlineDeviceCount int64 `json:"online_device_count"`
+	DNSRecordCount    int64 `json:"dns_record_count"`
 }
 
 type DashboardTopologyNode struct {
@@ -66,12 +67,16 @@ func (s *dashboardService) GetOverviewWithContext(ctx context.Context, actorUser
 		}
 	}
 
+	var dnsRecordCount int64
+	_ = model.DB.Model(&model.DNSRecord{}).Count(&dnsRecordCount).Error
+
 	return &OverviewResponse{
 		UserCount:         userCount,
 		GroupCount:        groupCount,
 		ResourceCount:     resourceCount,
 		DeviceCount:       deviceCount,
 		OnlineDeviceCount: onlineDeviceCount,
+		DNSRecordCount:    dnsRecordCount,
 	}, nil
 }
 

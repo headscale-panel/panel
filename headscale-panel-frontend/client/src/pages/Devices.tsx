@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
+import { useSearch } from 'wouter';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   CheckCircle2,
@@ -95,11 +96,15 @@ interface HeadscaleUser {
 
 export default function Devices() {
   const t = useTranslation();
+  const search = useSearch();
   const [devices, setDevices] = useState<Device[]>([]);
   const [headscaleUsers, setHeadscaleUsers] = useState<HeadscaleUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [filterUser, setFilterUser] = useState('all');
+  const [filterUser, setFilterUser] = useState(() => {
+    const params = new URLSearchParams(search);
+    return params.get('user') || 'all';
+  });
   const [filterStatus, setFilterStatus] = useState('all');
   
   const [renameDialogOpen, setRenameDialogOpen] = useState(false);
