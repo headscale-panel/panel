@@ -302,31 +302,6 @@ export const resourcesAPI = {
   delete: (id: number) => api.delete('/resources', { params: { id } }),
 };
 
-export const dockerAPI = {
-  getContainers: () => api.get('/docker/containers'),
-  getContainerLogs: (containerId: string, lines?: number) =>
-    api.get(`/docker/containers/${containerId}/logs`, { params: { lines: lines || 100 } }),
-  startContainer: (containerId: string) =>
-    api.post(`/docker/containers/${containerId}/start`),
-  stopContainer: (containerId: string) =>
-    api.post(`/docker/containers/${containerId}/stop`),
-  restartContainer: (containerId: string) =>
-    api.post(`/docker/containers/${containerId}/restart`),
-  getContainerStats: (containerId: string) =>
-    api.get(`/docker/containers/${containerId}/stats`),
-  getSystemInfo: () => api.get('/docker/system/info'),
-  deploy: (req: {
-    image: string;
-    container_name: string;
-    ports: Record<string, string>;
-    volumes: Record<string, string>;
-    env: Record<string, string>;
-    command?: string[];
-    network_name?: string;
-    restart_policy?: string;
-  }) => api.post('/docker/deploy', req),
-};
-
 export const settingsAPI = {
   getOIDCConfig: () => api.get('/settings/oidc'),
   updateOIDCConfig: (config: {

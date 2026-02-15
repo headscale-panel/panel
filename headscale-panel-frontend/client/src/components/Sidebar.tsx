@@ -11,7 +11,6 @@ import {
   Route,
   Server,
   Settings,
-  Terminal,
   Users,
   Database,
 } from 'lucide-react';
@@ -30,7 +29,6 @@ const menuItems = [
   { icon: Lock, key: 'acl' as const, path: '/acl', adminOnly: true },
   { icon: Globe, key: 'dns' as const, path: '/dns', adminOnly: true },
   { icon: BarChart3, key: 'metrics' as const, path: '/metrics', adminOnly: true },
-  { icon: Terminal, key: 'serverControl' as const, path: '/server-control', adminOnly: true },
   { icon: Settings, key: 'settings' as const, path: '/settings' },
 ];
 

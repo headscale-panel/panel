@@ -16,10 +16,8 @@ import Resources from "./pages/Resources";
 import ACL from "./pages/ACL";
 import Metrics from "./pages/Metrics";
 import Settings from "./pages/Settings";
-import ServerControl from "./pages/ServerControl";
 import Register from "./pages/Register";
 import DNS from "./pages/DNS";
-import Setup from "./pages/Setup";
 import SetupWelcome from "./pages/SetupWelcome";
 import api from "./lib/api";
 import { useState, useEffect, type ReactNode } from "react";
@@ -86,7 +84,7 @@ function AppRoutes() {
       <Route path="/login" component={Login} />
       <Route path="/register" component={Register} />
       <Route path="/setup" component={SetupWelcome} />
-      <Route path="/setup/wizard" component={Setup} />
+      <Route path="/setup/wizard" component={SetupWelcome} />
 
       {/* Protected routes */}
       <Route path="/">
@@ -132,11 +130,6 @@ function AppRoutes() {
       <Route path="/settings">
         <ProtectedRoute>
           <Settings />
-        </ProtectedRoute>
-      </Route>
-      <Route path="/server-control">
-        <ProtectedRoute requireAdmin>
-          <ServerControl />
         </ProtectedRoute>
       </Route>
       <Route path="/dns">

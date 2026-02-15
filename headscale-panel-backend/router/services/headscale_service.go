@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/tailscale/hujson"
+	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -45,9 +46,7 @@ type HeadscaleMachine struct {
 	Expiry          *time.Time        `json:"expiry"`
 	CreatedAt       *time.Time        `json:"created_at"`
 	RegisterMethod  string            `json:"register_method"`
-	ForcedTags      []string          `json:"forced_tags"`
-	InvalidTags     []string          `json:"invalid_tags"`
-	ValidTags       []string          `json:"valid_tags"`
+	Tags            []string          `json:"tags"`
 	ApprovedRoutes  []string          `json:"approved_routes"`
 	AvailableRoutes []string          `json:"available_routes"`
 	SubnetRoutes    []string          `json:"subnet_routes"`
@@ -662,9 +661,7 @@ func (s *headscaleService) nodeToMachine(node *v1.Node) HeadscaleMachine {
 		GivenName:       node.GivenName,
 		Online:          node.Online,
 		RegisterMethod:  node.RegisterMethod.String(),
-		ForcedTags:      node.ForcedTags,
-		InvalidTags:     node.InvalidTags,
-		ValidTags:       node.ValidTags,
+		Tags:            extractNodeTags(node),
 		ApprovedRoutes:  node.ApprovedRoutes,
 		AvailableRoutes: node.AvailableRoutes,
 		SubnetRoutes:    node.SubnetRoutes,
@@ -700,4 +697,49 @@ func (s *headscaleService) nodeToMachine(node *v1.Node) HeadscaleMachine {
 	}
 
 	return machine
+}
+
+func extractNodeTags(node *v1.Node) []string {
+	if node == nil {
+		return nil
+	}
+
+	msg := node.ProtoReflect()
+	combined := make([]string, 0)
+
+	// Preferred field in newer protobuf schema.
+	combined = append(combined, extractRepeatedStringField(msg, "tags")...)
+
+	// Backward-compatibility for older generated models.
+	combined = append(combined, extractRepeatedStringField(msg, "forced_tags")...)
+	combined = append(combined, extractRepeatedStringField(msg, "valid_tags")...)
+	combined = append(combined, extractRepeatedStringField(msg, "invalid_tags")...)
+
+	seen := make(map[string]struct{}, len(combined))
+	result := make([]string, 0, len(combined))
+	for _, tag := range combined {
+		trimmed := strings.TrimSpace(tag)
+		if trimmed == "" {
+			continue
+		}
+		if _, ok := seen[trimmed]; ok {
+			continue
+		}
+		seen[trimmed] = struct{}{}
+		result = append(result, trimmed)
+	}
+	return result
+}
+
+func extractRepeatedStringField(msg protoreflect.Message, fieldName protoreflect.Name) []string {
+	fd := msg.Descriptor().Fields().ByName(fieldName)
+	if fd == nil || !fd.IsList() || fd.Kind() != protoreflect.StringKind {
+		return nil
+	}
+	list := msg.Get(fd).List()
+	values := make([]string, 0, list.Len())
+	for i := 0; i < list.Len(); i++ {
+		values = append(values, list.Get(i).String())
+	}
+	return values
 }

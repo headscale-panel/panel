@@ -83,9 +83,7 @@ interface Device {
   expiry: string | null;
   created_at: string | null;
   register_method: string;
-  forced_tags: string[];
-  invalid_tags: string[];
-  valid_tags: string[];
+  tags: string[];
   approved_routes: string[];
   available_routes: string[];
 }

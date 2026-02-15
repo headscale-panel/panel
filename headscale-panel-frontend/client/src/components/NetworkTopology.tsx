@@ -92,7 +92,7 @@ const inferDeviceType = (name: string): Device['type'] => {
   if (lowerName.includes('macbook') || lowerName.includes('laptop') || lowerName.includes('thinkpad') || lowerName.includes('thinkbook') || lowerName.includes('notebook') || lowerName.includes('mba')) {
     return 'laptop';
   }
-  if (lowerName.includes('server') || lowerName.includes('nas') || lowerName.includes('raspberry') || lowerName.includes('pi') || lowerName.includes('docker') || lowerName.includes('vault') || lowerName.includes('kvm') || lowerName.includes('openwrt') || lowerName.includes('cloud') || lowerName.includes('dev')) {
+  if (lowerName.includes('server') || lowerName.includes('nas') || lowerName.includes('raspberry') || lowerName.includes('pi') || lowerName.includes('vault') || lowerName.includes('kvm') || lowerName.includes('openwrt') || lowerName.includes('cloud') || lowerName.includes('dev')) {
     return 'server';
   }
   return 'desktop';

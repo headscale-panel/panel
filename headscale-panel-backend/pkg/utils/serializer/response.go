@@ -134,8 +134,7 @@ func clientMessageForCode(code int, msg string) string {
 	// but still provide useful context for client errors
 	if gin.Mode() == gin.ReleaseMode && isServerErrorCode(code) {
 		// For setup-related errors, provide more context even in release mode
-		if strings.Contains(strings.ToLower(cleanMsg), "docker") ||
-			strings.Contains(strings.ToLower(cleanMsg), "deployment") ||
+		if strings.Contains(strings.ToLower(cleanMsg), "deployment") ||
 			strings.Contains(strings.ToLower(cleanMsg), "setup") {
 			return cleanMsg
 		}

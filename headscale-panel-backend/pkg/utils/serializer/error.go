@@ -253,35 +253,6 @@ func EnhanceError(err error, context string) AppError {
 	return NewError(code, fmt.Sprintf("%s: %s", context, errMsg), err)
 }
 
-// WrapDockerError 包装 Docker 相关错误
-func WrapDockerError(err error, operation string) AppError {
-	if err == nil {
-		return NewError(CodeInternalError, operation, nil)
-	}
-
-	errMsg := err.Error()
-	var hint string
-
-	if containsAny(errMsg, "connection refused") {
-		hint = "Docker daemon may not be running. Please ensure Docker is running and accessible."
-	} else if containsAny(errMsg, "not found") {
-		hint = "Image or container not found in registry. Please check the image name."
-	} else if containsAny(errMsg, "timeout") {
-		hint = "Network timeout. Please check your internet connection."
-	} else if containsAny(errMsg, "permission denied") {
-		hint = "Permission denied. Please check Docker socket permissions."
-	} else if containsAny(errMsg, "port is already allocated", "address already in use") {
-		hint = "Port is already in use by another service. Please check port availability."
-	}
-
-	msg := fmt.Sprintf("%s failed: %s", operation, errMsg)
-	if hint != "" {
-		msg = fmt.Sprintf("%s. %s", msg, hint)
-	}
-
-	return NewError(CodeThirdPartyServiceError, msg, err)
-}
-
 // WrapFileSystemError 包装文件系统相关错误
 func WrapFileSystemError(err error, operation string, path string) AppError {
 	if err == nil {

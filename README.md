@@ -1,7 +1,6 @@
 # Headscale Panel
 
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Docker](https://img.shields.io/badge/Docker-Ready-blue.svg)](https://www.docker.com/)
 [![Go](https://img.shields.io/badge/Go-1.24-blue.svg)](https://golang.org)
 [![React](https://img.shields.io/badge/React-19-blue.svg)](https://reactjs.org)
 

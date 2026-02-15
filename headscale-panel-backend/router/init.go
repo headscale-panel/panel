@@ -4,7 +4,6 @@ import (
 	"headscale-panel/pkg/conf"
 	"headscale-panel/router/controllers"
 	"headscale-panel/router/middleware"
-	"headscale-panel/router/services"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -13,7 +12,6 @@ import (
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
-	"github.com/sirupsen/logrus"
 )
 
 func InitRouter() *gin.Engine {
@@ -50,12 +48,8 @@ func InitRouter() *gin.Engine {
 		api.GET("/setup/status", setupController.GetStatus)
 		api.POST("/setup/preflight", setupController.Preflight)
 		api.POST("/setup/init", setupController.Initialize)
-		api.POST("/setup/deploy", setupController.DeployContainer)
-		api.POST("/setup/reverse-proxy/config", setupController.GenerateReverseProxyConfig)
-		api.POST("/setup/compose", setupController.GenerateComposeFile)
 		api.POST("/setup/connectivity-check", setupController.ConnectivityCheck)
 		api.POST("/setup/connectivity-poll", setupController.ConnectivityPoll)
-		api.POST("/setup/generate-compose", setupController.GenerateComposeFromConfig)
 
 		authController := controllers.NewAuthController()
 		api.GET("/auth/oidc-status", authController.OIDCStatus)
@@ -162,19 +156,6 @@ func InitRouter() *gin.Engine {
 			auth.POST("/connection/generate", middleware.PermissionMiddleware("headscale:machine:list"), connectionController.GenerateConnectionCommands)
 			auth.POST("/connection/pre-auth-key", middleware.PermissionMiddleware("headscale:preauthkey:create"), connectionController.GeneratePreAuthKey)
 
-			dockerService, dErr := services.NewDockerService()
-			if dErr != nil {
-				logrus.WithError(dErr).Warn("Docker service not available, docker endpoints will return errors")
-			}
-			dockerController := controllers.NewDockerController(dockerService)
-			auth.GET("/docker/containers", middleware.AdminOnlyMiddleware(), middleware.PermissionMiddleware("docker:container:list"), dockerController.ListContainers)
-			auth.GET("/docker/containers/:name", middleware.AdminOnlyMiddleware(), middleware.PermissionMiddleware("docker:container:get"), dockerController.GetContainer)
-			auth.POST("/docker/containers/:name/start", middleware.AdminOnlyMiddleware(), middleware.PermissionMiddleware("docker:container:start"), dockerController.StartContainer)
-			auth.POST("/docker/containers/:name/stop", middleware.AdminOnlyMiddleware(), middleware.PermissionMiddleware("docker:container:stop"), dockerController.StopContainer)
-			auth.POST("/docker/containers/:name/restart", middleware.AdminOnlyMiddleware(), middleware.PermissionMiddleware("docker:container:restart"), dockerController.RestartContainer)
-			auth.GET("/docker/containers/:name/logs", middleware.AdminOnlyMiddleware(), middleware.PermissionMiddleware("docker:container:logs"), dockerController.GetContainerLogs)
-			auth.POST("/docker/deploy", middleware.AdminOnlyMiddleware(), middleware.PermissionMiddleware("docker:container:deploy"), dockerController.DeployContainer)
-
 			headscaleConfigController := controllers.NewHeadscaleConfigController()
 			auth.GET("/headscale/config", middleware.PermissionMiddleware("headscale:config:view"), headscaleConfigController.Get)
 			auth.PUT("/headscale/config", middleware.PermissionMiddleware("headscale:config:update"), headscaleConfigController.Update)
@@ -200,7 +181,6 @@ func InitRouter() *gin.Engine {
 			auth.POST("/dns/sync", middleware.PermissionMiddleware("dns:sync"), dnsController.Sync)
 			auth.POST("/dns/import", middleware.PermissionMiddleware("dns:import"), dnsController.Import)
 			auth.GET("/dns/file", middleware.PermissionMiddleware("dns:file:get"), dnsController.GetFile)
-			auth.GET("/docker/containers/:name/stats", middleware.AdminOnlyMiddleware(), middleware.PermissionMiddleware("docker:container:stats"), dockerController.GetContainerStats)
 		}
 	}
 
