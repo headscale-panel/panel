@@ -93,6 +93,7 @@ func initDefaultData() {
 		{Name: "删除 Headscale 用户", Code: "headscale:user:delete", Type: "button"},
 		{Name: "查看 Headscale 设备", Code: "headscale:machine:list", Type: "button"},
 		{Name: "查看设备详情", Code: "headscale:machine:get", Type: "button"},
+		{Name: "注册设备", Code: "headscale:machine:create", Type: "button"},
 		{Name: "编辑设备名称", Code: "headscale:machine:update", Type: "button"},
 		{Name: "删除设备", Code: "headscale:machine:delete", Type: "button"},
 		{Name: "过期设备", Code: "headscale:machine:expire", Type: "button"},
