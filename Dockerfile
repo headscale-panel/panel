@@ -30,7 +30,8 @@ RUN CGO_ENABLED=1 GOOS=linux go build \
 # -- Minimal runtime image --
 FROM alpine:3.20
 
-RUN apk add --no-cache ca-certificates tzdata && \
+RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.ustc.edu.cn/g' /etc/apk/repositories && \
+    apk add --no-cache ca-certificates tzdata && \
     addgroup -S appgroup && \
     adduser -S -G appgroup -h /app appuser
 
