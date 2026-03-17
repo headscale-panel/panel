@@ -375,10 +375,12 @@ func applyHeadscaleConnectionConfig(grpcAddr, apiKey string, insecureMode bool) 
 	conf.Conf.Headscale.APIKey = apiKey
 	conf.Conf.Headscale.Insecure = insecureMode
 
-	if err := writeHeadscaleConnectionEnv(grpcAddr, apiKey, insecureMode); err != nil {
+	if err := services.PersistHeadscaleConnection(grpcAddr, apiKey, insecureMode); err != nil {
 		conf.Conf.Headscale = old
-		return serializer.NewError(serializer.CodeFileSystemError, "failed to persist Headscale connection settings", err)
+		return serializer.NewError(serializer.CodeDBError, "failed to persist Headscale connection settings to DB", err)
 	}
+	// Also persist to .env (best effort)
+	_ = writeHeadscaleConnectionEnv(grpcAddr, apiKey, insecureMode)
 
 	headscale.Close()
 	if err := headscale.Init(); err != nil {

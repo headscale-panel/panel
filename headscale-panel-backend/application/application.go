@@ -33,6 +33,9 @@ func NewServer() (*Server, error) {
 
 	model.Init()
 
+	// Restore headscale connection settings from DB (survives container restart)
+	services.LoadHeadscaleConnectionFromDB()
+
 	if err := headscale.Init(); err != nil {
 		return nil, err
 	}

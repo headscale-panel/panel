@@ -72,11 +72,14 @@ func (s *panelSettingsService) SaveConnectionSettings(actorUserID uint, grpcAddr
 	conf.Conf.Headscale.APIKey = effectiveAPIKey
 	conf.Conf.Headscale.Insecure = insecure
 
-	// Persist to .env
-	if err := writePanelConnectionEnv(grpcAddr, effectiveAPIKey, insecure); err != nil {
+	// Persist to DB
+	if err := PersistHeadscaleConnection(grpcAddr, effectiveAPIKey, insecure); err != nil {
 		conf.Conf.Headscale = old
-		return serializer.NewError(serializer.CodeFileSystemError, "保存连接设置失败", err)
+		return serializer.NewError(serializer.CodeDBError, "保存连接设置到数据库失败", err)
 	}
+
+	// Also persist to .env (best effort)
+	_ = writePanelConnectionEnv(grpcAddr, effectiveAPIKey, insecure)
 
 	// Reinitialize headscale client
 	headscale.Close()
@@ -89,6 +92,59 @@ func (s *panelSettingsService) SaveConnectionSettings(actorUserID uint, grpcAddr
 	}
 
 	return nil
+}
+
+// --- Headscale connection settings DB persistence ---
+
+const panelSettingKeyHeadscale = "headscale_connection"
+
+type headscaleConnectionPayload struct {
+	GRPCAddr string `json:"grpc_addr"`
+	APIKey   string `json:"api_key"`
+	Insecure bool   `json:"insecure"`
+}
+
+// PersistHeadscaleConnection saves headscale connection settings to the database.
+func PersistHeadscaleConnection(grpcAddr, apiKey string, insecure bool) error {
+	payload := headscaleConnectionPayload{
+		GRPCAddr: grpcAddr,
+		APIKey:   apiKey,
+		Insecure: insecure,
+	}
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+
+	var setting model.PanelSetting
+	result := model.DB.Where("key = ?", panelSettingKeyHeadscale).First(&setting)
+	if result.Error != nil {
+		// Not found — create
+		setting = model.PanelSetting{Key: panelSettingKeyHeadscale, Value: string(data)}
+		return model.DB.Create(&setting).Error
+	}
+	setting.Value = string(data)
+	return model.DB.Save(&setting).Error
+}
+
+// LoadHeadscaleConnectionFromDB loads saved headscale connection settings from DB
+// and applies them to conf.Conf.Headscale. Returns true if settings were found.
+func LoadHeadscaleConnectionFromDB() bool {
+	var setting model.PanelSetting
+	if err := model.DB.Where("key = ?", panelSettingKeyHeadscale).First(&setting).Error; err != nil {
+		return false
+	}
+	var payload headscaleConnectionPayload
+	if err := json.Unmarshal([]byte(setting.Value), &payload); err != nil {
+		return false
+	}
+	if strings.TrimSpace(payload.GRPCAddr) == "" {
+		return false
+	}
+	conf.Conf.Headscale.GRPCAddr = payload.GRPCAddr
+	conf.Conf.Headscale.APIKey = payload.APIKey
+	conf.Conf.Headscale.Insecure = payload.Insecure
+	return true
 }
 
 // SyncDataFromHeadscale syncs resources/groups from Headscale ACL into local DB.
