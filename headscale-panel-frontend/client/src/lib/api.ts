@@ -27,6 +27,7 @@ api.interceptors.response.use(
     const isSetupRequest = response.config?.url?.includes('/setup/');
     if (code === 401 && !isSetupRequest) {
       useAuthStore.getState().clearAuth();
+      localStorage.removeItem('auth-storage');
       toast.error(t.common.errors.sessionExpired);
       window.location.href = '/panel/login';
     } else if (code === 403 && !isSetupRequest) {
@@ -43,6 +44,7 @@ api.interceptors.response.use(
       const { status } = error.response;
       if (status === 401 && !isSetupRequest) {
         useAuthStore.getState().clearAuth();
+        localStorage.removeItem('auth-storage');
         toast.error(t.common.errors.sessionExpired);
         window.location.href = '/panel/login';
       } else if (status === 403 && !isSetupRequest) {

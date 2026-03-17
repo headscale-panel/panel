@@ -36,6 +36,7 @@ function SetupGuard({ children }: { children: ReactNode }) {
         const init = Boolean(d?.initialized);
         setInitialized(init);
         if (!init && !location.startsWith('/setup')) setLocation('/setup');
+        if (init && location.startsWith('/setup')) setLocation('/login');
       })
       .catch(() => setInitialized(true))
       .finally(() => setChecking(false));
@@ -44,6 +45,9 @@ function SetupGuard({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!checking && !initialized && !location.startsWith('/setup')) {
       setLocation('/setup');
+    }
+    if (!checking && initialized && location.startsWith('/setup')) {
+      setLocation('/login');
     }
   }, [checking, initialized, location, setLocation]);
 
