@@ -46,7 +46,6 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Separator } from '@/components/ui/separator';
 import {
   Tooltip,
   TooltipContent,
@@ -531,65 +530,92 @@ export default function UsersPage() {
           {/* Left Panel — Sidebar tree */}
           <div className="col-span-12 lg:col-span-3">
             <Card className="p-0 overflow-hidden">
-              <div className="px-4 py-3 border-b">
+              <div className="px-4 py-3 border-b border-border/60">
                 <p className="text-sm font-medium text-muted-foreground uppercase tracking-wider">{t.users.treeTitle}</p>
               </div>
               <ScrollArea className="h-[520px]">
-                <div className="p-1.5 space-y-0.5">
-                  {/* All Users */}
-                  <button
-                    className={cn(
-                      "w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-left transition-colors text-sm",
-                      selectedGroupId === 'all' 
-                        ? "bg-primary/10 text-primary font-medium" 
-                        : "text-foreground hover:bg-muted/60"
-                    )}
-                    onClick={() => setSelectedGroupId('all')}
-                  >
-                    <Users className="w-4 h-4 shrink-0 opacity-60" />
-                    <span className="flex-1 truncate">{t.users.allUsers}</span>
-                    <span className="text-xs tabular-nums text-muted-foreground">{users.length}</span>
-                  </button>
+                <div className="p-1.5">
+                  {/* Quick Filter Section */}
+                  <div className="space-y-0.5">
+                    <button
+                      className={cn(
+                        "w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-left transition-colors text-sm",
+                        selectedGroupId === 'all' 
+                          ? "bg-primary/10 text-primary font-medium" 
+                          : "text-foreground hover:bg-muted/60"
+                      )}
+                      onClick={() => setSelectedGroupId('all')}
+                    >
+                      <Users className="w-4 h-4 shrink-0 opacity-60" />
+                      <span className="flex-1 truncate">{t.users.allUsers}</span>
+                      <span className="text-xs tabular-nums text-muted-foreground">{users.length}</span>
+                    </button>
 
-                  {/* Ungrouped Users */}
-                  <button
-                    className={cn(
-                      "w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-left transition-colors text-sm",
-                      selectedGroupId === 'ungrouped' 
-                        ? "bg-primary/10 text-primary font-medium" 
-                        : "text-foreground hover:bg-muted/60"
-                    )}
-                    onClick={() => setSelectedGroupId('ungrouped')}
-                  >
-                    <User className="w-4 h-4 shrink-0 opacity-60" />
-                    <span className="flex-1 truncate">{t.users.ungroupedUsers}</span>
-                    <span className="text-xs tabular-nums text-muted-foreground">{getUngroupedUsers().length}</span>
-                  </button>
+                    <button
+                      className={cn(
+                        "w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-left transition-colors text-sm",
+                        selectedGroupId === 'ungrouped' 
+                          ? "bg-primary/10 text-primary font-medium" 
+                          : "text-foreground hover:bg-muted/60"
+                      )}
+                      onClick={() => setSelectedGroupId('ungrouped')}
+                    >
+                      <User className="w-4 h-4 shrink-0 opacity-60" />
+                      <span className="flex-1 truncate">{t.users.ungroupedUsers}</span>
+                      <span className="text-xs tabular-nums text-muted-foreground">{getUngroupedUsers().length}</span>
+                    </button>
+                  </div>
 
-                  <Separator className="!my-2" />
+                  {/* Groups Section */}
+                  {groups.length > 0 && (
+                    <>
+                      <div className="px-3 pt-4 pb-1.5">
+                        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t.users.groups}</p>
+                      </div>
+                      <div className="space-y-0.5">
+                        {groups.map((group) => {
+                          const memberCount = getUsersByGroup(group).length;
+                          const isSelected = selectedGroupId === group.ID;
 
-                  {/* Database Groups */}
-                  {groups.map((group) => {
-                    const memberCount = getUsersByGroup(group).length;
-                    const isSelected = selectedGroupId === group.ID;
-
-                    return (
-                      <button
-                        key={group.ID}
-                        className={cn(
-                          "w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-left transition-colors text-sm",
-                          isSelected 
-                            ? "bg-primary/10 text-primary font-medium" 
-                            : "text-foreground hover:bg-muted/60"
-                        )}
-                        onClick={() => setSelectedGroupId(group.ID)}
-                      >
-                        <UsersRound className="w-4 h-4 shrink-0 opacity-60" />
-                        <span className="flex-1 truncate">{group.name}</span>
-                        <span className="text-xs tabular-nums text-muted-foreground">{memberCount}</span>
-                      </button>
-                    );
-                  })}
+                          return (
+                            <div key={group.ID} className="group/item relative">
+                              <button
+                                className={cn(
+                                  "w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-left transition-colors text-sm",
+                                  isSelected 
+                                    ? "bg-primary/10 text-primary font-medium" 
+                                    : "text-foreground hover:bg-muted/60"
+                                )}
+                                onClick={() => setSelectedGroupId(group.ID)}
+                              >
+                                <UsersRound className="w-4 h-4 shrink-0 opacity-60" />
+                                <span className="flex-1 truncate">{group.name}</span>
+                                <span className="text-xs tabular-nums text-muted-foreground">{memberCount}</span>
+                              </button>
+                              <div className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-0.5 opacity-0 group-hover/item:opacity-100 transition-opacity">
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-foreground" onClick={(e) => { e.stopPropagation(); handleEditGroup(group); }}>
+                                      <Edit className="w-3 h-3" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent side="right">{t.common.actions.edit}</TooltipContent>
+                                </Tooltip>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive/60 hover:text-destructive hover:bg-destructive/10" onClick={(e) => { e.stopPropagation(); handleDeleteGroup(group); }}>
+                                      <Trash2 className="w-3 h-3" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent side="right">{t.common.actions.delete}</TooltipContent>
+                                </Tooltip>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </>
+                  )}
                 </div>
               </ScrollArea>
             </Card>
@@ -599,7 +625,7 @@ export default function UsersPage() {
           <div className="col-span-12 lg:col-span-9">
             <Card className="p-0 overflow-hidden">
               {/* List header */}
-              <div className="flex items-center justify-between px-4 py-3 border-b">
+              <div className="flex items-center justify-between px-4 py-3 border-b border-border/60">
                 <div className="flex items-center gap-2">
                   <h2 className="text-sm font-medium text-foreground">
                     {selectedGroupId === 'all' && t.users.allUsers}

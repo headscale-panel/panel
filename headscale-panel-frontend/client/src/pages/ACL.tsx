@@ -56,8 +56,10 @@ import {
   Plus,
   RefreshCw,
   Server,
+  Shield,
   Smartphone,
   Tablet,
+  Tag,
   Trash2,
   User,
   Users,
@@ -462,6 +464,7 @@ export default function ACL() {
     allow: rules.filter((r) => r.action === 'accept').length,
     deny: rules.filter((r) => r.action === 'deny').length,
     groups: Object.keys(aclGroups).length,
+    tags: policy?.tagOwners ? Object.keys(policy.tagOwners).length : 0,
     hosts: policy?.hosts ? Object.keys(policy.hosts).length : 0,
   };
 
@@ -510,7 +513,7 @@ export default function ACL() {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
             <Card className="p-5 hover:shadow-lg transition-shadow">
               <div className="flex items-center justify-between">
                 <div>
@@ -545,6 +548,15 @@ export default function ACL() {
                   <p className="text-2xl font-bold mt-1">{stats.groups}</p>
                 </div>
                 <Users className="h-8 w-8 opacity-80 text-blue-500" />
+              </div>
+            </Card>
+            <Card className="p-5 hover:shadow-lg transition-shadow">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground">{t.acl.tagsLabel}</p>
+                  <p className="text-2xl font-bold mt-1">{stats.tags}</p>
+                </div>
+                <Tag className="h-8 w-8 opacity-80 text-emerald-500" />
               </div>
             </Card>
             <Card className="p-5 hover:shadow-lg transition-shadow">
@@ -603,7 +615,7 @@ export default function ACL() {
             )}
           </Card>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <Card className="p-6">
               <h3 className="text-lg font-semibold mb-4 flex items-center gap-2"><Users className="h-5 w-5" />{t.acl.aclGroups}</h3>
               {Object.keys(aclGroups).length === 0 ? (<p className="text-muted-foreground text-sm">{t.acl.noGroups}</p>) : (
@@ -612,6 +624,20 @@ export default function ACL() {
                     <div key={groupName} className="flex items-start gap-2 p-2 rounded-md bg-muted/50">
                       <Badge variant="outline" className="shrink-0">{groupName}</Badge>
                       <div className="flex flex-wrap gap-1">{members.map((member, idx) => (<span key={idx} className="text-sm text-muted-foreground">{member}</span>))}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </Card>
+
+            <Card className="p-6">
+              <h3 className="text-lg font-semibold mb-4 flex items-center gap-2"><Tag className="h-5 w-5" />{t.acl.tagOwnersTitle}</h3>
+              {!policy?.tagOwners || Object.keys(policy.tagOwners).length === 0 ? (<p className="text-muted-foreground text-sm">{t.acl.noTagOwners}</p>) : (
+                <div className="space-y-2 max-h-64 overflow-y-auto">
+                  {Object.entries(policy.tagOwners).map(([tagName, owners]) => (
+                    <div key={tagName} className="flex items-start gap-2 p-2 rounded-md bg-muted/50">
+                      <Badge variant="outline" className="shrink-0 bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-800">{tagName}</Badge>
+                      <div className="flex flex-wrap gap-1">{owners.map((owner, idx) => (<span key={idx} className="text-sm text-muted-foreground">{owner}</span>))}</div>
                     </div>
                   ))}
                 </div>
@@ -658,8 +684,13 @@ export default function ACL() {
                             <CommandEmpty>{t.acl.noResults}</CommandEmpty>
                             <CommandGroup heading={t.acl.quickOptions}>
                               <CommandItem onSelect={() => addSource('*')}><Check className={`mr-2 h-4 w-4 ${newRule.sources?.includes('*') ? 'opacity-100' : 'opacity-0'}`} />{t.acl.allStar}</CommandItem>
-                              <CommandItem onSelect={() => addSource('autogroup:internet')}><Check className={`mr-2 h-4 w-4 ${newRule.sources?.includes('autogroup:internet') ? 'opacity-100' : 'opacity-0'}`} />autogroup:internet</CommandItem>
                             </CommandGroup>
+                            <CommandSeparator />
+                            <CommandGroup heading={t.acl.autogroupsHeading}>
+                              <CommandItem onSelect={() => addSource('autogroup:member')}><Check className={`mr-2 h-4 w-4 ${newRule.sources?.includes('autogroup:member') ? 'opacity-100' : 'opacity-0'}`} /><Shield className="mr-2 h-4 w-4" /><div className="flex flex-col"><span>autogroup:member</span><span className="text-xs text-muted-foreground">{t.acl.autogroupMemberDesc}</span></div></CommandItem>
+                              <CommandItem onSelect={() => addSource('autogroup:tagged')}><Check className={`mr-2 h-4 w-4 ${newRule.sources?.includes('autogroup:tagged') ? 'opacity-100' : 'opacity-0'}`} /><Shield className="mr-2 h-4 w-4" /><div className="flex flex-col"><span>autogroup:tagged</span><span className="text-xs text-muted-foreground">{t.acl.autogroupTaggedDesc}</span></div></CommandItem>
+                            </CommandGroup>
+                            {policy?.tagOwners && Object.keys(policy.tagOwners).length > 0 && (<><CommandSeparator /><CommandGroup heading={t.acl.tagsHeading}>{Object.keys(policy.tagOwners).map((tagName) => (<CommandItem key={tagName} onSelect={() => addSource(tagName)}><Check className={`mr-2 h-4 w-4 ${newRule.sources?.includes(tagName) ? 'opacity-100' : 'opacity-0'}`} /><Tag className="mr-2 h-4 w-4" /><span>{tagName}</span></CommandItem>))}</CommandGroup></>)}
                             {Object.keys(aclGroups).length > 0 && (<><CommandSeparator /><CommandGroup heading={t.acl.aclGroupsHeading}>{Object.keys(aclGroups).map((groupName) => (<CommandItem key={groupName} onSelect={() => addSource(groupName)}><Check className={`mr-2 h-4 w-4 ${newRule.sources?.includes(groupName) ? 'opacity-100' : 'opacity-0'}`} /><Users className="mr-2 h-4 w-4" /><span>{groupName}</span></CommandItem>))}</CommandGroup></>)}
                             {headscaleUsers.length > 0 && (<><CommandSeparator /><CommandGroup heading={t.acl.headscaleUsersHeading}>{headscaleUsers.map((user) => (<CommandItem key={user.id} onSelect={() => addSource(`${user.name}@`)}><Check className={`mr-2 h-4 w-4 ${newRule.sources?.includes(`${user.name}@`) ? 'opacity-100' : 'opacity-0'}`} /><User className="mr-2 h-4 w-4" /><span>{user.name}@</span></CommandItem>))}</CommandGroup></>)}
                             {devices.length > 0 && (<><CommandSeparator /><CommandGroup heading={t.acl.devicesHeading}>{devices.slice(0, 10).map((device) => (<CommandItem key={device.id} onSelect={() => addSource(device.ipAddresses?.[0] || '')}><Check className={`mr-2 h-4 w-4 ${newRule.sources?.includes(device.ipAddresses?.[0] || '') ? 'opacity-100' : 'opacity-0'}`} />{getDeviceIcon(device)}<div className="flex flex-col ml-2"><span>{device.givenName || device.name}</span><span className="text-xs text-muted-foreground">{device.ipAddresses?.[0]}</span></div></CommandItem>))}</CommandGroup></>)}
@@ -687,8 +718,13 @@ export default function ACL() {
                             <CommandEmpty>{t.acl.noResults}</CommandEmpty>
                             <CommandGroup heading={t.acl.quickOptions}>
                               <CommandItem onSelect={() => addDestination('*:*')}><Check className={`mr-2 h-4 w-4 ${newRule.destinations?.includes('*:*') ? 'opacity-100' : 'opacity-0'}`} />{t.acl.allStarColon}</CommandItem>
-                              <CommandItem onSelect={() => addDestination('autogroup:internet:*')}><Check className={`mr-2 h-4 w-4 ${newRule.destinations?.includes('autogroup:internet:*') ? 'opacity-100' : 'opacity-0'}`} />autogroup:internet:*</CommandItem>
                             </CommandGroup>
+                            <CommandSeparator />
+                            <CommandGroup heading={t.acl.autogroupsHeading}>
+                              <CommandItem onSelect={() => addDestination('autogroup:internet:*')}><Check className={`mr-2 h-4 w-4 ${newRule.destinations?.includes('autogroup:internet:*') ? 'opacity-100' : 'opacity-0'}`} /><Shield className="mr-2 h-4 w-4" /><div className="flex flex-col"><span>autogroup:internet:*</span><span className="text-xs text-muted-foreground">{t.acl.autogroupInternetDesc}</span></div></CommandItem>
+                              <CommandItem onSelect={() => addDestination('autogroup:self:*')}><Check className={`mr-2 h-4 w-4 ${newRule.destinations?.includes('autogroup:self:*') ? 'opacity-100' : 'opacity-0'}`} /><Shield className="mr-2 h-4 w-4" /><div className="flex flex-col"><span>autogroup:self:*</span><span className="text-xs text-muted-foreground">{t.acl.autogroupSelfDesc}</span></div></CommandItem>
+                            </CommandGroup>
+                            {policy?.tagOwners && Object.keys(policy.tagOwners).length > 0 && (<><CommandSeparator /><CommandGroup heading={t.acl.tagsHeading}>{Object.keys(policy.tagOwners).map((tagName) => (<CommandItem key={tagName} onSelect={() => addDestination(`${tagName}:*`)}><Check className={`mr-2 h-4 w-4 ${newRule.destinations?.includes(`${tagName}:*`) ? 'opacity-100' : 'opacity-0'}`} /><Tag className="mr-2 h-4 w-4" /><span>{tagName}:*</span></CommandItem>))}</CommandGroup></>)}
                             {Object.keys(aclGroups).length > 0 && (<><CommandSeparator /><CommandGroup heading={t.acl.aclGroupsHeading}>{Object.keys(aclGroups).map((groupName) => (<CommandItem key={groupName} onSelect={() => addDestination(`${groupName}:*`)}><Check className={`mr-2 h-4 w-4 ${newRule.destinations?.includes(`${groupName}:*`) ? 'opacity-100' : 'opacity-0'}`} /><Users className="mr-2 h-4 w-4" /><span>{groupName}:*</span></CommandItem>))}</CommandGroup></>)}
                             {policy?.hosts && Object.keys(policy.hosts).length > 0 && (<><CommandSeparator /><CommandGroup heading={t.acl.hostAliasesHeading}>{Object.entries(policy.hosts).map(([hostName, ip]) => (<CommandItem key={hostName} onSelect={() => addDestination(`${hostName}:*`)}><Check className={`mr-2 h-4 w-4 ${newRule.destinations?.includes(`${hostName}:*`) ? 'opacity-100' : 'opacity-0'}`} /><Globe className="mr-2 h-4 w-4" /><div className="flex flex-col"><span>{hostName}:*</span><span className="text-xs text-muted-foreground">{ip}</span></div></CommandItem>))}</CommandGroup></>)}
                             {resources.length > 0 && (<><CommandSeparator /><CommandGroup heading={t.acl.resourcesHeading}>{resources.map((resource) => (<CommandItem key={resource.id} onSelect={() => addDestination(`${resource.name}:${resource.port || '*'}`)}><Check className={`mr-2 h-4 w-4 ${newRule.destinations?.includes(`${resource.name}:${resource.port || '*'}`) ? 'opacity-100' : 'opacity-0'}`} /><Database className="mr-2 h-4 w-4" /><div className="flex flex-col"><span>{resource.name}:{resource.port || '*'}</span><span className="text-xs text-muted-foreground">{resource.ip_address}</span></div></CommandItem>))}</CommandGroup></>)}

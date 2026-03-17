@@ -290,6 +290,15 @@ const zh = {
     syncFailed: '应用失败',
     orderUpdated: '规则顺序已更新',
     ruleCopied: '规则已复制到剪贴板',
+    tagsLabel: '标签',
+    tagsHeading: 'Tags (标签)',
+    tagOwnersTitle: 'Tag Owners',
+    noTagOwners: '暂无 Tag Owner 配置',
+    autogroupsHeading: 'Autogroup (自动组)',
+    autogroupMemberDesc: '所有未标记设备的用户',
+    autogroupTaggedDesc: '所有已标记的设备',
+    autogroupInternetDesc: '通过 Exit Node 访问互联网',
+    autogroupSelfDesc: '同一用户的其他设备',
   },
 
   dns: {

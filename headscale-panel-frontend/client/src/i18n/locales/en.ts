@@ -292,6 +292,15 @@ const en: Translations = {
     syncFailed: 'Apply failed',
     orderUpdated: 'Rule order updated',
     ruleCopied: 'Rule copied to clipboard',
+    tagsLabel: 'Tags',
+    tagsHeading: 'Tags',
+    tagOwnersTitle: 'Tag Owners',
+    noTagOwners: 'No tag owners configured',
+    autogroupsHeading: 'Autogroups',
+    autogroupMemberDesc: 'All untagged devices (personal)',
+    autogroupTaggedDesc: 'All tagged devices',
+    autogroupInternetDesc: 'Internet access via exit nodes',
+    autogroupSelfDesc: 'Other devices of the same user',
   },
 
   dns: {
