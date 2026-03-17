@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"google.golang.org/grpc/status"
 	"gorm.io/gorm"
 )
 
@@ -121,21 +120,9 @@ func mapUnknownError(err error) (int, string) {
 		return CodeNetworkError, "请求超时，请稍后重试"
 	case errors.Is(err, context.Canceled):
 		return CodeNetworkError, "请求已取消"
-	case isGRPCError(err):
-		return CodeThirdPartyServiceError, "Headscale 服务异常，请检查连接"
 	default:
 		return CodeInternalError, defaultMessageForCode(CodeInternalError)
 	}
-}
-
-// isGRPCError checks whether the error chain contains a gRPC status error.
-func isGRPCError(err error) bool {
-	for e := err; e != nil; e = errors.Unwrap(e) {
-		if _, ok := status.FromError(e); ok {
-			return true
-		}
-	}
-	return false
 }
 
 func clientMessageForCode(code int, msg string) string {
