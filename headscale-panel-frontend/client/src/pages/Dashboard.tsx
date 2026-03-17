@@ -246,23 +246,16 @@ export default function Dashboard() {
             </p>
           </div>
           <div className="flex items-center gap-3">
-            {/* WebSocket Status */}
-            <Badge 
-              variant={isConnected ? 'default' : 'secondary'}
-              className={`gap-1.5 ${isConnected ? 'bg-green-500/10 text-green-600 border-green-200' : 'bg-gray-100 text-gray-500'}`}
-            >
-              {isConnected ? (
-                <>
-                  <Wifi className="w-3 h-3" />
-                  {t.dashboard.realtime}
-                </>
-              ) : (
-                <>
-                  <WifiOff className="w-3 h-3" />
-                  {t.common.status.offline}
-                </>
-              )}
-            </Badge>
+            {/* WebSocket Status - only show when connected */}
+            {isConnected && (
+              <Badge 
+                variant="default"
+                className="gap-1.5 bg-green-500/10 text-green-600 border-green-200"
+              >
+                <Wifi className="w-3 h-3" />
+                {t.dashboard.realtime}
+              </Badge>
+            )}
             <Button 
               variant="outline" 
               size="sm" 
