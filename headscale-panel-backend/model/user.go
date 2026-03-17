@@ -17,7 +17,7 @@ type User struct {
 	Group    Group  `json:"group"`
 
 	// Headscale fields
-	HeadscaleName string `json:"headscale_name" gorm:"uniqueIndex"` // Maps to Headscale User Name
+	HeadscaleName string `json:"headscale_name" gorm:"index"` // Maps to Headscale User Name
 	DisplayName   string `json:"display_name"`
 	Provider      string `json:"provider"` // "local", "github", etc.
 	ProviderID    string `json:"provider_id"`
