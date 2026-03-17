@@ -108,10 +108,11 @@ export default function DNS() {
       const imported = res?.imported || 0;
       if (imported > 0) {
         toast.success(t.dns.importSuccess.replace('{count}', String(imported)));
-        loadRecords();
       } else if (!silent) {
         toast.info(t.dns.importNoNewRecords);
       }
+      // Always reload records after import attempt
+      loadRecords();
     } catch (error: any) {
       if (!silent) {
         toast.error(t.dns.importFailed + (error.message ? ': ' + error.message : ''));

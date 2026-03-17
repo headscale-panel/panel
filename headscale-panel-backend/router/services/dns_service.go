@@ -270,9 +270,12 @@ func (s *dnsService) ImportFromFile(actorUserID uint) (int, error) {
 		result := model.DB.Where("name = ? AND type = ?", r.Name, r.Type).First(&existing)
 		if result.Error == nil {
 			// 已存在，更新
-			existing.Value = r.Value
-			if err := model.DB.Save(&existing).Error; err != nil {
-				return imported, serializer.ErrDatabase.WithError(err)
+			if existing.Value != r.Value {
+				existing.Value = r.Value
+				if err := model.DB.Save(&existing).Error; err != nil {
+					return imported, serializer.ErrDatabase.WithError(err)
+				}
+				imported++
 			}
 		} else {
 			if !errors.Is(result.Error, gorm.ErrRecordNotFound) {
