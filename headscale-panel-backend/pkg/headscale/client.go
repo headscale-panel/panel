@@ -3,14 +3,10 @@ package headscale
 import (
 	"context"
 	"crypto/tls"
-	"fmt"
 	"headscale-panel/pkg/conf"
 	v1 "headscale-panel/pkg/proto/headscale/v1"
-	"time"
 
-	"github.com/sirupsen/logrus"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -50,12 +46,6 @@ func Init() error {
 		return err
 	}
 
-	// Wait for the gRPC connection to be ready before serving requests.
-	if err := waitForReady(conn, 30*time.Second); err != nil {
-		conn.Close()
-		return fmt.Errorf("headscale gRPC not reachable at %s: %w", addr, err)
-	}
-
 	client := v1.NewHeadscaleServiceClient(conn)
 
 	GlobalClient = &Client{
@@ -63,30 +53,6 @@ func Init() error {
 		Service: client,
 	}
 	return nil
-}
-
-// waitForReady blocks until the gRPC connection reaches READY state or the timeout expires.
-func waitForReady(conn *grpc.ClientConn, timeout time.Duration) error {
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
-
-	// Trigger the lazy connection by requesting a state change from IDLE.
-	conn.Connect()
-
-	for {
-		state := conn.GetState()
-		if state == connectivity.Ready {
-			logrus.Info("Headscale gRPC connection is ready")
-			return nil
-		}
-		if state == connectivity.Shutdown {
-			return fmt.Errorf("connection shut down")
-		}
-		logrus.Infof("Waiting for Headscale gRPC connection (state: %s)...", state)
-		if !conn.WaitForStateChange(ctx, state) {
-			return fmt.Errorf("timeout waiting for gRPC connection (last state: %s)", state)
-		}
-	}
 }
 
 type apiKeyAuth struct {
