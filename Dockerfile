@@ -31,6 +31,7 @@ RUN CGO_ENABLED=1 GOOS=linux go build \
 FROM alpine:3.20
 
 RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.ustc.edu.cn/g' /etc/apk/repositories && \
+    apk update && \
     apk add --no-cache ca-certificates tzdata && \
     addgroup -S appgroup && \
     adduser -S -G appgroup -h /app appuser
