@@ -26,7 +26,7 @@ func FrontendMiddleware(staticDir string) gin.HandlerFunc {
 		reqPath := c.Request.URL.Path
 
 		// Let API and well-known routes pass through
-		if strings.HasPrefix(reqPath, "/api/") || strings.HasPrefix(reqPath, "/.well-known/") {
+		if strings.HasPrefix(reqPath, "/panel/api/") || strings.HasPrefix(reqPath, "/api/") || strings.HasPrefix(reqPath, "/.well-known/") {
 			c.Next()
 			return
 		}

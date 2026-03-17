@@ -314,7 +314,7 @@ func (s *panelSettingsService) EnableBuiltinOIDC(actorUserID uint) (*BuiltinOIDC
 			return nil, serializer.NewError(serializer.CodeInternalErr, "哈希密钥失败", err)
 		}
 
-		redirectURI := issuer + "/api/v1/auth/oidc/callback"
+		redirectURI := issuer + "/panel/api/v1/auth/oidc/callback"
 		client = model.OauthClient{
 			ClientID:         builtinOIDCClientID,
 			ClientSecretHash: hashedSecret,
@@ -347,7 +347,7 @@ func (s *panelSettingsService) EnableBuiltinOIDC(actorUserID uint) (*BuiltinOIDC
 	}
 
 	client.ClientSecretHash = hashedSecret
-	client.RedirectURIs = issuer + "/api/v1/auth/oidc/callback"
+	client.RedirectURIs = issuer + "/panel/api/v1/auth/oidc/callback"
 	if err := model.DB.Save(&client).Error; err != nil {
 		return nil, serializer.ErrDatabase.WithError(err)
 	}

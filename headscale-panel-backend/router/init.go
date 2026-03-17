@@ -37,7 +37,7 @@ func InitRouter() *gin.Engine {
 	oidcController := controllers.NewOIDCController()
 	r.GET("/.well-known/openid-configuration", oidcController.Discovery)
 
-	api := r.Group("/api/v1")
+	api := r.Group("/panel/api/v1")
 	{
 		authLimiter := middleware.NewRateLimiter(20, 1*time.Minute)
 		userController := controllers.NewUserController()

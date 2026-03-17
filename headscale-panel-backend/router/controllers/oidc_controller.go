@@ -21,10 +21,10 @@ func (oc *OIDCController) Discovery(c *gin.Context) {
 	baseURL := conf.Conf.System.BaseURL
 	c.JSON(http.StatusOK, gin.H{
 		"issuer":                 baseURL,
-		"authorization_endpoint": baseURL + "/api/v1/oidc/authorize",
-		"token_endpoint":         baseURL + "/api/v1/oidc/token",
-		"jwks_uri":               baseURL + "/api/v1/oidc/jwks",
-		"userinfo_endpoint":      baseURL + "/api/v1/oidc/userinfo",
+		"authorization_endpoint": baseURL + "/panel/api/v1/oidc/authorize",
+		"token_endpoint":         baseURL + "/panel/api/v1/oidc/token",
+		"jwks_uri":               baseURL + "/panel/api/v1/oidc/jwks",
+		"userinfo_endpoint":      baseURL + "/panel/api/v1/oidc/userinfo",
 		"response_types_supported": []string{
 			"code",
 		},

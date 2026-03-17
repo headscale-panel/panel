@@ -4,7 +4,7 @@ import { useAuthStore } from './store';
 import { getTranslations } from '@/i18n/index';
 
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || '/api/v1',
+  baseURL: import.meta.env.VITE_API_URL || '/panel/api/v1',
   timeout: 30000,
   headers: { 'Content-Type': 'application/json' },
 });
@@ -321,7 +321,7 @@ class WebSocketManager {
   constructor() {
     const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsHost = import.meta.env.VITE_WS_URL || `${wsProtocol}//${window.location.host}`;
-    this.url = `${wsHost}/api/v1/ws`;
+    this.url = `${wsHost}/panel/api/v1/ws`;
   }
 
   connect() {
