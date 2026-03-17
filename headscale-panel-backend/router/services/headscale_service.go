@@ -788,3 +788,44 @@ func extractRepeatedStringField(msg protoreflect.Message, fieldName protoreflect
 	}
 	return values
 }
+
+// RegisterNode registers a node using a machine key
+func (s *headscaleService) RegisterNodeWithContext(ctx context.Context, actorUserID uint, user string, key string) (*HeadscaleMachine, error) {
+	if err := RequirePermission(actorUserID, "headscale:machine:create"); err != nil {
+		return nil, err
+	}
+	client, err := headscaleServiceClient()
+	if err != nil {
+		return nil, err
+	}
+
+	queryCtx, cancel := withServiceTimeout(ctx)
+	defer cancel()
+
+	resp, err := client.RegisterNode(queryCtx, &v1.RegisterNodeRequest{
+		User: user,
+		Key:  key,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to register node: %w", err)
+	}
+	if resp.Node == nil {
+		return nil, fmt.Errorf("register node returned nil node")
+	}
+
+	node := resp.Node
+	machine := &HeadscaleMachine{
+		ID:          node.Id,
+		Name:        node.Name,
+		GivenName:   node.GivenName,
+		IPAddresses: node.IpAddresses,
+		Online:      node.Online,
+	}
+	if node.User != nil {
+		machine.User = &HeadscaleUser{
+			ID:   node.User.Id,
+			Name: node.User.Name,
+		}
+	}
+	return machine, nil
+}

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { toast } from 'sonner';
-import { Plus, Pencil, Trash2, Download, Globe, Search, Save, RefreshCw } from 'lucide-react';
+import { Plus, Pencil, Trash2, Download, Upload, Globe, Search, Save, RefreshCw } from 'lucide-react';
 import { useTranslation } from '@/i18n/index';
 import { dnsAPI, DNSRecord } from '@/lib/api';
 import DashboardLayout from '@/components/DashboardLayout';
@@ -70,6 +70,8 @@ export default function DNS() {
     value: '',
     comment: '',
   });
+  const [importing, setImporting] = useState(false);
+  const [hasTriedAutoImport, setHasTriedAutoImport] = useState(false);
 
   const loadRecords = useCallback(async () => {
     setLoading(true);
@@ -90,6 +92,34 @@ export default function DNS() {
   useEffect(() => {
     loadRecords();
   }, [loadRecords]);
+
+  // Auto-import from file on first load if DB is empty
+  useEffect(() => {
+    if (!loading && !hasTriedAutoImport && records.length === 0 && total === 0) {
+      setHasTriedAutoImport(true);
+      handleImportFromFile(true);
+    }
+  }, [loading, records, total, hasTriedAutoImport]);
+
+  const handleImportFromFile = async (silent = false) => {
+    setImporting(true);
+    try {
+      const res: any = await dnsAPI.import();
+      const imported = res?.imported || 0;
+      if (imported > 0) {
+        toast.success(t.dns.importSuccess.replace('{count}', String(imported)));
+        loadRecords();
+      } else if (!silent) {
+        toast.info(t.dns.importNoNewRecords);
+      }
+    } catch (error: any) {
+      if (!silent) {
+        toast.error(t.dns.importFailed + (error.message ? ': ' + error.message : ''));
+      }
+    } finally {
+      setImporting(false);
+    }
+  };
 
   const handleCreate = () => {
     setEditingRecord(null);
@@ -197,6 +227,10 @@ export default function DNS() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => handleImportFromFile(false)} disabled={importing}>
+            <Upload className="h-4 w-4 mr-1" />
+            {importing ? t.dns.importing : t.dns.importFromFile}
+          </Button>
           <Button variant="outline" size="sm" onClick={handleExportJson}>
             <Download className="h-4 w-4 mr-1" />
             {t.dns.exportJson}

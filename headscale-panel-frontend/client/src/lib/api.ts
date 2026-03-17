@@ -101,6 +101,8 @@ export const devicesAPI = {
   setTags: (id: string, tags: string[]) =>
     api.put(`/headscale/machines/${id}/tags`, { tags }),
   getRoutes: (id: string) => api.get(`/headscale/machines/${id}/routes`),
+  registerNode: (user: string, key: string) =>
+    api.post('/headscale/machines/register', { user, key }),
 };
 
 export const usersAPI = {

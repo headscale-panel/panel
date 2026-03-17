@@ -1,17 +1,23 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { toast } from 'sonner';
 import { useSearch } from 'wouter';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   CheckCircle2,
+  ChevronDown,
+  ChevronUp,
   Copy,
   Edit,
   Filter,
+  Key,
   Laptop,
   MoreVertical,
+  Plus,
   RefreshCw,
   Search,
   Server,
+  Settings2,
+  Terminal,
   Trash2,
   User,
   XCircle,
@@ -60,9 +66,11 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Switch } from '@/components/ui/switch';
+import { Textarea } from '@/components/ui/textarea';
 import DashboardLayout from '@/components/DashboardLayout';
-import { devicesAPI, usersAPI } from '@/lib/api';
+import { devicesAPI, usersAPI, headscaleConfigAPI } from '@/lib/api';
 import { useTranslation } from '@/i18n/index';
 
 interface Device {
@@ -94,6 +102,48 @@ interface HeadscaleUser {
   name: string;
 }
 
+interface DeployParams {
+  loginServer: string;
+  hostname: string;
+  acceptDns: boolean;
+  acceptRoutes: boolean;
+  advertiseExitNode: boolean;
+  advertiseRoutes: string;
+  advertiseTags: string;
+  ssh: boolean;
+  shieldsUp: boolean;
+  exitNode: string;
+  exitNodeAllowLan: boolean;
+  forceReauth: boolean;
+  reset: boolean;
+  advertiseConnector: boolean;
+  operator: string;
+  netfilterMode: string;
+  snatSubnetRoutes: boolean;
+  statefulFiltering: boolean;
+}
+
+const defaultDeployParams: DeployParams = {
+  loginServer: '',
+  hostname: '',
+  acceptDns: true,
+  acceptRoutes: false,
+  advertiseExitNode: false,
+  advertiseRoutes: '',
+  advertiseTags: '',
+  ssh: false,
+  shieldsUp: false,
+  exitNode: '',
+  exitNodeAllowLan: false,
+  forceReauth: false,
+  reset: false,
+  advertiseConnector: false,
+  operator: '',
+  netfilterMode: '',
+  snatSubnetRoutes: true,
+  statefulFiltering: false,
+};
+
 export default function Devices() {
   const t = useTranslation();
   const search = useSearch();
@@ -110,6 +160,19 @@ export default function Devices() {
   const [renameDialogOpen, setRenameDialogOpen] = useState(false);
   const [selectedDevice, setSelectedDevice] = useState<Device | null>(null);
   const [newName, setNewName] = useState('');
+  const [nameError, setNameError] = useState('');
+
+  const [addDeviceDialogOpen, setAddDeviceDialogOpen] = useState(false);
+  const [addDeviceTab, setAddDeviceTab] = useState('preauth');
+  const [addDeviceUser, setAddDeviceUser] = useState('');
+  const [addDeviceReusable, setAddDeviceReusable] = useState(false);
+  const [addDeviceEphemeral, setAddDeviceEphemeral] = useState(false);
+  const [generatedKey, setGeneratedKey] = useState('');
+  const [machineKey, setMachineKey] = useState('');
+  const [registeringNode, setRegisteringNode] = useState(false);
+  const [deployParams, setDeployParams] = useState<DeployParams>({ ...defaultDeployParams });
+  const [showAdvancedParams, setShowAdvancedParams] = useState(false);
+  const [serverUrl, setServerUrl] = useState('');
 
   useEffect(() => {
     loadData();
@@ -118,12 +181,16 @@ export default function Devices() {
   const loadData = async () => {
     try {
       setLoading(true);
-      const [devicesRes, usersRes] = await Promise.all([
+      const [devicesRes, usersRes, configRes] = await Promise.all([
         devicesAPI.list(),
         usersAPI.list({ pageSize: 100 }),
+        headscaleConfigAPI.get().catch(() => null),
       ]);
       // API returns { list: [], total: ... }
       setDevices((devicesRes as any).list || []);
+      if (configRes && (configRes as any).server_url) {
+        setServerUrl((configRes as any).server_url);
+      }
 
       // Users API returns a flat array now
       const userList = Array.isArray(usersRes) ? usersRes : (usersRes as any) || [];
@@ -145,6 +212,10 @@ export default function Devices() {
 
   const handleRename = async () => {
     if (!selectedDevice || !newName.trim()) return;
+    if (!/^[a-z0-9][a-z0-9-]*$/.test(newName.trim())) {
+      setNameError(t.devices.nameLowercaseError);
+      return;
+    }
     try {
       await devicesAPI.rename(selectedDevice.id.toString(), newName);
       toast.success(t.devices.renameSuccess);
@@ -154,6 +225,71 @@ export default function Devices() {
       toast.error(t.devices.renameFailed + (error.message || t.common.errors.unknownError));
     }
   };
+
+  const handleGenerateKey = async () => {
+    if (!addDeviceUser) {
+      toast.error(t.devices.selectUserFirst);
+      return;
+    }
+    try {
+      const expiration = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+      const res: any = await usersAPI.createPreAuthKey(addDeviceUser, addDeviceReusable, addDeviceEphemeral, expiration);
+      const key = res?.preAuthKey?.key || res?.key || res?.preauthkey?.key || '';
+      if (key) {
+        setGeneratedKey(key);
+        toast.success(t.devices.keyGenerated);
+      } else {
+        toast.error(t.devices.keyGenerateFailed);
+      }
+    } catch (error: any) {
+      toast.error(t.devices.keyGenerateFailed + (error.message ? ': ' + error.message : ''));
+    }
+  };
+
+  const handleRegisterNode = async () => {
+    if (!addDeviceUser || !machineKey.trim()) {
+      toast.error(t.devices.machineKeyRequired);
+      return;
+    }
+    setRegisteringNode(true);
+    try {
+      await devicesAPI.registerNode(addDeviceUser, machineKey.trim());
+      toast.success(t.devices.registerNodeSuccess);
+      setAddDeviceDialogOpen(false);
+      loadData();
+    } catch (error: any) {
+      toast.error(t.devices.registerNodeFailed + (error.message ? ': ' + error.message : ''));
+    } finally {
+      setRegisteringNode(false);
+    }
+  };
+
+  const buildTailscaleCommand = useMemo(() => {
+    const parts = ['tailscale up'];
+    const p = deployParams;
+
+    if (p.loginServer) parts.push(`--login-server=${p.loginServer}`);
+    if (generatedKey && addDeviceTab === 'preauth') parts.push(`--auth-key=${generatedKey}`);
+    if (p.hostname) parts.push(`--hostname=${p.hostname}`);
+    if (!p.acceptDns) parts.push('--accept-dns=false');
+    if (p.acceptRoutes) parts.push('--accept-routes');
+    if (p.advertiseExitNode) parts.push('--advertise-exit-node');
+    if (p.advertiseRoutes) parts.push(`--advertise-routes=${p.advertiseRoutes}`);
+    if (p.advertiseTags) parts.push(`--advertise-tags=${p.advertiseTags}`);
+    if (p.ssh) parts.push('--ssh');
+    if (p.shieldsUp) parts.push('--shields-up');
+    if (p.exitNode) parts.push(`--exit-node=${p.exitNode}`);
+    if (p.exitNodeAllowLan) parts.push('--exit-node-allow-lan-access');
+    if (p.forceReauth) parts.push('--force-reauth');
+    if (p.reset) parts.push('--reset');
+    if (p.advertiseConnector) parts.push('--advertise-connector');
+    if (p.operator) parts.push(`--operator=${p.operator}`);
+    if (p.netfilterMode && p.netfilterMode !== 'on') parts.push(`--netfilter-mode=${p.netfilterMode}`);
+    if (!p.snatSubnetRoutes) parts.push('--snat-subnet-routes=false');
+    if (p.statefulFiltering) parts.push('--stateful-filtering');
+
+    return parts.join(' \\\n  ');
+  }, [deployParams, generatedKey, addDeviceTab]);
 
   const handleDelete = async (device: Device) => {
     if (confirm(t.devices.confirmDelete.replace('{name}', device.given_name || device.name))) {
@@ -170,6 +306,7 @@ export default function Devices() {
   const openRenameDialog = (device: Device) => {
     setSelectedDevice(device);
     setNewName(device.given_name || device.name);
+    setNameError('');
     setRenameDialogOpen(true);
   };
 
@@ -213,6 +350,10 @@ export default function Devices() {
               <Button variant="outline" onClick={loadData} disabled={loading}>
                 <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
                 {t.common.actions.refresh}
+              </Button>
+              <Button onClick={() => { setAddDeviceUser(''); setAddDeviceReusable(false); setAddDeviceEphemeral(false); setGeneratedKey(''); setMachineKey(''); setRegisteringNode(false); setDeployParams({ ...defaultDeployParams, loginServer: serverUrl }); setShowAdvancedParams(false); setAddDeviceTab('preauth'); setAddDeviceDialogOpen(true); }}>
+                <Plus className="h-4 w-4 mr-2" />
+                {t.devices.addDevice}
               </Button>
             </div>
           </div>
@@ -427,16 +568,315 @@ export default function Devices() {
                   <Input
                     id="device-name"
                     value={newName}
-                    onChange={(e) => setNewName(e.target.value)}
+                    onChange={(e) => {
+                      const val = e.target.value.toLowerCase();
+                      setNewName(val);
+                      if (val && !/^[a-z0-9][a-z0-9-]*$/.test(val)) {
+                        setNameError(t.devices.nameLowercaseError);
+                      } else {
+                        setNameError('');
+                      }
+                    }}
                     className="mt-1"
                   />
+                  {nameError && <p className="text-sm text-destructive mt-1">{nameError}</p>}
+                  <p className="text-xs text-muted-foreground mt-1">{t.devices.nameLowercaseHint}</p>
                 </div>
               </div>
               <DialogFooter>
                 <Button variant="outline" onClick={() => setRenameDialogOpen(false)}>
                   {t.common.actions.cancel}
                 </Button>
-                <Button onClick={handleRename}>{t.common.actions.save}</Button>
+                <Button onClick={handleRename} disabled={!!nameError}>{t.common.actions.save}</Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
+          {/* Add Device Dialog */}
+          <Dialog open={addDeviceDialogOpen} onOpenChange={setAddDeviceDialogOpen}>
+            <DialogContent className="sm:max-w-5xl max-h-[90vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>{t.devices.addDeviceTitle}</DialogTitle>
+                <DialogDescription>{t.devices.addDeviceDesc}</DialogDescription>
+              </DialogHeader>
+
+              <Tabs value={addDeviceTab} onValueChange={(v) => { setAddDeviceTab(v); setGeneratedKey(''); setMachineKey(''); }}>
+                <TabsList className="grid w-full grid-cols-2">
+                  <TabsTrigger value="preauth">
+                    <Key className="h-4 w-4 mr-2" />{t.devices.tabPreAuth}
+                  </TabsTrigger>
+                  <TabsTrigger value="machinekey">
+                    <Terminal className="h-4 w-4 mr-2" />{t.devices.tabMachineKey}
+                  </TabsTrigger>
+                </TabsList>
+
+                {/* Pre-Auth Key Tab */}
+                <TabsContent value="preauth" className="space-y-4 mt-4">
+                  <div>
+                    <Label>{t.devices.selectUser}</Label>
+                    <Select value={addDeviceUser} onValueChange={setAddDeviceUser}>
+                      <SelectTrigger className="mt-1"><SelectValue placeholder={t.devices.selectUserPlaceholder} /></SelectTrigger>
+                      <SelectContent>
+                        {headscaleUsers.map((user) => (
+                          <SelectItem key={user.id} value={user.name}>{user.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <Label>{t.devices.reusableKey}</Label>
+                      <p className="text-xs text-muted-foreground">{t.devices.reusableKeyDesc}</p>
+                    </div>
+                    <Switch checked={addDeviceReusable} onCheckedChange={setAddDeviceReusable} />
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <Label>{t.devices.ephemeralKey}</Label>
+                      <p className="text-xs text-muted-foreground">{t.devices.ephemeralKeyDesc}</p>
+                    </div>
+                    <Switch checked={addDeviceEphemeral} onCheckedChange={setAddDeviceEphemeral} />
+                  </div>
+                  {!generatedKey && (
+                    <Button onClick={handleGenerateKey} className="w-full" disabled={!addDeviceUser}>
+                      <Key className="h-4 w-4 mr-2" />{t.devices.generateKey}
+                    </Button>
+                  )}
+                  {generatedKey && (
+                    <div className="space-y-2">
+                      <Label>{t.devices.preAuthKey}</Label>
+                      <div className="flex gap-2">
+                        <Input readOnly value={generatedKey} className="font-mono text-xs" />
+                        <Button variant="outline" size="icon" onClick={() => { navigator.clipboard.writeText(generatedKey); toast.success(t.devices.keyCopied); }}>
+                          <Copy className="h-4 w-4" />
+                        </Button>
+                      </div>
+                      <p className="text-xs text-muted-foreground">{t.devices.keyExpireHint}</p>
+                    </div>
+                  )}
+                </TabsContent>
+
+                {/* Machine Key Tab */}
+                <TabsContent value="machinekey" className="space-y-4 mt-4">
+                  <div>
+                    <Label>{t.devices.selectUser}</Label>
+                    <Select value={addDeviceUser} onValueChange={setAddDeviceUser}>
+                      <SelectTrigger className="mt-1"><SelectValue placeholder={t.devices.selectUserPlaceholder} /></SelectTrigger>
+                      <SelectContent>
+                        {headscaleUsers.map((user) => (
+                          <SelectItem key={user.id} value={user.name}>{user.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label>{t.devices.machineKeyLabel}</Label>
+                    <Input
+                      placeholder={t.devices.machineKeyPlaceholder}
+                      value={machineKey}
+                      onChange={(e) => setMachineKey(e.target.value)}
+                      className="mt-1 font-mono text-xs"
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">{t.devices.machineKeyHint}</p>
+                  </div>
+                  <Button onClick={handleRegisterNode} className="w-full" disabled={!addDeviceUser || !machineKey.trim() || registeringNode}>
+                    {registeringNode ? <RefreshCw className="h-4 w-4 mr-2 animate-spin" /> : <Server className="h-4 w-4 mr-2" />}
+                    {t.devices.registerNode}
+                  </Button>
+                </TabsContent>
+              </Tabs>
+
+              {/* Deployment Parameters */}
+              <div className="border-t pt-4 mt-2">
+                <button
+                  type="button"
+                  className="flex items-center gap-2 w-full text-left text-sm font-medium text-foreground hover:text-foreground/80 transition-colors"
+                  onClick={() => setShowAdvancedParams(!showAdvancedParams)}
+                >
+                  <Settings2 className="h-4 w-4" />
+                  {t.devices.deployParams}
+                  {showAdvancedParams ? <ChevronUp className="h-4 w-4 ml-auto" /> : <ChevronDown className="h-4 w-4 ml-auto" />}
+                </button>
+
+                {showAdvancedParams && (
+                  <div className="space-y-4 mt-4">
+                    {/* Hostname */}
+                    <div>
+                      <Label>{t.devices.paramHostname}</Label>
+                      <Input
+                        placeholder={t.devices.paramHostnamePlaceholder}
+                        value={deployParams.hostname}
+                        onChange={(e) => setDeployParams({ ...deployParams, hostname: e.target.value.toLowerCase() })}
+                        className="mt-1"
+                      />
+                      <p className="text-xs text-muted-foreground mt-1">{t.devices.paramHostnameDesc}</p>
+                    </div>
+
+                    {/* Boolean switches - basic */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div className="flex items-center justify-between p-3 rounded-md border">
+                        <div>
+                          <p className="text-sm font-medium">--accept-dns</p>
+                          <p className="text-xs text-muted-foreground">{t.devices.paramAcceptDns}</p>
+                        </div>
+                        <Switch checked={deployParams.acceptDns} onCheckedChange={(v) => setDeployParams({ ...deployParams, acceptDns: v })} />
+                      </div>
+                      <div className="flex items-center justify-between p-3 rounded-md border">
+                        <div>
+                          <p className="text-sm font-medium">--accept-routes</p>
+                          <p className="text-xs text-muted-foreground">{t.devices.paramAcceptRoutes}</p>
+                        </div>
+                        <Switch checked={deployParams.acceptRoutes} onCheckedChange={(v) => setDeployParams({ ...deployParams, acceptRoutes: v })} />
+                      </div>
+                      <div className="flex items-center justify-between p-3 rounded-md border">
+                        <div>
+                          <p className="text-sm font-medium">--advertise-exit-node</p>
+                          <p className="text-xs text-muted-foreground">{t.devices.paramAdvertiseExitNode}</p>
+                        </div>
+                        <Switch checked={deployParams.advertiseExitNode} onCheckedChange={(v) => setDeployParams({ ...deployParams, advertiseExitNode: v })} />
+                      </div>
+                      <div className="flex items-center justify-between p-3 rounded-md border">
+                        <div>
+                          <p className="text-sm font-medium">--ssh</p>
+                          <p className="text-xs text-muted-foreground">{t.devices.paramSsh}</p>
+                        </div>
+                        <Switch checked={deployParams.ssh} onCheckedChange={(v) => setDeployParams({ ...deployParams, ssh: v })} />
+                      </div>
+                      <div className="flex items-center justify-between p-3 rounded-md border">
+                        <div>
+                          <p className="text-sm font-medium">--shields-up</p>
+                          <p className="text-xs text-muted-foreground">{t.devices.paramShieldsUp}</p>
+                        </div>
+                        <Switch checked={deployParams.shieldsUp} onCheckedChange={(v) => setDeployParams({ ...deployParams, shieldsUp: v })} />
+                      </div>
+                      <div className="flex items-center justify-between p-3 rounded-md border">
+                        <div>
+                          <p className="text-sm font-medium">--advertise-connector</p>
+                          <p className="text-xs text-muted-foreground">{t.devices.paramAdvertiseConnector}</p>
+                        </div>
+                        <Switch checked={deployParams.advertiseConnector} onCheckedChange={(v) => setDeployParams({ ...deployParams, advertiseConnector: v })} />
+                      </div>
+                    </div>
+
+                    {/* Text inputs */}
+                    <div>
+                      <Label>--advertise-routes</Label>
+                      <Input
+                        placeholder="10.0.0.0/24,192.168.1.0/24"
+                        value={deployParams.advertiseRoutes}
+                        onChange={(e) => setDeployParams({ ...deployParams, advertiseRoutes: e.target.value })}
+                        className="mt-1"
+                      />
+                      <p className="text-xs text-muted-foreground mt-1">{t.devices.paramAdvertiseRoutes}</p>
+                    </div>
+                    <div>
+                      <Label>--advertise-tags</Label>
+                      <Input
+                        placeholder="tag:server,tag:prod"
+                        value={deployParams.advertiseTags}
+                        onChange={(e) => setDeployParams({ ...deployParams, advertiseTags: e.target.value })}
+                        className="mt-1"
+                      />
+                      <p className="text-xs text-muted-foreground mt-1">{t.devices.paramAdvertiseTags}</p>
+                    </div>
+                    <div>
+                      <Label>--exit-node</Label>
+                      <Select value={deployParams.exitNode || '__none__'} onValueChange={(v) => setDeployParams({ ...deployParams, exitNode: v === '__none__' ? '' : v })}>
+                        <SelectTrigger className="mt-1"><SelectValue placeholder={t.devices.paramExitNodePlaceholder} /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__none__">{t.devices.paramExitNodeNone}</SelectItem>
+                          {devices.filter(d => d.approved_routes?.some(r => r === '0.0.0.0/0' || r === '::/0') || d.available_routes?.some(r => r === '0.0.0.0/0' || r === '::/0')).map(d => (
+                            <SelectItem key={d.id} value={d.ip_addresses?.[0] || d.given_name || d.name}>
+                              {d.given_name || d.name} {d.ip_addresses?.[0] ? `(${d.ip_addresses[0]})` : ''}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-muted-foreground mt-1">{t.devices.paramExitNode}</p>
+                    </div>
+
+                    {/* Advanced Linux options */}
+                    <div className="border-t pt-3">
+                      <p className="text-xs text-muted-foreground mb-3">{t.devices.advancedOptions}</p>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div className="flex items-center justify-between p-3 rounded-md border">
+                          <div>
+                            <p className="text-sm font-medium">--exit-node-allow-lan-access</p>
+                            <p className="text-xs text-muted-foreground">{t.devices.paramExitNodeAllowLan}</p>
+                          </div>
+                          <Switch checked={deployParams.exitNodeAllowLan} onCheckedChange={(v) => setDeployParams({ ...deployParams, exitNodeAllowLan: v })} />
+                        </div>
+                        <div className="flex items-center justify-between p-3 rounded-md border">
+                          <div>
+                            <p className="text-sm font-medium">--force-reauth</p>
+                            <p className="text-xs text-muted-foreground">{t.devices.paramForceReauth}</p>
+                          </div>
+                          <Switch checked={deployParams.forceReauth} onCheckedChange={(v) => setDeployParams({ ...deployParams, forceReauth: v })} />
+                        </div>
+                        <div className="flex items-center justify-between p-3 rounded-md border">
+                          <div>
+                            <p className="text-sm font-medium">--reset</p>
+                            <p className="text-xs text-muted-foreground">{t.devices.paramReset}</p>
+                          </div>
+                          <Switch checked={deployParams.reset} onCheckedChange={(v) => setDeployParams({ ...deployParams, reset: v })} />
+                        </div>
+                        <div className="flex items-center justify-between p-3 rounded-md border">
+                          <div>
+                            <p className="text-sm font-medium">--snat-subnet-routes<Badge variant="outline" className="ml-1 text-[10px] py-0">Linux</Badge></p>
+                            <p className="text-xs text-muted-foreground">{t.devices.paramSnat}</p>
+                          </div>
+                          <Switch checked={deployParams.snatSubnetRoutes} onCheckedChange={(v) => setDeployParams({ ...deployParams, snatSubnetRoutes: v })} />
+                        </div>
+                        <div className="flex items-center justify-between p-3 rounded-md border">
+                          <div>
+                            <p className="text-sm font-medium">--stateful-filtering<Badge variant="outline" className="ml-1 text-[10px] py-0">Linux</Badge></p>
+                            <p className="text-xs text-muted-foreground">{t.devices.paramStatefulFiltering}</p>
+                          </div>
+                          <Switch checked={deployParams.statefulFiltering} onCheckedChange={(v) => setDeployParams({ ...deployParams, statefulFiltering: v })} />
+                        </div>
+                      </div>
+                      <div className="mt-3">
+                        <Label>--operator <Badge variant="outline" className="text-[10px] py-0">Linux</Badge></Label>
+                        <Input
+                          placeholder={t.devices.paramOperatorPlaceholder}
+                          value={deployParams.operator}
+                          onChange={(e) => setDeployParams({ ...deployParams, operator: e.target.value })}
+                          className="mt-1"
+                        />
+                      </div>
+                      <div className="mt-3">
+                        <Label>--netfilter-mode <Badge variant="outline" className="text-[10px] py-0">Linux</Badge></Label>
+                        <Select value={deployParams.netfilterMode || 'on'} onValueChange={(v) => setDeployParams({ ...deployParams, netfilterMode: v })}>
+                          <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="on">on ({t.devices.paramNetfilterOn})</SelectItem>
+                            <SelectItem value="nodivert">nodivert ({t.devices.paramNetfilterNodivert})</SelectItem>
+                            <SelectItem value="off">off ({t.devices.paramNetfilterOff})</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Generated Command */}
+              <div className="border-t pt-4 mt-2">
+                <div className="flex items-center justify-between mb-2">
+                  <Label className="flex items-center gap-2">
+                    <Terminal className="h-4 w-4" />{t.devices.generatedCommand}
+                  </Label>
+                  <Button variant="ghost" size="sm" onClick={() => { navigator.clipboard.writeText(buildTailscaleCommand); toast.success(t.devices.commandCopied); }}>
+                    <Copy className="h-3 w-3 mr-1" />{t.devices.copyCommand}
+                  </Button>
+                </div>
+                <pre className="bg-muted rounded-md p-3 text-xs font-mono whitespace-pre-wrap break-all select-all overflow-x-auto max-h-40">
+                  {buildTailscaleCommand}
+                </pre>
+              </div>
+
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setAddDeviceDialogOpen(false)}>{t.common.actions.close}</Button>
               </DialogFooter>
             </DialogContent>
           </Dialog>

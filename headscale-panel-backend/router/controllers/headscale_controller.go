@@ -394,3 +394,22 @@ func (h *HeadscaleController) CheckAccess(c *gin.Context) {
 
 	serializer.Success(c, machines)
 }
+
+func (h *HeadscaleController) RegisterNode(c *gin.Context) {
+	var req struct {
+		User string `json:"user" binding:"required"`
+		Key  string `json:"key" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		serializer.Fail(c, serializer.ErrBind)
+		return
+	}
+
+	actorUserID := c.GetUint("userID")
+	machine, err := services.HeadscaleService.RegisterNodeWithContext(c.Request.Context(), actorUserID, req.User, req.Key)
+	if err != nil {
+		serializer.Fail(c, err)
+		return
+	}
+	serializer.Success(c, machine)
+}

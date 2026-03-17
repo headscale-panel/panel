@@ -116,6 +116,7 @@ func InitRouter() *gin.Engine {
 			auth.POST("/headscale/machines/:id/expire", middleware.PermissionMiddleware("headscale:machine:expire"), headscaleController.ExpireMachine)
 			auth.PUT("/headscale/machines/:id/tags", middleware.PermissionMiddleware("headscale:machine:tags"), headscaleController.SetMachineTags)
 			auth.GET("/headscale/machines/:id/routes", middleware.PermissionMiddleware("headscale:route:list"), headscaleController.GetMachineRoutes)
+			auth.POST("/headscale/machines/register", middleware.PermissionMiddleware("headscale:machine:create"), headscaleController.RegisterNode)
 			auth.GET("/headscale/preauthkeys", middleware.PermissionMiddleware("headscale:preauthkey:list"), headscaleController.GetPreAuthKeys)
 			auth.POST("/headscale/preauthkeys", middleware.PermissionMiddleware("headscale:preauthkey:create"), headscaleController.CreatePreAuthKey)
 			auth.POST("/headscale/preauthkeys/expire", middleware.PermissionMiddleware("headscale:preauthkey:expire"), headscaleController.ExpirePreAuthKey)
