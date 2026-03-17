@@ -25,31 +25,46 @@ const BASE = '/panel';
 
 function SetupGuard({ children }: { children: ReactNode }) {
   const [checking, setChecking] = useState(true);
-  const [initialized, setInitialized] = useState(true);
+  const [initialized, setInitialized] = useState<boolean | null>(null);
   const [location, setLocation] = useLocation();
 
-  useEffect(() => {
-    api
+  const checkStatus = () => {
+    return api
       .get('/setup/status')
       .then((data: unknown) => {
         const d = data as Record<string, unknown>;
-        const init = Boolean(d?.initialized);
-        setInitialized(init);
-        if (!init && !location.startsWith('/setup')) setLocation('/setup');
-        if (init && location.startsWith('/setup')) setLocation('/login');
+        return Boolean(d?.initialized);
       })
-      .catch(() => setInitialized(true))
-      .finally(() => setChecking(false));
+      .catch(() => true); // assume initialized on error
+  };
+
+  // Initial check on mount
+  useEffect(() => {
+    checkStatus().then((init) => {
+      setInitialized(init);
+      if (!init && !location.startsWith('/setup')) setLocation('/setup');
+      if (init && location.startsWith('/setup')) setLocation('/login');
+      setChecking(false);
+    });
   }, []);
 
+  // When navigating away from /setup, re-check status to pick up completed initialization
   useEffect(() => {
-    if (!checking && !initialized && !location.startsWith('/setup')) {
-      setLocation('/setup');
+    if (checking || initialized === null) return;
+
+    if (!initialized && !location.startsWith('/setup')) {
+      // User navigated away from setup but we thought it wasn't initialized - re-check
+      checkStatus().then((init) => {
+        setInitialized(init);
+        if (!init) {
+          setLocation('/setup');
+        }
+      });
     }
-    if (!checking && initialized && location.startsWith('/setup')) {
+    if (initialized && location.startsWith('/setup')) {
       setLocation('/login');
     }
-  }, [checking, initialized, location, setLocation]);
+  }, [location]);
 
   if (checking) {
     return (
