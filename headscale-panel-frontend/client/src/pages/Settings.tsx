@@ -7,8 +7,13 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import DashboardLayout from '@/components/DashboardLayout';
 import { useTranslation } from '@/i18n/index';
-import { headscaleConfigAPI, panelSettingsAPI } from '@/lib/api';
+import { panelSettingsAPI } from '@/lib/api';
 import api from '@/lib/api';
+import { loadConnectionSettingsData, loadOIDCSettingsData } from '@/lib/page-data';
+import {
+  defaultOIDCFormValues,
+  type OIDCFormValues,
+} from '@/lib/normalizers';
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { toast } from 'sonner';
 import { Loader2, Save, Plus, X, CheckCircle2, ShieldCheck, Database, Eye, EyeOff, Copy, Check } from 'lucide-react';
@@ -102,46 +107,6 @@ function SwitchRow({ label, description, checked, onCheckedChange }: {
   );
 }
 
-/* -- OIDC Form Types -- */
-
-interface OIDCForm {
-  enabled: boolean;
-  only_start_if_oidc_is_available: boolean;
-  issuer: string;
-  client_id: string;
-  client_secret: string;
-  client_secret_path: string;
-  scope: string[];
-  email_verified_required: boolean;
-  allowed_domains: string[];
-  allowed_users: string[];
-  allowed_groups: string[];
-  strip_email_domain: boolean;
-  expiry: string;
-  use_expiry_from_token: boolean;
-  pkce_enabled: boolean;
-  pkce_method: string;
-}
-
-const defaultOIDCForm: OIDCForm = {
-  enabled: false,
-  only_start_if_oidc_is_available: false,
-  issuer: '',
-  client_id: '',
-  client_secret: '',
-  client_secret_path: '',
-  scope: ['openid', 'profile', 'email'],
-  email_verified_required: false,
-  allowed_domains: [],
-  allowed_users: [],
-  allowed_groups: [],
-  strip_email_domain: false,
-  expiry: '180d',
-  use_expiry_from_token: false,
-  pkce_enabled: true,
-  pkce_method: 'S256',
-};
-
 /* -- Main Component -- */
 
 export default function Settings() {
@@ -156,8 +121,7 @@ export default function Settings() {
   const [showApiKeyInput, setShowApiKeyInput] = useState(false);
 
   // OIDC state
-  const [oidcForm, setOidcForm] = useState<OIDCForm>(defaultOIDCForm);
-  const [fullConfig, setFullConfig] = useState<any>(null);
+  const [oidcForm, setOidcForm] = useState<OIDCFormValues>(defaultOIDCFormValues);
   const [useBuiltinOidc, setUseBuiltinOidc] = useState(false);
   const [builtinOidcLoading, setBuiltinOidcLoading] = useState(false);
 
@@ -176,15 +140,13 @@ export default function Settings() {
   const loadConnectionSettings = useCallback(async () => {
     setLoadingConnection(true);
     try {
-      const data: any = await panelSettingsAPI.getConnection();
-      if (data) {
-        setGrpcAddr(data.grpc_addr || '');
-        setInsecure(data.insecure || false);
-        setHasApiKey(!!data.has_api_key);
-        setIsConnected(!!data.is_connected);
-        setApiKeyInput('');
-        setShowApiKeyInput(false);
-      }
+      const data = await loadConnectionSettingsData();
+      setGrpcAddr(data.grpc_addr);
+      setInsecure(data.insecure);
+      setHasApiKey(data.has_api_key);
+      setIsConnected(data.is_connected);
+      setApiKeyInput('');
+      setShowApiKeyInput(false);
     } catch {
       toast.error(t.common.errors.requestFailed);
     } finally {
@@ -196,55 +158,8 @@ export default function Settings() {
   const loadHeadscaleConfig = useCallback(async () => {
     setLoadingConfig(true);
     try {
-      // First try to load saved panel OIDC settings
-      const saved: any = await panelSettingsAPI.getOIDCSettings().catch(() => null);
-      if (saved) {
-        setOidcForm({
-          enabled: saved.enabled ?? false,
-          only_start_if_oidc_is_available: saved.only_start_if_oidc_is_available ?? false,
-          issuer: saved.issuer || '',
-          client_id: saved.client_id || '',
-          client_secret: saved.client_secret || '',
-          client_secret_path: saved.client_secret_path || '',
-          scope: saved.scope?.length ? saved.scope : ['openid', 'profile', 'email'],
-          email_verified_required: saved.email_verified_required ?? false,
-          allowed_domains: saved.allowed_domains || [],
-          allowed_users: saved.allowed_users || [],
-          allowed_groups: saved.allowed_groups || [],
-          strip_email_domain: saved.strip_email_domain ?? false,
-          expiry: saved.expiry || '180d',
-          use_expiry_from_token: saved.use_expiry_from_token ?? false,
-          pkce_enabled: saved.pkce_enabled ?? true,
-          pkce_method: saved.pkce_method || 'S256',
-        });
-      } else {
-        // Fallback: try loading from headscale config file
-        const data: any = await headscaleConfigAPI.get().catch(() => null);
-        if (data) {
-          setFullConfig(data);
-          if (data.oidc) {
-            const o = data.oidc;
-            setOidcForm({
-              enabled: !!(o.issuer || o.client_id),
-              only_start_if_oidc_is_available: o.only_start_if_oidc_is_available || false,
-              issuer: o.issuer || '',
-              client_id: o.client_id || '',
-              client_secret: o.client_secret || '',
-              client_secret_path: o.client_secret_path || '',
-              scope: o.scope?.length ? o.scope : ['openid', 'profile', 'email'],
-              email_verified_required: o.email_verified_required || false,
-              allowed_domains: o.allowed_domains || [],
-              allowed_users: o.allowed_users || [],
-              allowed_groups: o.allowed_groups || [],
-              strip_email_domain: o.strip_email_domain || false,
-              expiry: o.expiry || '180d',
-              use_expiry_from_token: o.use_expiry_from_token || false,
-              pkce_enabled: o.pkce?.enabled ?? true,
-              pkce_method: o.pkce?.method || 'S256',
-            });
-          }
-        }
-      }
+      const { oidcForm } = await loadOIDCSettingsData();
+      setOidcForm(oidcForm);
     } catch {
       // Config may not exist yet
     } finally {

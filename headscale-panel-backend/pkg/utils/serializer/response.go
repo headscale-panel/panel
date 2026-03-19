@@ -133,6 +133,10 @@ func clientMessageForCode(code int, msg string) string {
 	// In release mode, hide detailed server error messages for security
 	// but still provide useful context for client errors
 	if gin.Mode() == gin.ReleaseMode && isServerErrorCode(code) {
+		// For third-party service errors, show actual message so users can diagnose
+		if code == CodeThirdPartyServiceError {
+			return cleanMsg
+		}
 		// For setup-related errors, provide more context even in release mode
 		if strings.Contains(strings.ToLower(cleanMsg), "deployment") ||
 			strings.Contains(strings.ToLower(cleanMsg), "setup") {

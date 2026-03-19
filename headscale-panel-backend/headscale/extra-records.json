@@ -1,1 +1,12 @@
-[]
+[
+  {
+    "name": "test.app.cn",
+    "type": "A",
+    "value": "127.127.0.1"
+  },
+  {
+    "name": "test.app.cn",
+    "type": "AAAA",
+    "value": "::1"
+  }
+]

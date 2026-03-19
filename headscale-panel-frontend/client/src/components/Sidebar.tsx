@@ -1,6 +1,7 @@
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/lib/store';
 import { useTranslation } from '@/i18n/index';
+import { clearStoredAuthState } from '@/lib/auth';
 import {
   Activity,
   BarChart3,
@@ -18,6 +19,9 @@ import { Link, useLocation } from 'wouter';
 
 interface SidebarProps {
   collapsed?: boolean;
+  isMobile?: boolean;
+  open?: boolean;
+  onNavigate?: () => void;
 }
 
 const menuItems = [
@@ -32,10 +36,15 @@ const menuItems = [
   { icon: Settings, key: 'settings' as const, path: '/settings' },
 ];
 
-export default function Sidebar({ collapsed = false }: SidebarProps) {
+export default function Sidebar({
+  collapsed = false,
+  isMobile = false,
+  open = false,
+  onNavigate,
+}: SidebarProps) {
   const t = useTranslation();
   const [location, setLocation] = useLocation();
-  const { user, clearAuth } = useAuthStore();
+  const { user } = useAuthStore();
 
   const isAdmin = user?.role === 'admin';
   const visibleMenuItems = menuItems.filter((item) => !item.adminOnly || isAdmin);
@@ -45,15 +54,20 @@ export default function Sidebar({ collapsed = false }: SidebarProps) {
   const avatarLetter = (user?.username || 'U')[0].toUpperCase();
 
   const handleLogout = () => {
-    clearAuth();
+    clearStoredAuthState();
     setLocation('/login');
+    onNavigate?.();
   };
 
   return (
     <aside
       className={cn(
         'fixed left-0 top-0 h-screen bg-card border-r border-border transition-all duration-300 z-50',
-        collapsed ? 'w-16' : 'w-60'
+        isMobile
+          ? cn('w-72 shadow-xl lg:hidden', open ? 'translate-x-0' : '-translate-x-full')
+          : collapsed
+            ? 'w-16'
+            : 'w-60'
       )}
     >
       <div className="h-16 flex items-center justify-center border-b border-border px-4">
@@ -76,6 +90,7 @@ export default function Sidebar({ collapsed = false }: SidebarProps) {
                   'hover:bg-accent hover:text-accent-foreground',
                   isActive ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground'
                 )}
+                onClick={() => onNavigate?.()}
               >
                 <Icon className="w-5 h-5 flex-shrink-0" />
                 {!collapsed && <span className="text-sm font-medium">{t.sidebar[item.key]}</span>}

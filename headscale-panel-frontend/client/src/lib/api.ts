@@ -1,6 +1,6 @@
 import axios from 'axios';
 import { toast } from 'sonner';
-import { useAuthStore } from './store';
+import { clearStoredAuthState, getAuthToken } from './auth';
 import { getTranslations } from '@/i18n/index';
 
 const api = axios.create({
@@ -10,10 +10,17 @@ const api = axios.create({
 });
 
 api.interceptors.request.use((config) => {
-  const token = useAuthStore.getState().token;
+  const token = getAuthToken();
   if (token) config.headers.Authorization = `Bearer ${token}`;
   return config;
 });
+
+function handleUnauthorized() {
+  clearStoredAuthState();
+  wsManager.disconnect();
+  toast.error(getTranslations().common.errors.sessionExpired);
+  window.location.href = '/panel/login';
+}
 
 api.interceptors.response.use(
   (response) => {
@@ -26,10 +33,7 @@ api.interceptors.response.use(
 
     const isSetupRequest = response.config?.url?.includes('/setup/');
     if (code === 401 && !isSetupRequest) {
-      useAuthStore.getState().clearAuth();
-      localStorage.removeItem('auth-storage');
-      toast.error(t.common.errors.sessionExpired);
-      window.location.href = '/panel/login';
+      handleUnauthorized();
     } else if (code === 403 && !isSetupRequest) {
       toast.error(t.common.errors.forbidden);
     } else if (!isSetupRequest) {
@@ -43,10 +47,7 @@ api.interceptors.response.use(
     if (error.response) {
       const { status } = error.response;
       if (status === 401 && !isSetupRequest) {
-        useAuthStore.getState().clearAuth();
-        localStorage.removeItem('auth-storage');
-        toast.error(t.common.errors.sessionExpired);
-        window.location.href = '/panel/login';
+        handleUnauthorized();
       } else if (status === 403 && !isSetupRequest) {
         toast.error(t.common.errors.forbidden);
       } else if (status >= 500 && !isSetupRequest) {
@@ -326,7 +327,7 @@ class WebSocketManager {
 
   connect() {
     if (this.ws?.readyState === WebSocket.OPEN) return;
-    const token = localStorage.getItem('token');
+    const token = getAuthToken();
     if (!token) return;
 
     try {

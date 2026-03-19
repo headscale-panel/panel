@@ -52,9 +52,15 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
+import { loadUsersPageData } from '@/lib/page-data';
 import { cn } from '@/lib/utils';
 import DashboardLayout from '@/components/DashboardLayout';
-import { systemUsersAPI, groupsAPI, aclAPI, panelSettingsAPI, devicesAPI } from '@/lib/api';
+import { systemUsersAPI, groupsAPI } from '@/lib/api';
+import type {
+  NormalizedGroup,
+  NormalizedSystemUser,
+  OIDCStatusData,
+} from '@/lib/normalizers';
 import { useTranslation } from '@/i18n/index';
 
 // ACL Group from policy
@@ -63,26 +69,8 @@ interface ACLGroup {
   members: string[]; // email patterns like "user@", "user@example.com"
 }
 
-interface Group {
-  ID: number;
-  name: string;
-  CreatedAt?: string;
-}
-
-interface UserData {
-  ID: number;
-  CreatedAt: string;
-  UpdatedAt: string;
-  username: string;
-  email: string;
-  display_name: string;
-  headscale_name: string;
-  group_id: number;
-  group?: Group;
-  is_active: boolean;
-  profile_pic_url?: string;
-  provider?: string; // "local" | "headscale" | "oidc"
-}
+type Group = NormalizedGroup;
+type UserData = NormalizedSystemUser;
 
 export default function UsersPage() {
   const t = useTranslation();
@@ -118,7 +106,7 @@ export default function UsersPage() {
   const [newGroupName, setNewGroupName] = useState('');
   const [editGroupName, setEditGroupName] = useState('');
   const [onlineUsers, setOnlineUsers] = useState<Set<string>>(new Set());
-  const [oidcStatus, setOidcStatus] = useState({
+  const [oidcStatus, setOidcStatus] = useState<OIDCStatusData>({
     oidc_enabled: false,
     third_party: false,
     builtin: false,
@@ -132,67 +120,18 @@ export default function UsersPage() {
   const loadData = async () => {
     try {
       setLoading(true);
-      const [usersRes, groupsRes, policyRes, oidcStatusRes, devicesRes] = await Promise.all([
-        systemUsersAPI.list({ pageSize: 1000 }),
-        groupsAPI.list({ pageSize: 100 }),
-        aclAPI.getPolicy().catch(() => null),
-        panelSettingsAPI.getOIDCStatus().catch(() => null),
-        devicesAPI.list({ pageSize: 1000 }).catch(() => null),
-      ]);
-      
-      // Set OIDC status (distinguishes builtin vs third-party)
-      if (oidcStatusRes) {
-        setOidcStatus(oidcStatusRes as any);
-      }
-      
-      const userList = (usersRes as any).list || [];
-      setUsers(Array.isArray(userList) ? userList : []);
-      
-      const groupList = Array.isArray(groupsRes) ? groupsRes : (groupsRes as any).list || [];
-      setGroups(Array.isArray(groupList) ? groupList : []);
-      
-      // Parse ACL groups from policy
-      console.log('Policy response:', policyRes);
-      if (policyRes?.data?.data?.groups) {
-        const policyGroups: Record<string, string[]> = policyRes.data.data.groups;
-        const parsedGroups: ACLGroup[] = Object.entries(policyGroups).map(([key, members]) => ({
-          name: key.replace(/^group:/, ''), // Remove "group:" prefix
-          members: members,
-        }));
-        console.log('ACL Groups loaded:', parsedGroups);
-        setAclGroups(parsedGroups);
-      } else if (policyRes?.data?.groups) {
-        // Try alternative path
-        const policyGroups: Record<string, string[]> = policyRes.data.groups;
-        const parsedGroups: ACLGroup[] = Object.entries(policyGroups).map(([key, members]) => ({
-          name: key.replace(/^group:/, ''), // Remove "group:" prefix
-          members: members,
-        }));
-        console.log('ACL Groups loaded (alt path):', parsedGroups);
-        setAclGroups(parsedGroups);
-      } else if ((policyRes as any)?.groups) {
-        // Try another alternative path
-        const policyGroups: Record<string, string[]> = (policyRes as any).groups;
-        const parsedGroups: ACLGroup[] = Object.entries(policyGroups).map(([key, members]) => ({
-          name: key.replace(/^group:/, ''), // Remove "group:" prefix
-          members: members,
-        }));
-        console.log('ACL Groups loaded (direct):', parsedGroups);
-        setAclGroups(parsedGroups);
-      } else {
-      }
+      const { users, groups, aclPolicy, oidcStatus, onlineUsers } = await loadUsersPageData();
 
-      // Build online users set from devices data
-      if (devicesRes) {
-        const deviceList = (devicesRes as any)?.list || [];
-        const onlineSet = new Set<string>();
-        for (const device of deviceList) {
-          if (device.online && device.user?.name) {
-            onlineSet.add(device.user.name);
-          }
-        }
-        setOnlineUsers(onlineSet);
-      }
+      setUsers(users);
+      setGroups(groups);
+      setOidcStatus(oidcStatus);
+      setAclGroups(
+        Object.entries(aclPolicy?.groups || {}).map(([key, members]) => ({
+          name: key.replace(/^group:/, ''),
+          members,
+        }))
+      );
+      setOnlineUsers(onlineUsers);
       
     } catch (error: any) {
       toast.error(t.users.loadFailed + (error.message || t.common.errors.unknownError));

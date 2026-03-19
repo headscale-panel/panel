@@ -70,37 +70,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import DashboardLayout from '@/components/DashboardLayout';
-import { devicesAPI, usersAPI, headscaleConfigAPI } from '@/lib/api';
+import { devicesAPI, usersAPI } from '@/lib/api';
+import { loadDevicesPageData } from '@/lib/page-data';
+import type { HeadscaleUserOption, NormalizedDevice } from '@/lib/normalizers';
 import { useTranslation } from '@/i18n/index';
 
-interface Device {
-  id: number;
-  machine_key: string;
-  node_key: string;
-  disco_key: string;
-  ip_addresses: string[];
-  name: string;
-  given_name: string;
-  user: {
-    id: number;
-    name: string;
-    display_name: string;
-    email: string;
-  } | null;
-  online: boolean;
-  last_seen: string | null;
-  expiry: string | null;
-  created_at: string | null;
-  register_method: string;
-  tags: string[];
-  approved_routes: string[];
-  available_routes: string[];
-}
-
-interface HeadscaleUser {
-  id: string;
-  name: string;
-}
+type Device = NormalizedDevice;
+type HeadscaleUser = HeadscaleUserOption;
 
 interface DeployParams {
   loginServer: string;
@@ -181,22 +157,10 @@ export default function Devices() {
   const loadData = async () => {
     try {
       setLoading(true);
-      const [devicesRes, usersRes, configRes] = await Promise.all([
-        devicesAPI.list(),
-        usersAPI.list({ pageSize: 100 }),
-        headscaleConfigAPI.get().catch(() => null),
-      ]);
-      // API returns { list: [], total: ... }
-      setDevices((devicesRes as any).list || []);
-      if (configRes && (configRes as any).server_url) {
-        setServerUrl((configRes as any).server_url);
-      }
-
-      // Users API returns a flat array now
-      const userList = Array.isArray(usersRes) ? usersRes : (usersRes as any) || [];
-      const uniqueUsers = Array.from(new Set(userList.map((u: any) => u.name)))
-        .map((name) => ({ id: name as string, name: name as string }));
-      setHeadscaleUsers(uniqueUsers);
+      const { devices, headscaleUsers, serverUrl } = await loadDevicesPageData();
+      setDevices(devices);
+      setHeadscaleUsers(headscaleUsers);
+      setServerUrl(serverUrl);
     } catch (error: any) {
       console.error(error);
       toast.error(t.devices.loadFailed);
@@ -217,7 +181,7 @@ export default function Devices() {
       return;
     }
     try {
-      await devicesAPI.rename(selectedDevice.id.toString(), newName);
+      await devicesAPI.rename(selectedDevice.id, newName);
       toast.success(t.devices.renameSuccess);
       setRenameDialogOpen(false);
       loadData();
@@ -294,7 +258,7 @@ export default function Devices() {
   const handleDelete = async (device: Device) => {
     if (confirm(t.devices.confirmDelete.replace('{name}', device.given_name || device.name))) {
       try {
-        await devicesAPI.delete(device.id.toString());
+        await devicesAPI.delete(device.id);
         toast.success(t.devices.deleteSuccess);
         loadData();
       } catch (error: any) {

@@ -2,6 +2,17 @@ import DashboardLayout from '@/components/DashboardLayout';
 import NetworkTopology from '@/components/NetworkTopology';
 import StatCard from '@/components/StatCard';
 import { dashboardAPI, devicesAPI, usersAPI } from '@/lib/api';
+import {
+  applyRealtimeDeviceStatus,
+  type DashboardStats,
+  type DashboardTopologyData,
+} from '@/lib/dashboard';
+import {
+  normalizeDeviceListResponse,
+  normalizeHeadscaleUserOptions,
+  normalizeOverview,
+  normalizeTopology,
+} from '@/lib/normalizers';
 import { useTranslation } from '@/i18n/index';
 import { useWebSocketConnection, useDeviceStatusUpdates, useMetricsUpdates } from '@/hooks/useWebSocket';
 import { Activity, Users, Wifi, WifiOff, RefreshCw, Globe } from 'lucide-react';
@@ -10,38 +21,6 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { motion } from 'framer-motion';
-
-interface DashboardStats {
-  onlineDevices: number;
-  totalDevices: number;
-  totalUsers: number;
-  dnsRecordCount: number;
-}
-
-interface TopologyData {
-  users: Array<{
-    id: string;
-    name: string;
-    deviceCount: number;
-  }>;
-  devices: Array<{
-    id: string;
-    name: string;
-    user: string;
-    online: boolean;
-    ipAddresses: string[];
-    lastSeen: string;
-  }>;
-  acl: Array<{
-    src: string;
-    dst: string;
-    action: 'accept' | 'deny';
-  }>;
-  policy?: {
-    groups?: Record<string, string[]>;
-    hosts?: Record<string, string>;
-  };
-}
 
 export default function Dashboard() {
   const t = useTranslation();
@@ -53,31 +32,21 @@ export default function Dashboard() {
     totalUsers: 0,
     dnsRecordCount: 0,
   });
-  const [topologyData, setTopologyData] = useState<TopologyData | null>(null);
+  const [topologyData, setTopologyData] = useState<DashboardTopologyData | null>(null);
 
-  const { isConnected, reconnect } = useWebSocketConnection();
+  const { isConnected } = useWebSocketConnection();
   
   // Real-time device status updates
   const deviceStatuses = useDeviceStatusUpdates((update) => {
-    // Update stats when device status changes
-    setStats((prev) => {
-      const onlineChange = update.online ? 1 : -1;
-      return {
-        ...prev,
-        onlineDevices: Math.max(0, prev.onlineDevices + onlineChange),
-      };
-    });
-    
     setTopologyData((prev) => {
       if (!prev) return prev;
-      return {
-        ...prev,
-        devices: prev.devices.map((d) =>
-          d.id === update.machineId
-            ? { ...d, online: update.online, lastSeen: update.lastSeen, ipAddresses: update.ipAddresses }
-            : d
-        ),
-      };
+
+      const result = applyRealtimeDeviceStatus(prev, update);
+      setStats((currentStats) => ({
+        ...currentStats,
+        onlineDevices: result.onlineDevices,
+      }));
+      return result.topology;
     });
   });
 
@@ -111,84 +80,65 @@ export default function Dashboard() {
       // Process devices data for stats
       let onlineDevices = 0;
       let totalDevices = 0;
-      let devices: TopologyData['devices'] = [];
-      let users: TopologyData['users'] = [];
-      let acl: TopologyData['acl'] = [];
-      let policy: TopologyData['policy'] = undefined;
+      let devices: DashboardTopologyData['devices'] = [];
+      let users: DashboardTopologyData['users'] = [];
+      let acl: DashboardTopologyData['acl'] = [];
+      let policy: DashboardTopologyData['policy'] = undefined;
       let totalUsers = 0;
       let dnsRecordCount = 0;
 
       // Extract overview data if available
       if (overviewRes.status === 'fulfilled' && overviewRes.value) {
-        const ov = overviewRes.value as any;
-        dnsRecordCount = ov.dns_record_count || 0;
+        const ov = normalizeOverview(overviewRes.value);
+        dnsRecordCount = ov.dns_record_count;
       }
 
       // Prefer topology API data (has correct string IDs and proper structure)
       if (topologyRes.status === 'fulfilled' && topologyRes.value) {
-        const topologyDataRes = topologyRes.value as any;
+        const topologyDataRes = normalizeTopology(topologyRes.value);
         
         // Use topology users data (IDs are already strings)
-        if (topologyDataRes.users && Array.isArray(topologyDataRes.users)) {
-          users = topologyDataRes.users.map((u: any) => ({
-            id: String(u.id),
-            name: u.name,
-            deviceCount: u.deviceCount || 0,
-          }));
+        if (topologyDataRes?.users?.length) {
+          users = topologyDataRes.users;
           totalUsers = users.length;
         }
         
         // Use topology devices data (IDs are already strings)
-        if (topologyDataRes.devices && Array.isArray(topologyDataRes.devices)) {
-          devices = topologyDataRes.devices.map((d: any) => ({
-            id: String(d.id),
-            name: d.name || 'Unknown',
-            user: d.user || 'unknown',
-            online: d.online || false,
-            ipAddresses: d.ipAddresses || [],
-            lastSeen: d.lastSeen || new Date().toISOString(),
-          }));
+        if (topologyDataRes?.devices?.length) {
+          devices = topologyDataRes.devices;
           totalDevices = devices.length;
           onlineDevices = devices.filter((d) => d.online).length;
         }
         
         // Use topology ACL data
-        acl = topologyDataRes.acl || [];
+        acl = topologyDataRes?.acl || [];
         
         // Use policy data for advanced ACL parsing
-        policy = topologyDataRes.policy || undefined;
+        policy = topologyDataRes?.policy || undefined;
       } else {
         // Fallback: build from separate API responses
         if (devicesRes.status === 'fulfilled' && devicesRes.value) {
-          const devicesData = devicesRes.value as any;
-          const deviceList = devicesData.machines || devicesData.list || devicesData || [];
-          totalDevices = Array.isArray(deviceList) ? deviceList.length : 0;
-          onlineDevices = Array.isArray(deviceList) 
-            ? deviceList.filter((d: any) => d.online).length 
-            : 0;
-          devices = Array.isArray(deviceList) 
-            ? deviceList.map((d: any) => ({
-                id: String(d.id || d.machineId),
-                name: d.name || d.givenName || 'Unknown',
-                user: d.user?.name || d.userName || 'unknown',
-                online: d.online || false,
-                ipAddresses: d.ipAddresses || [],
-                lastSeen: d.lastSeen || new Date().toISOString(),
-              }))
-            : [];
+          const devicesData = normalizeDeviceListResponse(devicesRes.value);
+          totalDevices = devicesData.list.length;
+          onlineDevices = devicesData.list.filter((device) => device.online).length;
+          devices = devicesData.list.map((device) => ({
+            id: device.id,
+            name: device.given_name || device.name || 'Unknown',
+            user: device.user?.name || 'unknown',
+            online: device.online,
+            ipAddresses: device.ip_addresses,
+            lastSeen: device.last_seen || new Date().toISOString(),
+          }));
         }
 
         if (usersRes.status === 'fulfilled' && usersRes.value) {
-          const usersData = usersRes.value as any;
-          const userList = usersData.users || usersData.list || usersData || [];
-          totalUsers = Array.isArray(userList) ? userList.length : 0;
-          users = Array.isArray(userList)
-            ? userList.map((u: any) => ({
-                id: String(u.id || u.name),
-                name: u.name || u.username || 'Unknown',
-                deviceCount: devices.filter((d) => d.user === (u.name || u.username)).length,
-              }))
-            : [];
+          const normalizedUsers = normalizeHeadscaleUserOptions(usersRes.value);
+          totalUsers = normalizedUsers.length;
+          users = normalizedUsers.map((user) => ({
+            id: user.id,
+            name: user.name,
+            deviceCount: devices.filter((device) => device.user === user.name).length,
+          }));
         }
       }
 
@@ -213,7 +163,7 @@ export default function Dashboard() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     loadData();

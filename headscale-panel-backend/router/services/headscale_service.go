@@ -807,10 +807,10 @@ func (s *headscaleService) RegisterNodeWithContext(ctx context.Context, actorUse
 		Key:  key,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to register node: %w", err)
+		return nil, serializer.NewError(serializer.CodeThirdPartyServiceError, fmt.Sprintf("注册节点失败: %v", err), err)
 	}
 	if resp.Node == nil {
-		return nil, fmt.Errorf("register node returned nil node")
+		return nil, serializer.NewError(serializer.CodeThirdPartyServiceError, "注册节点失败: Headscale 返回空节点", nil)
 	}
 
 	node := resp.Node

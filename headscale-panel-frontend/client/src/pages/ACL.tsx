@@ -40,6 +40,9 @@ import {
 } from '@/components/ui/tooltip';
 import DashboardLayout from '@/components/DashboardLayout';
 import { useTranslation } from '@/i18n/index';
+import { buildACLDeviceOptions } from '@/lib/acl';
+import { loadACLPageData } from '@/lib/page-data';
+import type { ACLPolicy, HeadscaleUserOption, NormalizedResource } from '@/lib/normalizers';
 import {
   ArrowRight,
   Check,
@@ -97,18 +100,6 @@ interface ACLRule {
   action: 'accept' | 'deny';
 }
 
-interface ACLPolicy {
-  groups?: Record<string, string[]>;
-  hosts?: Record<string, string>;
-  tagOwners?: Record<string, string[]>;
-  acls?: Array<{
-    '#ha-meta'?: { name: string; open: boolean };
-    action: string;
-    src: string[];
-    dst: string[];
-  }>;
-}
-
 interface DeviceItem {
   id: string;
   givenName: string;
@@ -117,17 +108,8 @@ interface DeviceItem {
   user?: { name: string };
 }
 
-interface ResourceItem {
-  id: number;
-  name: string;
-  ip_address: string;
-  port?: string;
-}
-
-interface HeadscaleUser {
-  id: string;
-  name: string;
-}
+type ResourceItem = NormalizedResource;
+type HeadscaleUser = HeadscaleUserOption;
 
 interface SortableRuleCardProps {
   id: string;
@@ -227,22 +209,13 @@ export default function ACL() {
   const loadData = async () => {
     setLoading(true);
     try {
-      const [policyRes, devicesRes, resourcesRes, usersRes] = await Promise.all([
-        aclAPI.getPolicy().catch(() => null),
-        devicesAPI.list({ page: 1, pageSize: 1000 }).catch(() => null),
-        resourcesAPI.list({ page: 1, pageSize: 1000 }).catch(() => null),
-        usersAPI.list({ page: 1, pageSize: 1000 }).catch(() => null),
-      ]);
+      const { policy, devices, resources, headscaleUsers } = await loadACLPageData();
 
-      console.log('ACL loadData:', { policyRes, devicesRes, resourcesRes, usersRes });
+      if (policy) {
+        setPolicy(policy);
+        setAclGroups(policy.groups || {});
 
-      // Policy data - API returns data directly after interceptor processing
-      if (policyRes) {
-        const policyData = policyRes as ACLPolicy;
-        setPolicy(policyData);
-        setAclGroups(policyData.groups || {});
-
-        const parsedRules: ACLRule[] = (policyData.acls || []).map((acl, index) => ({
+        const parsedRules: ACLRule[] = (policy.acls || []).map((acl, index) => ({
           id: index + 1,
           name: acl['#ha-meta']?.name || t.acl.defaultRuleName.replace('{index}', String(index + 1)),
           sources: acl.src || [],
@@ -250,34 +223,23 @@ export default function ACL() {
           action: acl.action as 'accept' | 'deny',
         }));
         setRules(parsedRules);
+      } else {
+        setPolicy(null);
+        setAclGroups({});
+        setRules([]);
       }
 
-      // Devices - API returns { list: [...], total: N }
-      if ((devicesRes as any)?.list) {
-        const deviceList = (devicesRes as any).list.map((d: any) => ({
-          id: String(d.ID),
-          givenName: d.given_name || d.name,
-          name: d.name,
-          ipAddresses: d.ip_addresses || [],
-          user: d.user ? { name: d.user.username || d.user.headscale_name } : undefined,
-        }));
-        setDevices(deviceList);
-      }
-
-      // Resources - API returns { list: [...], total: N }
-      if ((resourcesRes as any)?.list) {
-        setResources((resourcesRes as any).list);
-      }
-
-      // Headscale Users - API returns array directly or { list: [...] }
-      if (usersRes) {
-        const userList = Array.isArray(usersRes) ? usersRes : ((usersRes as any).list || []);
-        const mappedUsers = userList.map((u: any) => ({
-          id: String(u.ID || u.id),
-          name: u.headscale_name || u.username || u.name,
-        }));
-        setHeadscaleUsers(mappedUsers);
-      }
+      setDevices(
+        devices.map((device) => ({
+          id: device.id,
+          givenName: device.given_name || device.name,
+          name: device.name,
+          ipAddresses: device.ip_addresses,
+          user: device.user ? { name: device.user.name } : undefined,
+        }))
+      );
+      setResources(resources);
+      setHeadscaleUsers(headscaleUsers);
     } catch (error) {
       console.error('Failed to load ACL data:', error);
       toast.error(t.acl.loadFailed);
@@ -285,6 +247,8 @@ export default function ACL() {
       setLoading(false);
     }
   };
+
+  const aclDeviceOptions = buildACLDeviceOptions(devices);
 
   const handleAddRule = async () => {
     if (!newRule.name || !newRule.sources?.length || !newRule.destinations?.length) {
@@ -693,7 +657,7 @@ export default function ACL() {
                             {policy?.tagOwners && Object.keys(policy.tagOwners).length > 0 && (<><CommandSeparator /><CommandGroup heading={t.acl.tagsHeading}>{Object.keys(policy.tagOwners).map((tagName) => (<CommandItem key={tagName} value={`tag-src-${tagName}`} onSelect={() => addSource(tagName)}><Check className={`mr-2 h-4 w-4 ${newRule.sources?.includes(tagName) ? 'opacity-100' : 'opacity-0'}`} /><Tag className="mr-2 h-4 w-4" /><span>{tagName}</span></CommandItem>))}</CommandGroup></>)}
                             {Object.keys(aclGroups).length > 0 && (<><CommandSeparator /><CommandGroup heading={t.acl.aclGroupsHeading}>{Object.keys(aclGroups).map((groupName) => (<CommandItem key={groupName} value={`group-src-${groupName}`} onSelect={() => addSource(groupName)}><Check className={`mr-2 h-4 w-4 ${newRule.sources?.includes(groupName) ? 'opacity-100' : 'opacity-0'}`} /><Users className="mr-2 h-4 w-4" /><span>{groupName}</span></CommandItem>))}</CommandGroup></>)}
                             {headscaleUsers.length > 0 && (<><CommandSeparator /><CommandGroup heading={t.acl.headscaleUsersHeading}>{headscaleUsers.map((user) => (<CommandItem key={user.id} value={`user-src-${user.name}`} onSelect={() => addSource(`${user.name}@`)}><Check className={`mr-2 h-4 w-4 ${newRule.sources?.includes(`${user.name}@`) ? 'opacity-100' : 'opacity-0'}`} /><User className="mr-2 h-4 w-4" /><span>{user.name}@</span></CommandItem>))}</CommandGroup></>)}
-                            {devices.length > 0 && (<><CommandSeparator /><CommandGroup heading={t.acl.devicesHeading}>{devices.slice(0, 10).map((device) => (<CommandItem key={device.id} value={`device-src-${device.givenName || device.name}-${device.ipAddresses?.[0]}`} onSelect={() => addSource(device.ipAddresses?.[0] || '')}><Check className={`mr-2 h-4 w-4 ${newRule.sources?.includes(device.ipAddresses?.[0] || '') ? 'opacity-100' : 'opacity-0'}`} />{getDeviceIcon(device)}<div className="flex flex-col ml-2"><span>{device.givenName || device.name}</span><span className="text-xs text-muted-foreground">{device.ipAddresses?.[0]}</span></div></CommandItem>))}</CommandGroup></>)}
+                            {aclDeviceOptions.length > 0 && (<><CommandSeparator /><CommandGroup heading={t.acl.devicesHeading}>{aclDeviceOptions.map((device) => (<CommandItem key={device.id} value={`device-src-${device.label}-${device.ipAddress}`} onSelect={() => addSource(device.sourceValue)}><Check className={`mr-2 h-4 w-4 ${newRule.sources?.includes(device.sourceValue) ? 'opacity-100' : 'opacity-0'}`} />{getDeviceIcon(devices.find((item) => item.id === device.id) || { id: device.id, givenName: device.label, name: device.label, ipAddresses: [device.ipAddress] })}<div className="flex flex-col ml-2"><span>{device.label}</span><span className="text-xs text-muted-foreground">{device.ipAddress}</span></div></CommandItem>))}</CommandGroup></>)}
                           </CommandList>
                         </Command>
                       </PopoverContent>
@@ -728,7 +692,7 @@ export default function ACL() {
                             {Object.keys(aclGroups).length > 0 && (<><CommandSeparator /><CommandGroup heading={t.acl.aclGroupsHeading}>{Object.keys(aclGroups).map((groupName) => (<CommandItem key={groupName} value={`group-dst-${groupName}`} onSelect={() => addDestination(`${groupName}:*`)}><Check className={`mr-2 h-4 w-4 ${newRule.destinations?.includes(`${groupName}:*`) ? 'opacity-100' : 'opacity-0'}`} /><Users className="mr-2 h-4 w-4" /><span>{groupName}:*</span></CommandItem>))}</CommandGroup></>)}
                             {policy?.hosts && Object.keys(policy.hosts).length > 0 && (<><CommandSeparator /><CommandGroup heading={t.acl.hostAliasesHeading}>{Object.entries(policy.hosts).map(([hostName, ip]) => (<CommandItem key={hostName} value={`host-dst-${hostName}`} onSelect={() => addDestination(`${hostName}:*`)}><Check className={`mr-2 h-4 w-4 ${newRule.destinations?.includes(`${hostName}:*`) ? 'opacity-100' : 'opacity-0'}`} /><Globe className="mr-2 h-4 w-4" /><div className="flex flex-col"><span>{hostName}:*</span><span className="text-xs text-muted-foreground">{ip}</span></div></CommandItem>))}</CommandGroup></>)}
                             {resources.length > 0 && (<><CommandSeparator /><CommandGroup heading={t.acl.resourcesHeading}>{resources.map((resource) => (<CommandItem key={resource.id} value={`resource-dst-${resource.name}`} onSelect={() => addDestination(`${resource.name}:${resource.port || '*'}`)}><Check className={`mr-2 h-4 w-4 ${newRule.destinations?.includes(`${resource.name}:${resource.port || '*'}`) ? 'opacity-100' : 'opacity-0'}`} /><Database className="mr-2 h-4 w-4" /><div className="flex flex-col"><span>{resource.name}:{resource.port || '*'}</span><span className="text-xs text-muted-foreground">{resource.ip_address}</span></div></CommandItem>))}</CommandGroup></>)}
-                            {devices.length > 0 && (<><CommandSeparator /><CommandGroup heading={t.acl.devicesHeading}>{devices.slice(0, 10).map((device) => (<CommandItem key={device.id} value={`device-dst-${device.givenName || device.name}-${device.ipAddresses?.[0]}`} onSelect={() => addDestination(`${device.ipAddresses?.[0]}:*`)}><Check className={`mr-2 h-4 w-4 ${newRule.destinations?.includes(`${device.ipAddresses?.[0]}:*`) ? 'opacity-100' : 'opacity-0'}`} />{getDeviceIcon(device)}<div className="flex flex-col ml-2"><span>{device.givenName || device.name}</span><span className="text-xs text-muted-foreground">{device.ipAddresses?.[0]}</span></div></CommandItem>))}</CommandGroup></>)}
+                            {aclDeviceOptions.length > 0 && (<><CommandSeparator /><CommandGroup heading={t.acl.devicesHeading}>{aclDeviceOptions.map((device) => (<CommandItem key={device.id} value={`device-dst-${device.label}-${device.ipAddress}`} onSelect={() => addDestination(device.destinationValue)}><Check className={`mr-2 h-4 w-4 ${newRule.destinations?.includes(device.destinationValue) ? 'opacity-100' : 'opacity-0'}`} />{getDeviceIcon(devices.find((item) => item.id === device.id) || { id: device.id, givenName: device.label, name: device.label, ipAddresses: [device.ipAddress] })}<div className="flex flex-col ml-2"><span>{device.label}</span><span className="text-xs text-muted-foreground">{device.ipAddress}</span></div></CommandItem>))}</CommandGroup></>)}
                           </CommandList>
                         </Command>
                       </PopoverContent>

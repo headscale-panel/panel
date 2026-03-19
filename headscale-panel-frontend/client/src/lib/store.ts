@@ -11,10 +11,13 @@ export interface User {
   permissions?: string[];
 }
 
-interface AuthState {
+export interface AuthSnapshot {
   token: string | null;
   user: User | null;
   isAuthenticated: boolean;
+}
+
+interface AuthState extends AuthSnapshot {
   setAuth: (token: string, user: User) => void;
   updateUser: (user: User) => void;
   clearAuth: () => void;
@@ -42,21 +45,22 @@ export const useAuthStore = create<AuthState>()(
   )
 );
 
-interface TopologyData {
-  nodes: any[];
-  edges: any[];
-}
-
-interface AppState {
+interface UIState {
   sidebarCollapsed: boolean;
-  topologyData: TopologyData | null;
   setSidebarCollapsed: (collapsed: boolean) => void;
-  setTopologyData: (data: TopologyData) => void;
 }
 
-export const useAppStore = create<AppState>((set) => ({
-  sidebarCollapsed: false,
-  topologyData: null,
-  setSidebarCollapsed: (collapsed) => set({ sidebarCollapsed: collapsed }),
-  setTopologyData: (data) => set({ topologyData: data }),
-}));
+export const useUIStore = create<UIState>()(
+  persist(
+    (set) => ({
+      sidebarCollapsed: false,
+      setSidebarCollapsed: (collapsed) => set({ sidebarCollapsed: collapsed }),
+    }),
+    {
+      name: 'ui-storage',
+      partialize: (state) => ({ sidebarCollapsed: state.sidebarCollapsed }),
+    }
+  )
+);
+
+export const useAppStore = useUIStore;
