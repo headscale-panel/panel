@@ -9,6 +9,7 @@ import (
 	"headscale-panel/pkg/utils/serializer"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"gorm.io/gorm"
 )
@@ -84,6 +85,12 @@ func (s *dnsService) List(actorUserID uint, req *ListDNSRecordRequest) ([]model.
 	}
 	if req.PageSize > 200 {
 		req.PageSize = 200
+	}
+
+	// Reflect manual edits in extra-records.json even when the database
+	// already contains some DNS records.
+	if _, err := s.syncFileRecordsToDB(); err != nil {
+		return nil, 0, err
 	}
 
 	var records []model.DNSRecord
@@ -227,6 +234,27 @@ func (s *dnsService) GetExtraRecordsFromFile(actorUserID uint) ([]ExtraRecord, e
 		return nil, err
 	}
 
+	return s.readExtraRecordsFromFile()
+}
+
+func (s *dnsService) getExtraRecordsPath() string {
+	// 优先从配置读取，否则使用默认路径
+	if conf.Conf.Headscale.ExtraRecordsPath != "" {
+		return conf.Conf.Headscale.ExtraRecordsPath
+	}
+	return "./headscale/extra-records.json"
+}
+
+// ImportFromFile 从文件导入 DNS 记录到数据库
+func (s *dnsService) ImportFromFile(actorUserID uint) (int, error) {
+	if err := RequirePermission(actorUserID, "dns:import"); err != nil {
+		return 0, err
+	}
+
+	return s.syncFileRecordsToDB()
+}
+
+func (s *dnsService) readExtraRecordsFromFile() ([]ExtraRecord, error) {
 	filePath := s.getExtraRecordsPath()
 
 	data, err := os.ReadFile(filePath)
@@ -245,27 +273,27 @@ func (s *dnsService) GetExtraRecordsFromFile(actorUserID uint) ([]ExtraRecord, e
 	return records, nil
 }
 
-func (s *dnsService) getExtraRecordsPath() string {
-	// 优先从配置读取，否则使用默认路径
-	if conf.Conf.Headscale.ExtraRecordsPath != "" {
-		return conf.Conf.Headscale.ExtraRecordsPath
-	}
-	return "./headscale/extra-records.json"
-}
-
-// ImportFromFile 从文件导入 DNS 记录到数据库
-func (s *dnsService) ImportFromFile(actorUserID uint) (int, error) {
-	if err := RequirePermission(actorUserID, "dns:import"); err != nil {
-		return 0, err
-	}
-
-	records, err := s.GetExtraRecordsFromFile(actorUserID)
+func (s *dnsService) syncFileRecordsToDB() (int, error) {
+	records, err := s.readExtraRecordsFromFile()
 	if err != nil {
 		return 0, err
 	}
 
 	imported := 0
-	for _, r := range records {
+	for _, rawRecord := range records {
+		r := ExtraRecord{
+			Name:  strings.TrimSpace(rawRecord.Name),
+			Type:  strings.ToUpper(strings.TrimSpace(rawRecord.Type)),
+			Value: strings.TrimSpace(rawRecord.Value),
+		}
+
+		if r.Name == "" || r.Type == "" || r.Value == "" {
+			return imported, fmt.Errorf("extra-records.json 包含无效记录: name/type/value 不能为空")
+		}
+		if r.Type != "A" && r.Type != "AAAA" {
+			return imported, fmt.Errorf("extra-records.json 包含无效记录类型: %s", r.Type)
+		}
+
 		var existing model.DNSRecord
 		result := model.DB.Where("name = ? AND type = ?", r.Name, r.Type).First(&existing)
 		if result.Error == nil {
