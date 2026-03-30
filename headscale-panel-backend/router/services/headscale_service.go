@@ -63,6 +63,21 @@ type HeadscaleAuthKey struct {
 	Used      bool   `json:"used"`
 }
 
+func normalizeHeadscaleProvider(raw string) string {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "oidc":
+		return "oidc"
+	case "local":
+		return "local"
+	case "headscale":
+		return "headscale"
+	case "":
+		return "headscale"
+	default:
+		return strings.ToLower(strings.TrimSpace(raw))
+	}
+}
+
 // ListHeadscaleUsers fetches users directly from Headscale via gRPC
 func (s *headscaleService) ListHeadscaleUsers(actorUserID uint) ([]HeadscaleUser, error) {
 	return s.ListHeadscaleUsersWithContext(context.Background(), actorUserID)
@@ -92,7 +107,7 @@ func (s *headscaleService) ListHeadscaleUsersWithContext(ctx context.Context, ac
 			Name:          u.Name,
 			DisplayName:   u.DisplayName,
 			Email:         u.Email,
-			Provider:      u.Provider,
+			Provider:      normalizeHeadscaleProvider(u.Provider),
 			ProviderID:    u.ProviderId,
 			ProfilePicURL: u.ProfilePicUrl,
 		}
@@ -491,6 +506,56 @@ func (s *headscaleService) DeleteUserWithContext(ctx context.Context, actorUserI
 		return fmt.Errorf("failed to delete user: %w", err)
 	}
 	return nil
+}
+
+func (s *headscaleService) CountUserMachinesWithContext(ctx context.Context, userName string) (int, error) {
+	client, err := headscaleServiceClient()
+	if err != nil {
+		return 0, err
+	}
+
+	queryCtx, cancel := withServiceTimeout(ctx)
+	defer cancel()
+
+	resp, err := client.ListNodes(queryCtx, &v1.ListNodesRequest{})
+	if err != nil {
+		return 0, fmt.Errorf("failed to list nodes from Headscale: %w", err)
+	}
+
+	count := 0
+	for _, node := range resp.Nodes {
+		if node.User == nil {
+			continue
+		}
+		if strings.EqualFold(strings.TrimSpace(node.User.Name), strings.TrimSpace(userName)) {
+			count++
+		}
+	}
+
+	return count, nil
+}
+
+func (s *headscaleService) ResolveUserIDByNameWithContext(ctx context.Context, userName string) (uint64, error) {
+	client, err := headscaleServiceClient()
+	if err != nil {
+		return 0, err
+	}
+
+	queryCtx, cancel := withServiceTimeout(ctx)
+	defer cancel()
+
+	resp, err := client.ListUsers(queryCtx, &v1.ListUsersRequest{})
+	if err != nil {
+		return 0, fmt.Errorf("failed to list users from Headscale: %w", err)
+	}
+
+	for _, user := range resp.Users {
+		if strings.EqualFold(strings.TrimSpace(user.Name), strings.TrimSpace(userName)) {
+			return user.Id, nil
+		}
+	}
+
+	return 0, serializer.NewError(serializer.CodeNotFound, "headscale user not found", nil)
 }
 
 // GetPreAuthKeys gets pre-auth keys for a user

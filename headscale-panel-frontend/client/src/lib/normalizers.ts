@@ -67,6 +67,7 @@ export interface NormalizedSystemUser {
   is_active: boolean;
   profile_pic_url?: string;
   provider?: string;
+  provider_id?: string;
 }
 
 export interface NormalizedResource {
@@ -94,6 +95,7 @@ export interface OIDCStatusData {
   third_party: boolean;
   builtin: boolean;
   password_required: boolean;
+  mode: string;
 }
 
 export interface PanelConnectionSettings {
@@ -302,6 +304,7 @@ export function normalizeSystemUsers(value: unknown): NormalizedSystemUser[] {
       is_active: asBoolean(user.is_active, true),
       profile_pic_url: asString(user.profile_pic_url) || undefined,
       provider: asString(user.provider) || undefined,
+      provider_id: asString(user.provider_id) || undefined,
     });
   }
 
@@ -420,6 +423,7 @@ export function normalizeOIDCStatus(value: unknown): OIDCStatusData {
     third_party: asBoolean(data.third_party),
     builtin: asBoolean(data.builtin),
     password_required: asBoolean(data.password_required, true),
+    mode: asString(data.mode, 'direct'),
   };
 }
 

@@ -250,6 +250,8 @@ const zh = {
     builtinOidcHint: '内置 OIDC 已启用：用户仍使用面板凭据登录，需要设置密码。',
     requiredFieldsOidc: '请填写必填字段 (用户名)',
     providerLabel: '来源',
+    migrateToOidcHint: '建议先将设备迁移到 OIDC 用户下，再删除本地用户。',
+    oidcManagedDeleteBlocked: 'OIDC 用户由身份提供方管理，暂不支持在面板中删除。',
   },
 
   routes: {

@@ -111,6 +111,7 @@ export default function UsersPage() {
     third_party: false,
     builtin: false,
     password_required: true,
+    mode: 'direct',
   });
 
   useEffect(() => {
@@ -276,6 +277,11 @@ export default function UsersPage() {
   };
 
   const handleDeleteUser = async (user: UserData) => {
+    if (user.provider === 'oidc') {
+      toast.error(t.users.oidcManagedDeleteBlocked);
+      return;
+    }
+
     if (confirm(t.users.confirmDeleteUser.replace('{username}', user.username))) {
       try {
         await systemUsersAPI.delete(user.ID);
@@ -362,6 +368,9 @@ export default function UsersPage() {
   const handleViewRoutes = (user: UserData) => {
     setLocation(`/routes?user=${user.headscale_name || user.username}`);
   };
+
+  const shouldSuggestOIDCMigration = (user: UserData) =>
+    oidcStatus.mode === 'builtin_oidc' && user.provider !== 'oidc';
 
   const onlineCount = users.filter(u => onlineUsers.has(u.headscale_name || u.username)).length;
 
@@ -657,6 +666,11 @@ export default function UsersPage() {
                             <p className="text-xs text-muted-foreground truncate mt-px">
                               {user.email || user.username}
                             </p>
+                            {shouldSuggestOIDCMigration(user) && (
+                              <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1">
+                                {t.users.migrateToOidcHint}
+                              </p>
+                            )}
                           </div>
 
                           {/* Actions — show on hover */}
@@ -687,11 +701,19 @@ export default function UsersPage() {
                             </Tooltip>
                             <Tooltip>
                               <TooltipTrigger asChild>
-                                <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive/60 hover:text-destructive hover:bg-destructive/10" onClick={() => handleDeleteUser(user)}>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-7 w-7 text-destructive/60 hover:text-destructive hover:bg-destructive/10 disabled:text-muted-foreground disabled:hover:bg-transparent"
+                                  onClick={() => handleDeleteUser(user)}
+                                  disabled={user.provider === 'oidc'}
+                                >
                                   <Trash2 className="w-3.5 h-3.5" />
                                 </Button>
                               </TooltipTrigger>
-                              <TooltipContent side="bottom">{t.users.deleteUser}</TooltipContent>
+                              <TooltipContent side="bottom">
+                                {user.provider === 'oidc' ? t.users.oidcManagedDeleteBlocked : t.users.deleteUser}
+                              </TooltipContent>
                             </Tooltip>
                           </div>
                         </motion.div>

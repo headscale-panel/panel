@@ -118,5 +118,6 @@ func (c *PanelSettingsController) GetOIDCStatus(ctx *gin.Context) {
 		"third_party":       thirdParty,
 		"builtin":           builtin,
 		"password_required": !thirdParty,
+		"mode":              services.PanelSettingsService.HeadscaleOIDCMode(),
 	})
 }

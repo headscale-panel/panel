@@ -9,6 +9,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useLocation, useSearch } from 'wouter';
 import { toast } from 'sonner';
 import { Loader2, Globe, Shield, Eye, EyeOff } from 'lucide-react';
+import { consumeAuthNotice } from '@/lib/auth';
 
 export default function Login() {
   const t = useTranslation();
@@ -27,6 +28,17 @@ export default function Login() {
   useEffect(() => {
     if (isAuthenticated) setLocation('/');
   }, [isAuthenticated, setLocation]);
+
+  useEffect(() => {
+    const notice = consumeAuthNotice();
+    if (!notice) {
+      return;
+    }
+
+    if (notice === 'sessionExpired') {
+      toast.error(t.common.errors.sessionExpired);
+    }
+  }, [t]);
 
   useEffect(() => {
     publicAuthAPI.oidcStatus().then((data: any) => {

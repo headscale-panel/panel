@@ -2,6 +2,7 @@ import { useAuthStore } from '@/lib/store';
 import { authAPI } from '@/lib/api';
 import { useLocation } from 'wouter';
 import { useEffect, useRef, ReactNode } from 'react';
+import { redirectToLoginWithNotice } from '@/lib/auth';
 
 interface ProtectedRouteProps {
   children: ReactNode;
@@ -39,7 +40,7 @@ export default function ProtectedRoute({ children, requireAdmin = false }: Prote
 
   useEffect(() => {
     if (!isAuthenticated) {
-      setLocation('/login');
+      redirectToLoginWithNotice('sessionExpired');
       return;
     }
 

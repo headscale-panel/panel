@@ -1,6 +1,6 @@
 import axios from 'axios';
 import { toast } from 'sonner';
-import { clearStoredAuthState, getAuthToken } from './auth';
+import { getAuthToken, redirectToLoginWithNotice } from './auth';
 import { getTranslations } from '@/i18n/index';
 
 const api = axios.create({
@@ -9,6 +9,8 @@ const api = axios.create({
   headers: { 'Content-Type': 'application/json' },
 });
 
+const AUTH_ERROR_CODES = new Set([401, 40011, 40012]);
+
 api.interceptors.request.use((config) => {
   const token = getAuthToken();
   if (token) config.headers.Authorization = `Bearer ${token}`;
@@ -16,10 +18,8 @@ api.interceptors.request.use((config) => {
 });
 
 function handleUnauthorized() {
-  clearStoredAuthState();
   wsManager.disconnect();
-  toast.error(getTranslations().common.errors.sessionExpired);
-  window.location.href = '/panel/login';
+  redirectToLoginWithNotice('sessionExpired');
 }
 
 api.interceptors.response.use(
@@ -32,7 +32,7 @@ api.interceptors.response.use(
     if (rawError) detail = `${detail}\n\n${rawError}`;
 
     const isSetupRequest = response.config?.url?.includes('/setup/');
-    if (code === 401 && !isSetupRequest) {
+    if (AUTH_ERROR_CODES.has(code) && !isSetupRequest) {
       handleUnauthorized();
     } else if (code === 403 && !isSetupRequest) {
       toast.error(t.common.errors.forbidden);
@@ -341,6 +341,10 @@ class WebSocketManager {
       };
       this.ws.onclose = (event) => {
         this.emit('disconnected', { code: event.code, reason: event.reason });
+        if (event.code === 1008 || event.code === 4001) {
+          handleUnauthorized();
+          return;
+        }
         this.attemptReconnect();
       };
       this.ws.onerror = () => this.attemptReconnect();

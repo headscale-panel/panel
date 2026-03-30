@@ -252,6 +252,8 @@ const en: Translations = {
     builtinOidcHint: 'Built-in OIDC is active: users still authenticate with panel credentials. Password is required.',
     requiredFieldsOidc: 'Please fill in required fields (username)',
     providerLabel: 'Provider',
+    migrateToOidcHint: 'Move devices to an OIDC user before deleting this local user.',
+    oidcManagedDeleteBlocked: 'OIDC users are managed by the identity provider and cannot be deleted from the panel.',
   },
 
   routes: {

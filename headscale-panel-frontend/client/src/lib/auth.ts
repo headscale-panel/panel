@@ -1,6 +1,9 @@
 import { useAuthStore, type AuthSnapshot, type User } from './store';
 
 export const AUTH_STORAGE_KEY = 'auth-storage';
+export const AUTH_NOTICE_STORAGE_KEY = 'auth-notice';
+
+export type AuthNoticeKey = 'sessionExpired';
 
 interface PersistedAuthValue {
   state?: Partial<AuthSnapshot>;
@@ -50,5 +53,42 @@ export function clearStoredAuthState() {
 
   if (typeof window !== 'undefined') {
     window.localStorage.removeItem(AUTH_STORAGE_KEY);
+  }
+}
+
+export function setAuthNotice(notice: AuthNoticeKey) {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  window.sessionStorage.setItem(AUTH_NOTICE_STORAGE_KEY, notice);
+}
+
+export function consumeAuthNotice(): AuthNoticeKey | null {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
+  const notice = window.sessionStorage.getItem(AUTH_NOTICE_STORAGE_KEY);
+  if (!notice) {
+    return null;
+  }
+
+  window.sessionStorage.removeItem(AUTH_NOTICE_STORAGE_KEY);
+  return notice as AuthNoticeKey;
+}
+
+export function redirectToLoginWithNotice(notice: AuthNoticeKey = 'sessionExpired') {
+  clearStoredAuthState();
+
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  setAuthNotice(notice);
+
+  const loginPath = '/panel/login';
+  if (window.location.pathname !== loginPath) {
+    window.location.assign(loginPath);
   }
 }

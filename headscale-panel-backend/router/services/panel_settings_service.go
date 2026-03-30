@@ -317,6 +317,24 @@ func (s *panelSettingsService) IsBuiltinOIDCEnabled() bool {
 	return false
 }
 
+func resolveHeadscaleOIDCMode(thirdParty, builtin bool) string {
+	switch {
+	case thirdParty && builtin:
+		return "hybrid_oidc"
+	case thirdParty:
+		return "external_oidc"
+	case builtin:
+		return "builtin_oidc"
+	default:
+		return "direct"
+	}
+}
+
+// HeadscaleOIDCMode describes how Headscale identities are currently managed.
+func (s *panelSettingsService) HeadscaleOIDCMode() string {
+	return resolveHeadscaleOIDCMode(s.IsThirdPartyOIDCEnabled(), s.IsBuiltinOIDCEnabled())
+}
+
 const builtinOIDCClientID = "headscale-builtin"
 const builtinOIDCClientName = "Headscale Built-in OIDC"
 
