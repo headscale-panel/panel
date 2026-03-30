@@ -1,362 +1,222 @@
-import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import { Switch } from '@/components/ui/switch';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Textarea } from '@/components/ui/textarea';
+  CheckOutlined,
+  CopyOutlined,
+  DeleteOutlined,
+  PlusOutlined,
+} from '@ant-design/icons';
+import { Button, Card, Input, Select, Space, Switch, Table, Tabs, Typography, message, theme } from 'antd';
+import type { ColumnsType } from 'antd/es/table';
 import DashboardLayout from '@/components/DashboardLayout';
 import { useTranslation } from '@/i18n/index';
-import { Check, Copy, Plus, Trash2 } from 'lucide-react';
 import { useState } from 'react';
-import { toast } from 'sonner';
+
+const { Title, Text } = Typography;
+const { TextArea } = Input;
 
 export default function OIDCSettings() {
   const t = useTranslation();
+  const { token } = theme.useToken();
   const [useBuiltIn, setUseBuiltIn] = useState(true);
   const [copied, setCopied] = useState(false);
 
   const handleCopy = (text: string) => {
     navigator.clipboard.writeText(text);
     setCopied(true);
-    toast.success(t.oidcSettingsPage.copied);
+    message.success(t.oidcSettingsPage.copied);
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const clientColumns: ColumnsType<any> = [
+    { title: t.oidcSettingsPage.clients.clientName, dataIndex: 'name', key: 'name', render: (v: string) => <Text strong>{v}</Text> },
+    { title: 'Client ID', dataIndex: 'clientId', key: 'clientId', render: (v: string) => <Text style={{ fontFamily: 'monospace', fontSize: 13 }}>{v}</Text> },
+    { title: 'Redirect URIs', dataIndex: 'redirectUri', key: 'redirectUri', render: (v: string) => <Text style={{ fontSize: 13 }}>{v}</Text> },
+    { title: t.oidcSettingsPage.clients.createdAt, dataIndex: 'createdAt', key: 'createdAt', render: (v: string) => <Text type="secondary">{v}</Text> },
+    {
+      title: t.oidcSettingsPage.clients.actions, key: 'actions', align: 'right',
+      render: () => (
+        <Space>
+          <Button type="text" size="small">{t.common.actions.edit}</Button>
+          <Button type="text" size="small" danger icon={<DeleteOutlined />} />
+        </Space>
+      ),
+    },
+  ];
+
+  const clientData = [
+    { key: '1', name: 'Headscale', clientId: 'headscale-client', redirectUri: 'http://localhost/auth/callback', createdAt: '2024-01-01' },
+  ];
+
   return (
     <DashboardLayout>
-      <div className="space-y-6 animate-in fade-in duration-500">
-        {/* Page Header */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
         <div>
-          <h1 className="text-2xl font-bold text-foreground">{t.oidcSettingsPage.title}</h1>
-          <p className="text-muted-foreground mt-1">
-            {t.oidcSettingsPage.description}
-          </p>
+          <Title level={4} style={{ margin: 0 }}>{t.oidcSettingsPage.title}</Title>
+          <Text type="secondary">{t.oidcSettingsPage.description}</Text>
         </div>
 
-        <Tabs defaultValue="provider" className="space-y-6">
-          <TabsList>
-            <TabsTrigger value="provider">{t.oidcSettingsPage.tabs.provider}</TabsTrigger>
-            <TabsTrigger value="clients">{t.oidcSettingsPage.tabs.clients}</TabsTrigger>
-          </TabsList>
+        <Tabs
+          defaultActiveKey="provider"
+          items={[
+            {
+              key: 'provider',
+              label: t.oidcSettingsPage.tabs.provider,
+              children: (
+                <Space direction="vertical" size={24} style={{ width: '100%' }}>
+                  {/* Provider Type Selection */}
+                  <Card>
+                    <Title level={5} style={{ marginBottom: 16 }}>{t.oidcSettingsPage.providerType.title}</Title>
+                    <Space size={8}>
+                      <Switch checked={useBuiltIn} onChange={setUseBuiltIn} />
+                      <Text>{useBuiltIn ? t.oidcSettingsPage.providerType.builtIn : t.oidcSettingsPage.providerType.thirdParty}</Text>
+                    </Space>
+                  </Card>
 
-          {/* OIDC Provider Tab */}
-          <TabsContent value="provider" className="space-y-6">
-            {/* Provider Type Selection */}
-            <Card className="p-6 transition-all hover:shadow-md">
-              <h2 className="text-xl font-semibold mb-4">{t.oidcSettingsPage.providerType.title}</h2>
-              <div className="flex items-center space-x-2">
-                <Switch
-                  checked={useBuiltIn}
-                  onCheckedChange={setUseBuiltIn}
-                  id="provider-type"
-                />
-                <Label htmlFor="provider-type" className="cursor-pointer">
-                  {useBuiltIn ? t.oidcSettingsPage.providerType.builtIn : t.oidcSettingsPage.providerType.thirdParty}
-                </Label>
-              </div>
-            </Card>
+                  {/* Built-in OIDC Server */}
+                  {useBuiltIn && (
+                    <Card>
+                      <Title level={5} style={{ marginBottom: 4 }}>{t.oidcSettingsPage.builtIn.title}</Title>
+                      <Text type="secondary" style={{ display: 'block', marginBottom: 24 }}>{t.oidcSettingsPage.builtIn.description}</Text>
 
-            {/* Built-in OIDC Server */}
-            {useBuiltIn && (
-              <Card className="p-6 space-y-6 animate-in slide-in-from-top duration-300">
-                <div>
-                  <h2 className="text-xl font-semibold mb-2">{t.oidcSettingsPage.builtIn.title}</h2>
-                  <p className="text-sm text-muted-foreground">
-                    {t.oidcSettingsPage.builtIn.description}
-                  </p>
-                </div>
+                      <Space direction="vertical" size={16} style={{ width: '100%' }}>
+                        <div>
+                          <Text style={{ display: 'block', marginBottom: 4 }}>Issuer URL</Text>
+                          <Space.Compact style={{ width: '100%' }}>
+                            <Input value="http://localhost/oidc" readOnly style={{ fontFamily: 'monospace' }} />
+                            <Button icon={copied ? <CheckOutlined /> : <CopyOutlined />} onClick={() => handleCopy('http://localhost/oidc')} />
+                          </Space.Compact>
+                        </div>
 
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <Label>Issuer URL</Label>
-                    <div className="flex gap-2">
-                      <Input
-                        value="http://localhost/oidc"
-                        readOnly
-                        className="font-mono"
-                      />
-                      <Button
-                        variant="outline"
-                        size="icon"
-                        onClick={() => handleCopy('http://localhost/oidc')}
-                      >
-                        {copied ? (
-                          <Check className="w-4 h-4" />
-                        ) : (
-                          <Copy className="w-4 h-4" />
-                        )}
-                      </Button>
+                        <div>
+                          <Text style={{ display: 'block', marginBottom: 4 }}>Discovery URL</Text>
+                          <Space.Compact style={{ width: '100%' }}>
+                            <Input value="http://localhost/oidc/.well-known/openid-configuration" readOnly style={{ fontFamily: 'monospace', fontSize: 12 }} />
+                            <Button icon={copied ? <CheckOutlined /> : <CopyOutlined />} onClick={() => handleCopy('http://localhost/oidc/.well-known/openid-configuration')} />
+                          </Space.Compact>
+                        </div>
+
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                          <div>
+                            <Text style={{ display: 'block', marginBottom: 4 }}>{t.oidcSettingsPage.builtIn.tokenExpiry}</Text>
+                            <Input type="number" defaultValue="24" min={1} max={720} />
+                          </div>
+                          <div>
+                            <Text style={{ display: 'block', marginBottom: 4 }}>{t.oidcSettingsPage.builtIn.refreshTokenExpiry}</Text>
+                            <Input type="number" defaultValue="30" min={1} max={365} />
+                          </div>
+                        </div>
+
+                        <Space size={8}>
+                          <Switch defaultChecked />
+                          <Text>{t.oidcSettingsPage.builtIn.allowRegistration}</Text>
+                        </Space>
+
+                        <Button type="primary" block>{t.oidcSettingsPage.builtIn.saveConfig}</Button>
+                      </Space>
+                    </Card>
+                  )}
+
+                  {/* Third-party OIDC Provider */}
+                  {!useBuiltIn && (
+                    <Card>
+                      <Title level={5} style={{ marginBottom: 4 }}>{t.oidcSettingsPage.thirdParty.title}</Title>
+                      <Text type="secondary" style={{ display: 'block', marginBottom: 24 }}>{t.oidcSettingsPage.thirdParty.description}</Text>
+
+                      <Space direction="vertical" size={16} style={{ width: '100%' }}>
+                        <div>
+                          <Text style={{ display: 'block', marginBottom: 4 }}>{t.oidcSettingsPage.thirdParty.providerName}</Text>
+                          <Input placeholder={t.oidcSettingsPage.thirdParty.providerNamePlaceholder} />
+                        </div>
+                        <div>
+                          <Text style={{ display: 'block', marginBottom: 4 }}>Issuer URL</Text>
+                          <Input placeholder="https://your-domain.auth0.com" style={{ fontFamily: 'monospace' }} />
+                        </div>
+                        <div>
+                          <Text style={{ display: 'block', marginBottom: 4 }}>Client ID</Text>
+                          <Input placeholder="your-client-id" />
+                        </div>
+                        <div>
+                          <Text style={{ display: 'block', marginBottom: 4 }}>Client Secret</Text>
+                          <Input.Password placeholder="your-client-secret" />
+                        </div>
+                        <div>
+                          <Text style={{ display: 'block', marginBottom: 4 }}>Redirect URI</Text>
+                          <Input value="http://localhost/auth/callback" readOnly style={{ fontFamily: 'monospace' }} />
+                        </div>
+                        <div>
+                          <Text style={{ display: 'block', marginBottom: 4 }}>{t.oidcSettingsPage.thirdParty.scopes}</Text>
+                          <Input defaultValue="openid, profile, email" placeholder="openid, profile, email" />
+                        </div>
+                        <Space style={{ width: '100%' }}>
+                          <Button type="primary" style={{ flex: 1 }}>{t.oidcSettingsPage.thirdParty.testConnection}</Button>
+                          <Button style={{ flex: 1 }}>{t.oidcSettingsPage.thirdParty.saveConfig}</Button>
+                        </Space>
+                      </Space>
+                    </Card>
+                  )}
+                </Space>
+              ),
+            },
+            {
+              key: 'clients',
+              label: t.oidcSettingsPage.tabs.clients,
+              children: (
+                <Space direction="vertical" size={24} style={{ width: '100%' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div>
+                      <Title level={5} style={{ margin: 0 }}>{t.oidcSettingsPage.clients.title}</Title>
+                      <Text type="secondary">{t.oidcSettingsPage.clients.description}</Text>
                     </div>
+                    <Button type="primary" icon={<PlusOutlined />}>{t.oidcSettingsPage.clients.addClient}</Button>
                   </div>
 
-                  <div className="space-y-2">
-                    <Label>Discovery URL</Label>
-                    <div className="flex gap-2">
-                      <Input
-                        value="http://localhost/oidc/.well-known/openid-configuration"
-                        readOnly
-                        className="font-mono text-xs"
-                      />
-                      <Button
-                        variant="outline"
-                        size="icon"
-                        onClick={() =>
-                          handleCopy(
-                            'http://localhost/oidc/.well-known/openid-configuration'
-                          )
-                        }
-                      >
-                        {copied ? (
-                          <Check className="w-4 h-4" />
-                        ) : (
-                          <Copy className="w-4 h-4" />
-                        )}
-                      </Button>
-                    </div>
-                  </div>
+                  <Card styles={{ body: { padding: 0 } }}>
+                    <Table columns={clientColumns} dataSource={clientData} pagination={false} />
+                  </Card>
 
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="token-expiry">{t.oidcSettingsPage.builtIn.tokenExpiry}</Label>
-                      <Input
-                        id="token-expiry"
-                        type="number"
-                        defaultValue="24"
-                        min="1"
-                        max="720"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="refresh-token">{t.oidcSettingsPage.builtIn.refreshTokenExpiry}</Label>
-                      <Input
-                        id="refresh-token"
-                        type="number"
-                        defaultValue="30"
-                        min="1"
-                        max="365"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="flex items-center space-x-2">
-                    <Switch id="allow-registration" defaultChecked />
-                    <Label htmlFor="allow-registration" className="cursor-pointer">
-                      {t.oidcSettingsPage.builtIn.allowRegistration}
-                    </Label>
-                  </div>
-
-                  <Button className="w-full">{t.oidcSettingsPage.builtIn.saveConfig}</Button>
-                </div>
-              </Card>
-            )}
-
-            {/* Third-party OIDC Provider */}
-            {!useBuiltIn && (
-              <Card className="p-6 space-y-6 animate-in slide-in-from-top duration-300">
-                <div>
-                  <h2 className="text-xl font-semibold mb-2">
-                    {t.oidcSettingsPage.thirdParty.title}
-                  </h2>
-                  <p className="text-sm text-muted-foreground">
-                    {t.oidcSettingsPage.thirdParty.description}
-                  </p>
-                </div>
-
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="provider-name">{t.oidcSettingsPage.thirdParty.providerName}</Label>
-                    <Input
-                      id="provider-name"
-                      placeholder={t.oidcSettingsPage.thirdParty.providerNamePlaceholder}
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="issuer-url">Issuer URL</Label>
-                    <Input
-                      id="issuer-url"
-                      placeholder="https://your-domain.auth0.com"
-                      className="font-mono"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="client-id">Client ID</Label>
-                    <Input id="client-id" placeholder="your-client-id" />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="client-secret">Client Secret</Label>
-                    <Input
-                      id="client-secret"
-                      type="password"
-                      placeholder="your-client-secret"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="redirect-uri">Redirect URI</Label>
-                    <Input
-                      id="redirect-uri"
-                      value="http://localhost/auth/callback"
-                      readOnly
-                      className="font-mono"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="scopes">{t.oidcSettingsPage.thirdParty.scopes}</Label>
-                    <Input
-                      id="scopes"
-                      defaultValue="openid, profile, email"
-                      placeholder="openid, profile, email"
-                    />
-                  </div>
-
-                  <div className="flex gap-2">
-                    <Button className="flex-1">{t.oidcSettingsPage.thirdParty.testConnection}</Button>
-                    <Button className="flex-1" variant="outline">
-                      {t.oidcSettingsPage.thirdParty.saveConfig}
-                    </Button>
-                  </div>
-                </div>
-              </Card>
-            )}
-          </TabsContent>
-
-          {/* OAuth2 Clients Tab */}
-          <TabsContent value="clients" className="space-y-6">
-            <div className="flex justify-between items-center">
-              <div>
-                <h2 className="text-xl font-semibold">{t.oidcSettingsPage.clients.title}</h2>
-                <p className="text-sm text-muted-foreground mt-1">
-                  {t.oidcSettingsPage.clients.description}
-                </p>
-              </div>
-              <Button className="gap-2">
-                <Plus className="w-4 h-4" />
-                {t.oidcSettingsPage.clients.addClient}
-              </Button>
-            </div>
-
-            <Card>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>{t.oidcSettingsPage.clients.clientName}</TableHead>
-                    <TableHead>Client ID</TableHead>
-                    <TableHead>Redirect URIs</TableHead>
-                    <TableHead>{t.oidcSettingsPage.clients.createdAt}</TableHead>
-                    <TableHead className="text-right">{t.oidcSettingsPage.clients.actions}</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  <TableRow className="hover:bg-muted/50 transition-colors">
-                    <TableCell className="font-medium">Headscale</TableCell>
-                    <TableCell className="font-mono text-sm">
-                      headscale-client
-                    </TableCell>
-                    <TableCell className="text-sm">
-                      http://localhost/auth/callback
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      2024-01-01
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-2">
-                        <Button variant="ghost" size="sm">
-                          {t.common.actions.edit}
-                        </Button>
-                        <Button variant="ghost" size="sm" className="text-destructive">
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
+                  {/* Add Client Form */}
+                  <Card>
+                    <Title level={5} style={{ marginBottom: 24 }}>{t.oidcSettingsPage.clients.createTitle}</Title>
+                    <Space direction="vertical" size={16} style={{ width: '100%' }}>
+                      <div>
+                        <Text style={{ display: 'block', marginBottom: 4 }}>{t.oidcSettingsPage.clients.clientNameLabel}</Text>
+                        <Input placeholder={t.oidcSettingsPage.clients.clientNamePlaceholder} />
                       </div>
-                    </TableCell>
-                  </TableRow>
-                </TableBody>
-              </Table>
-            </Card>
-
-            {/* Add Client Form */}
-            <Card className="p-6 space-y-6">
-              <h3 className="text-lg font-semibold">{t.oidcSettingsPage.clients.createTitle}</h3>
-
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="new-client-name">{t.oidcSettingsPage.clients.clientNameLabel}</Label>
-                  <Input
-                    id="new-client-name"
-                    placeholder={t.oidcSettingsPage.clients.clientNamePlaceholder}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="new-client-id">{t.oidcSettingsPage.clients.clientIdLabel}</Label>
-                  <Input
-                    id="new-client-id"
-                    placeholder="my-app-client"
-                    className="font-mono"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="new-redirect-uris">
-                    {t.oidcSettingsPage.clients.redirectUrisLabel}
-                  </Label>
-                  <Textarea
-                    id="new-redirect-uris"
-                    placeholder="http://localhost:3000/callback&#10;https://myapp.com/callback"
-                    rows={4}
-                    className="font-mono"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="grant-types">Grant Types</Label>
-                  <Select defaultValue="authorization_code">
-                    <SelectTrigger id="grant-types">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="authorization_code">
-                        Authorization Code
-                      </SelectItem>
-                      <SelectItem value="implicit">Implicit</SelectItem>
-                      <SelectItem value="client_credentials">
-                        Client Credentials
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="flex items-center space-x-2">
-                  <Switch id="require-pkce" defaultChecked />
-                  <Label htmlFor="require-pkce" className="cursor-pointer">
-                    {t.oidcSettingsPage.clients.requirePkce}
-                  </Label>
-                </div>
-
-                <Button className="w-full">{t.oidcSettingsPage.clients.createClient}</Button>
-              </div>
-            </Card>
-          </TabsContent>
-        </Tabs>
+                      <div>
+                        <Text style={{ display: 'block', marginBottom: 4 }}>{t.oidcSettingsPage.clients.clientIdLabel}</Text>
+                        <Input placeholder="my-app-client" style={{ fontFamily: 'monospace' }} />
+                      </div>
+                      <div>
+                        <Text style={{ display: 'block', marginBottom: 4 }}>{t.oidcSettingsPage.clients.redirectUrisLabel}</Text>
+                        <TextArea
+                          placeholder={"http://localhost:3000/callback\nhttps://myapp.com/callback"}
+                          rows={4}
+                          style={{ fontFamily: 'monospace' }}
+                        />
+                      </div>
+                      <div>
+                        <Text style={{ display: 'block', marginBottom: 4 }}>Grant Types</Text>
+                        <Select
+                          style={{ width: '100%' }}
+                          defaultValue="authorization_code"
+                          options={[
+                            { value: 'authorization_code', label: 'Authorization Code' },
+                            { value: 'implicit', label: 'Implicit' },
+                            { value: 'client_credentials', label: 'Client Credentials' },
+                          ]}
+                        />
+                      </div>
+                      <Space size={8}>
+                        <Switch defaultChecked />
+                        <Text>{t.oidcSettingsPage.clients.requirePkce}</Text>
+                      </Space>
+                      <Button type="primary" block>{t.oidcSettingsPage.clients.createClient}</Button>
+                    </Space>
+                  </Card>
+                </Space>
+              ),
+            },
+          ]}
+        />
       </div>
     </DashboardLayout>
   );

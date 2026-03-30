@@ -1,11 +1,10 @@
-import { Toaster } from "@/components/ui/sonner";
-import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/NotFound";
 import { Route, Switch, Router as WouterRouter, useLocation } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import ProtectedRoute from "./components/ProtectedRoute";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import { I18nProvider } from "./i18n/I18nProvider";
+import { useI18n } from "./i18n/index";
 import Dashboard from "./pages/Dashboard";
 import Login from "./pages/Login";
 import Devices from "./pages/Devices";
@@ -19,7 +18,8 @@ import DNS from "./pages/DNS";
 import SetupWelcome from "./pages/SetupWelcome";
 import api from "./lib/api";
 import { useState, useEffect, type ReactNode } from "react";
-import { Loader2 } from "lucide-react";
+import { Spin } from "antd";
+import { LoadingOutlined } from "@ant-design/icons";
 
 const BASE = '/panel';
 
@@ -68,8 +68,8 @@ function SetupGuard({ children }: { children: ReactNode }) {
 
   if (checking) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <Spin indicator={<LoadingOutlined style={{ fontSize: 32 }} spin />} />
       </div>
     );
   }
@@ -118,20 +118,26 @@ function AppRoutes() {
   );
 }
 
+function ThemedApp({ children }: { children: ReactNode }) {
+  const { locale } = useI18n();
+  return (
+    <ThemeProvider defaultMode="system" locale={locale}>
+      {children}
+    </ThemeProvider>
+  );
+}
+
 function App() {
   return (
     <ErrorBoundary>
       <I18nProvider>
-        <ThemeProvider defaultMode="system">
-          <TooltipProvider>
-            <Toaster />
-            <WouterRouter base={BASE}>
-              <SetupGuard>
-                <AppRoutes />
-              </SetupGuard>
-            </WouterRouter>
-          </TooltipProvider>
-        </ThemeProvider>
+        <ThemedApp>
+          <WouterRouter base={BASE}>
+            <SetupGuard>
+              <AppRoutes />
+            </SetupGuard>
+          </WouterRouter>
+        </ThemedApp>
       </I18nProvider>
     </ErrorBoundary>
   );

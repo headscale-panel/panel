@@ -1,4 +1,7 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from "react";
+import { ConfigProvider, theme as antdTheme } from "antd";
+import zhCN from "antd/locale/zh_CN";
+import enUS from "antd/locale/en_US";
 
 type ThemeMode = "light" | "dark" | "system";
 
@@ -13,6 +16,7 @@ const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 interface ThemeProviderProps {
   children: React.ReactNode;
   defaultMode?: ThemeMode;
+  locale?: string;
 }
 
 function getSystemTheme(): "light" | "dark" {
@@ -25,7 +29,7 @@ function resolveTheme(mode: ThemeMode): "light" | "dark" {
   return mode;
 }
 
-export function ThemeProvider({ children, defaultMode = "system" }: ThemeProviderProps) {
+export function ThemeProvider({ children, defaultMode = "system", locale = "zh" }: ThemeProviderProps) {
   const [mode, setModeState] = useState<ThemeMode>(() => {
     const stored = localStorage.getItem("theme") as ThemeMode | null;
     if (stored && ["light", "dark", "system"].includes(stored)) {
@@ -58,22 +62,43 @@ export function ThemeProvider({ children, defaultMode = "system" }: ThemeProvide
     applyTheme(resolveTheme(mode));
   }, [mode, applyTheme]);
 
-  // Listen for system theme changes when in "system" mode
   useEffect(() => {
     if (mode !== "system") return;
-
     const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
     const handler = (e: MediaQueryListEvent) => {
       applyTheme(e.matches ? "dark" : "light");
     };
-
     mediaQuery.addEventListener("change", handler);
     return () => mediaQuery.removeEventListener("change", handler);
   }, [mode, applyTheme]);
 
+  const isDark = resolvedTheme === "dark";
+  const antdLocale = locale === "zh" ? zhCN : enUS;
+
   return (
     <ThemeContext.Provider value={{ mode, resolvedTheme, setMode }}>
-      {children}
+      <ConfigProvider
+        locale={antdLocale}
+        theme={{
+          algorithm: isDark ? antdTheme.darkAlgorithm : antdTheme.defaultAlgorithm,
+          token: {
+            colorPrimary: "#1677ff",
+            borderRadius: 8,
+          },
+          components: {
+            Layout: {
+              siderBg: 'transparent',
+              headerBg: 'transparent',
+            },
+            Menu: {
+              itemBg: 'transparent',
+              subMenuItemBg: 'transparent',
+            },
+          },
+        }}
+      >
+        {children}
+      </ConfigProvider>
     </ThemeContext.Provider>
   );
 }

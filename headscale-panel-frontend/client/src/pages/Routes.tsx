@@ -1,48 +1,13 @@
 import { useEffect, useState, useCallback } from 'react';
-import { toast } from 'sonner';
 import { useSearch } from 'wouter';
-import { motion, AnimatePresence } from 'framer-motion';
-import {
-  RefreshCw,
-  Search,
-  Laptop,
-  CheckCircle2,
-  XCircle,
-  Route as RouteIcon,
-  User,
-  Globe,
-  Network,
-} from 'lucide-react';
-
-import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Input } from '@/components/ui/input';
-import { Switch } from '@/components/ui/switch';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/tooltip';
+import { Button, Card, Input, Select, Switch, Table, Tag, Typography, Statistic, Tooltip, message, theme } from 'antd';
+import { ReloadOutlined, SearchOutlined, LaptopOutlined, CheckCircleOutlined, CloseCircleOutlined, GlobalOutlined, NodeIndexOutlined, UserOutlined } from '@ant-design/icons';
+import type { ColumnsType } from 'antd/es/table';
 import DashboardLayout from '@/components/DashboardLayout';
 import { routesAPI } from '@/lib/api';
 import { useTranslation } from '@/i18n/index';
+
+const { Title, Text } = Typography;
 
 interface Route {
   id: string;
@@ -59,19 +24,10 @@ const isExitNode = (destination: string) => {
   return destination === '::/0' || destination === '0.0.0.0/0';
 };
 
-const getRouteType = (destination: string) => {
-  if (isExitNode(destination)) {
-    return { label: 'Exit Node', color: 'text-purple-600 bg-purple-50 border-purple-200' };
-  }
-  if (destination.includes(':')) {
-    return { label: 'IPv6', color: 'text-blue-600 bg-blue-50 border-blue-200' };
-  }
-  return { label: 'IPv4', color: 'text-green-600 bg-green-50 border-green-200' };
-};
-
 export default function Routes() {
   const t = useTranslation();
   const search = useSearch();
+  const { token: themeToken } = theme.useToken();
   const [routes, setRoutes] = useState<Route[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState(() => {
@@ -92,7 +48,7 @@ export default function Routes() {
       }
     } catch (error) {
       console.error('Failed to load routes:', error);
-      toast.error(t.routes.loadFailed);
+      message.error(t.routes.loadFailed);
     } finally {
       setLoading(false);
     }
@@ -102,7 +58,6 @@ export default function Routes() {
     loadData();
   }, [loadData]);
 
-  // Toggle route enabled/disabled via approve/unapprove
   const handleToggle = async (route: Route) => {
     try {
       if (route.enabled) {
@@ -110,12 +65,11 @@ export default function Routes() {
       } else {
         await routesAPI.enable(route.machine_id, route.destination);
       }
-
       const isExit = isExitNode(route.destination);
-      toast.success(isExit ? (route.enabled ? t.routes.exitNodeDisabled : t.routes.exitNodeEnabled) : (route.enabled ? t.routes.routeDisabled : t.routes.routeEnabled));
+      message.success(isExit ? (route.enabled ? t.routes.exitNodeDisabled : t.routes.exitNodeEnabled) : (route.enabled ? t.routes.routeDisabled : t.routes.routeEnabled));
       loadData();
     } catch (error: any) {
-      toast.error(error.message || t.common.errors.operationFailed);
+      message.error(error.message || t.common.errors.operationFailed);
     }
   };
 
@@ -131,14 +85,9 @@ export default function Routes() {
       );
       if (!matchesSearch) return false;
     }
-
-    if (filterDevice !== 'all' && route.machine_name !== filterDevice) {
-      return false;
-    }
-
+    if (filterDevice !== 'all' && route.machine_name !== filterDevice) return false;
     if (filterStatus === 'enabled' && !route.enabled) return false;
     if (filterStatus === 'disabled' && route.enabled) return false;
-
     return true;
   });
 
@@ -146,206 +95,113 @@ export default function Routes() {
     total: routes.length,
     enabled: routes.filter(r => r.enabled).length,
     disabled: routes.filter(r => !r.enabled).length,
-    exitNodes: routes.filter(r => isExitNode(r.destination)).length / 2, // IPv4 and IPv6 count as 1
+    exitNodes: Math.floor(routes.filter(r => isExitNode(r.destination)).length / 2),
   };
+
+  const columns: ColumnsType<Route> = [
+    {
+      title: t.routes.routePrefix,
+      dataIndex: 'destination',
+      key: 'destination',
+      render: (dest: string) => (
+        <Tag style={{ fontFamily: 'monospace' }}>{dest}</Tag>
+      ),
+    },
+    {
+      title: t.routes.publishUser,
+      dataIndex: 'user_name',
+      key: 'user_name',
+      render: (name: string) => (
+        <span><UserOutlined style={{ marginRight: 6, color: themeToken.colorTextSecondary }} />{name || '-'}</span>
+      ),
+    },
+    {
+      title: t.routes.device,
+      dataIndex: 'machine_name',
+      key: 'machine_name',
+      render: (name: string) => (
+        <span><LaptopOutlined style={{ marginRight: 6, color: themeToken.colorTextSecondary }} />{name}</span>
+      ),
+    },
+    {
+      title: t.routes.status,
+      dataIndex: 'enabled',
+      key: 'enabled',
+      render: (enabled: boolean) => enabled
+        ? <Tag icon={<CheckCircleOutlined />} color="success">{t.routes.enabled}</Tag>
+        : <Tag icon={<CloseCircleOutlined />} color="default">{t.routes.disabled}</Tag>,
+    },
+    {
+      title: t.routes.actions,
+      key: 'actions',
+      align: 'right',
+      render: (_: any, route: Route) => (
+        <Switch checked={route.enabled} onChange={() => handleToggle(route)} size="small" />
+      ),
+    },
+  ];
 
   return (
     <DashboardLayout>
-      <TooltipProvider>
-        <div className="space-y-6 animate-in fade-in duration-500">
-          {/* Page Header */}
-          <div className="flex justify-between items-center">
-            <div>
-              <h1 className="text-2xl font-bold text-foreground">{t.routes.title}</h1>
-              <p className="text-muted-foreground mt-1">{t.routes.description}</p>
-            </div>
-            <Button variant="outline" onClick={loadData} disabled={loading}>
-              <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-              {t.common.actions.refresh}
-            </Button>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+        {/* Page Header */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+          <div>
+            <Title level={4} style={{ margin: 0 }}>{t.routes.title}</Title>
+            <Text type="secondary">{t.routes.description}</Text>
           </div>
-
-          {/* Stats */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <Card className="p-5 hover:shadow-lg transition-shadow">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">{t.routes.totalRoutes}</p>
-                  <p className="text-2xl font-bold mt-1">{stats.total}</p>
-                </div>
-                <RouteIcon className="h-8 w-8 text-blue-500 opacity-80" />
-              </div>
-            </Card>
-            <Card className="p-5 hover:shadow-lg transition-shadow">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">{t.routes.enabled}</p>
-                  <p className="text-2xl font-bold mt-1 text-green-600">{stats.enabled}</p>
-                </div>
-                <CheckCircle2 className="h-8 w-8 text-green-500 opacity-80" />
-              </div>
-            </Card>
-            <Card className="p-5 hover:shadow-lg transition-shadow">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">{t.routes.disabled}</p>
-                  <p className="text-2xl font-bold mt-1 text-gray-500">{stats.disabled}</p>
-                </div>
-                <XCircle className="h-8 w-8 text-gray-400 opacity-80" />
-              </div>
-            </Card>
-            <Card className="p-5 hover:shadow-lg transition-shadow">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">Exit Nodes</p>
-                  <p className="text-2xl font-bold mt-1 text-purple-600">{Math.floor(stats.exitNodes)}</p>
-                </div>
-                <Globe className="h-8 w-8 text-purple-500 opacity-80" />
-              </div>
-            </Card>
-          </div>
-
-          {/* Table Card */}
-          <Card className="gap-0 p-0">
-            {/* Filters */}
-            <div className="flex flex-wrap items-center gap-4 px-6 py-5">
-              <div className="relative flex-1 min-w-[200px] max-w-sm">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder={t.routes.searchPlaceholder}
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-10"
-                />
-              </div>
-              
-              <Select value={filterDevice} onValueChange={setFilterDevice}>
-                <SelectTrigger className="w-[180px]">
-                  <SelectValue placeholder={t.routes.filterDevice} />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">{t.routes.allDevices}</SelectItem>
-                  {devices.map(device => (
-                    <SelectItem key={device} value={device}>{device}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-
-              <Select value={filterStatus} onValueChange={setFilterStatus}>
-                <SelectTrigger className="w-[150px]">
-                  <SelectValue placeholder={t.routes.filterStatus} />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">{t.routes.allStatus}</SelectItem>
-                  <SelectItem value="enabled">{t.routes.enabled}</SelectItem>
-                  <SelectItem value="disabled">{t.routes.disabled}</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Table */}
-            <div className="px-6 pb-2">
-            <Table>
-              <TableHeader>
-                <TableRow className="hover:bg-transparent border-t border-b">
-                  <TableHead className="text-muted-foreground font-medium">{t.routes.routePrefix}</TableHead>
-                  <TableHead className="text-muted-foreground font-medium">{t.routes.publishUser}</TableHead>
-                  <TableHead className="text-muted-foreground font-medium">{t.routes.device}</TableHead>
-                  <TableHead className="text-muted-foreground font-medium">{t.routes.status}</TableHead>
-                  <TableHead className="text-muted-foreground font-medium text-right">{t.routes.actions}</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {loading ? (
-                  <TableRow>
-                    <TableCell colSpan={5} className="text-center py-12 text-muted-foreground">
-                      <RefreshCw className="h-6 w-6 animate-spin mx-auto mb-2" />
-                      {t.common.status.loading}
-                    </TableCell>
-                  </TableRow>
-                ) : filteredRoutes.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={5} className="text-center py-12 text-muted-foreground">
-                      <Network className="h-12 w-12 mx-auto mb-4 text-muted-foreground/50" />
-                      <p className="text-lg font-medium">{t.routes.noData}</p>
-                      <p className="text-sm mt-1">
-                        {routes.length === 0
-                          ? t.routes.noRoutes
-                          : t.routes.noMatch}
-                      </p>
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  <AnimatePresence>
-                    {filteredRoutes.map((route) => {
-                      return (
-                        <motion.tr
-                          key={route.id}
-                          initial={{ opacity: 0 }}
-                          animate={{ opacity: 1 }}
-                          exit={{ opacity: 0 }}
-                          className="border-b last:border-b-0 hover:bg-transparent"
-                        >
-                          {/* 路由前缀 */}
-                          <TableCell className="py-4">
-                            <span className="inline-block text-sm text-foreground bg-slate-100 dark:bg-slate-800 px-3 py-1 rounded border border-slate-200 dark:border-slate-700">
-                              {route.destination}
-                            </span>
-                          </TableCell>
-                          
-                          {/* 发布用户 */}
-                          <TableCell className="py-4">
-                            <div className="flex items-center gap-2">
-                              <User className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                              <div>
-                                <p className="font-medium text-foreground">
-                                  {route.user_name || '-'}
-                                </p>
-                              </div>
-                            </div>
-                          </TableCell>
-                          
-                          {/* 所在设备 */}
-                          <TableCell className="py-4">
-                            <div className="flex items-center gap-2">
-                              <Laptop className="h-4 w-4 text-muted-foreground" />
-                              <span>{route.machine_name}</span>
-                            </div>
-                          </TableCell>
-                          
-                          {/* 状态 */}
-                          <TableCell className="py-4">
-                            {route.enabled ? (
-                              <Badge className="bg-green-500 hover:bg-green-500 text-white">
-                                <CheckCircle2 className="h-3 w-3 mr-1" />
-                                {t.routes.enabled}
-                              </Badge>
-                            ) : (
-                              <Badge variant="secondary" className="bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300">
-                                <XCircle className="h-3 w-3 mr-1" />
-                                {t.routes.disabled}
-                              </Badge>
-                            )}
-                          </TableCell>
-
-                          {/* 操作 */}
-                          <TableCell className="py-4 text-right">
-                            <Switch
-                              checked={route.enabled}
-                              onCheckedChange={() => handleToggle(route)}
-                            />
-                          </TableCell>
-                        </motion.tr>
-                      );
-                    })}
-                  </AnimatePresence>
-                )}
-              </TableBody>
-            </Table>
-            </div>
-          </Card>
+          <Button icon={<ReloadOutlined spin={loading} />} onClick={loadData} loading={loading}>
+            {t.common.actions.refresh}
+          </Button>
         </div>
-      </TooltipProvider>
+
+        {/* Stats */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 16 }}>
+          <Card hoverable><Statistic title={t.routes.totalRoutes} value={stats.total} prefix={<NodeIndexOutlined />} /></Card>
+          <Card hoverable><Statistic title={t.routes.enabled} value={stats.enabled} valueStyle={{ color: '#52c41a' }} prefix={<CheckCircleOutlined />} /></Card>
+          <Card hoverable><Statistic title={t.routes.disabled} value={stats.disabled} prefix={<CloseCircleOutlined />} /></Card>
+          <Card hoverable><Statistic title="Exit Nodes" value={stats.exitNodes} valueStyle={{ color: '#722ed1' }} prefix={<GlobalOutlined />} /></Card>
+        </div>
+
+        {/* Table Card */}
+        <Card>
+          {/* Filters */}
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginBottom: 16 }}>
+            <Input
+              placeholder={t.routes.searchPlaceholder}
+              prefix={<SearchOutlined />}
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              style={{ flex: 1, minWidth: 200, maxWidth: 360 }}
+              allowClear
+            />
+            <Select value={filterDevice} onChange={setFilterDevice} style={{ width: 180 }}
+              options={[
+                { value: 'all', label: t.routes.allDevices },
+                ...devices.map(d => ({ value: d, label: d })),
+              ]}
+            />
+            <Select value={filterStatus} onChange={setFilterStatus} style={{ width: 150 }}
+              options={[
+                { value: 'all', label: t.routes.allStatus },
+                { value: 'enabled', label: t.routes.enabled },
+                { value: 'disabled', label: t.routes.disabled },
+              ]}
+            />
+          </div>
+
+          <Table
+            columns={columns}
+            dataSource={filteredRoutes}
+            rowKey="id"
+            loading={loading}
+            pagination={false}
+            locale={{
+              emptyText: routes.length === 0 ? t.routes.noRoutes : t.routes.noMatch,
+            }}
+          />
+        </Card>
+      </div>
     </DashboardLayout>
   );
 }

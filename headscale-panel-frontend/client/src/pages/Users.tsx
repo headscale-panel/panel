@@ -1,69 +1,45 @@
 import { useEffect, useMemo, useState } from 'react';
-import { toast } from 'sonner';
-import { AnimatePresence, motion } from 'framer-motion';
 import { useLocation } from 'wouter';
 import {
-  ChevronDown,
-  ChevronRight,
-  Clock,
-  Copy,
-  Edit,
-  Key,
-  Laptop,
-  Loader2,
-  Monitor,
-  Plus,
-  RefreshCw,
-  Route,
-  Search,
-  Terminal,
-  Trash2,
-  User,
-  UserCheck,
-  UserPlus,
-  Users,
-  UsersRound,
-  Wifi,
-  WifiOff,
-} from 'lucide-react';
-
-import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
+  ClockCircleOutlined,
+  CopyOutlined,
+  DeleteOutlined,
+  DesktopOutlined,
+  DownOutlined,
+  EditOutlined,
+  KeyOutlined,
+  LaptopOutlined,
+  LoadingOutlined,
+  NodeIndexOutlined,
+  PlusOutlined,
+  ReloadOutlined,
+  RightOutlined,
+  SearchOutlined,
+  TeamOutlined,
+  UserAddOutlined,
+  UserOutlined,
+  UsergroupAddOutlined,
+  WifiOutlined,
+} from '@ant-design/icons';
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import {
+  Avatar,
+  Button,
+  Card,
+  Dropdown,
+  Input,
+  Modal,
   Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import { Switch } from '@/components/ui/switch';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import {
+  Space,
+  Spin,
+  Switch,
+  Tabs,
+  Tag,
   Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/tooltip';
+  Typography,
+  message,
+  theme,
+} from 'antd';
 import { loadUsersPageData } from '@/lib/page-data';
-import { cn } from '@/lib/utils';
 import DashboardLayout from '@/components/DashboardLayout';
 import { devicesAPI, groupsAPI, systemUsersAPI, usersAPI } from '@/lib/api';
 import type {
@@ -73,6 +49,8 @@ import type {
   OIDCStatusData,
 } from '@/lib/normalizers';
 import { useTranslation } from '@/i18n/index';
+
+const { Text, Title } = Typography;
 
 interface ACLGroup {
   name: string;
@@ -89,20 +67,11 @@ type TreeSelection =
   | { type: 'group'; groupId: number }
   | { type: 'user'; userId: number; groupId?: number };
 
-const selectionKey = (selection: TreeSelection) => {
-  switch (selection.type) {
-    case 'group':
-      return `group:${selection.groupId}`;
-    case 'user':
-      return `user:${selection.userId}`;
-    default:
-      return selection.type;
-  }
-};
 
 export default function UsersPage() {
   const t = useTranslation();
   const [, setLocation] = useLocation();
+  const { token } = theme.useToken();
 
   const [users, setUsers] = useState<UserData[]>([]);
   const [devices, setDevices] = useState<DeviceData[]>([]);
@@ -183,7 +152,7 @@ export default function UsersPage() {
         return next;
       });
     } catch (error: any) {
-      toast.error(t.users.loadFailed + (error.message || t.common.errors.unknownError));
+      message.error(t.users.loadFailed + (error.message || t.common.errors.unknownError));
     } finally {
       setLoading(false);
     }
@@ -347,7 +316,7 @@ export default function UsersPage() {
 
   const handleCreateUser = async () => {
     if (!newUser.username || (oidcStatus.password_required && !newUser.password)) {
-      toast.error(oidcStatus.password_required ? t.users.requiredFields : t.users.requiredFieldsOidc);
+      message.error(oidcStatus.password_required ? t.users.requiredFields : t.users.requiredFieldsOidc);
       return;
     }
 
@@ -360,12 +329,12 @@ export default function UsersPage() {
         display_name: newUser.display_name,
         headscale_name: newUser.username,
       });
-      toast.success(t.users.createUserSuccess.replace('{username}', newUser.username));
+      message.success(t.users.createUserSuccess.replace('{username}', newUser.username));
       setCreateUserDialogOpen(false);
       setNewUser({ username: '', email: '', password: '', group_id: '', display_name: '' });
       loadData();
     } catch (error: any) {
-      toast.error(t.users.createFailed + (error.message || t.common.errors.systemError));
+      message.error(t.users.createFailed + (error.message || t.common.errors.systemError));
     }
   };
 
@@ -393,51 +362,55 @@ export default function UsersPage() {
         display_name: editUser.display_name,
         password: editUser.password || undefined,
       });
-      toast.success(t.users.updateUserSuccess);
+      message.success(t.users.updateUserSuccess);
       setEditUserDialogOpen(false);
       setSelectedUser(null);
       loadData();
     } catch (error: any) {
-      toast.error(t.users.updateFailed + (error.message || t.common.errors.systemError));
+      message.error(t.users.updateFailed + (error.message || t.common.errors.systemError));
     }
   };
 
-  const handleDeleteUser = async (user: UserData) => {
+  const handleDeleteUser = (user: UserData) => {
     if (user.provider === 'oidc') {
-      toast.error(t.users.oidcManagedDeleteBlocked);
+      message.error(t.users.oidcManagedDeleteBlocked);
       return;
     }
 
-    if (!confirm(t.users.confirmDeleteUser.replace('{username}', user.username))) {
-      return;
-    }
-
-    try {
-      await systemUsersAPI.delete(user.ID);
-      toast.success(t.users.deleteSuccess);
-      if (selectedNode.type === 'user' && selectedNode.userId === user.ID) {
-        setSelectedNode(selectedNode.groupId ? { type: 'group', groupId: selectedNode.groupId } : { type: 'all' });
-      }
-      loadData();
-    } catch (error: any) {
-      toast.error(t.users.deleteFailed + (error.message || t.common.errors.systemError));
-    }
+    Modal.confirm({
+      title: t.users.confirmDeleteUser.replace('{username}', user.username),
+      okText: t.common.actions.delete,
+      okButtonProps: { danger: true },
+      cancelText: t.common.actions.cancel,
+      onOk: async () => {
+        try {
+          await systemUsersAPI.delete(user.ID);
+          message.success(t.users.deleteSuccess);
+          if (selectedNode.type === 'user' && selectedNode.userId === user.ID) {
+            setSelectedNode(selectedNode.groupId ? { type: 'group', groupId: selectedNode.groupId } : { type: 'all' });
+          }
+          loadData();
+        } catch (error: any) {
+          message.error(t.users.deleteFailed + (error.message || t.common.errors.systemError));
+        }
+      },
+    });
   };
 
   const handleCreateGroup = async () => {
     if (!newGroupName.trim()) {
-      toast.error(t.users.groupNameRequired);
+      message.error(t.users.groupNameRequired);
       return;
     }
 
     try {
       await groupsAPI.create({ name: newGroupName.trim() });
-      toast.success(t.users.createGroupSuccess);
+      message.success(t.users.createGroupSuccess);
       setCreateGroupDialogOpen(false);
       setNewGroupName('');
       loadData();
     } catch (error: any) {
-      toast.error(t.users.createFailed + (error.message || t.common.errors.systemError));
+      message.error(t.users.createFailed + (error.message || t.common.errors.systemError));
     }
   };
 
@@ -449,45 +422,49 @@ export default function UsersPage() {
 
   const handleUpdateGroup = async () => {
     if (!selectedGroup || !editGroupName.trim()) {
-      toast.error(t.users.groupNameRequired);
+      message.error(t.users.groupNameRequired);
       return;
     }
 
     try {
       await groupsAPI.update({ id: selectedGroup.ID, name: editGroupName.trim() });
-      toast.success(t.users.updateGroupSuccess);
+      message.success(t.users.updateGroupSuccess);
       setEditGroupDialogOpen(false);
       setSelectedGroup(null);
       loadData();
     } catch (error: any) {
-      toast.error(t.users.updateFailed + (error.message || t.common.errors.systemError));
+      message.error(t.users.updateFailed + (error.message || t.common.errors.systemError));
     }
   };
 
-  const handleDeleteGroup = async (group: Group) => {
+  const handleDeleteGroup = (group: Group) => {
     const memberCount = getUsersByGroup(group).length;
     if (memberCount > 0) {
-      toast.error(t.users.cannotDeleteGroup.replace('{count}', String(memberCount)));
+      message.error(t.users.cannotDeleteGroup.replace('{count}', String(memberCount)));
       return;
     }
 
-    if (!confirm(t.users.confirmDeleteGroup.replace('{name}', group.name))) {
-      return;
-    }
-
-    try {
-      await groupsAPI.delete(group.ID);
-      toast.success(t.users.deleteSuccess);
-      if (
-        (selectedNode.type === 'group' && selectedNode.groupId === group.ID) ||
-        (selectedNode.type === 'user' && selectedNode.groupId === group.ID)
-      ) {
-        setSelectedNode({ type: 'all' });
-      }
-      loadData();
-    } catch (error: any) {
-      toast.error(t.users.deleteFailed + (error.message || t.common.errors.systemError));
-    }
+    Modal.confirm({
+      title: t.users.confirmDeleteGroup.replace('{name}', group.name),
+      okText: t.common.actions.delete,
+      okButtonProps: { danger: true },
+      cancelText: t.common.actions.cancel,
+      onOk: async () => {
+        try {
+          await groupsAPI.delete(group.ID);
+          message.success(t.users.deleteSuccess);
+          if (
+            (selectedNode.type === 'group' && selectedNode.groupId === group.ID) ||
+            (selectedNode.type === 'user' && selectedNode.groupId === group.ID)
+          ) {
+            setSelectedNode({ type: 'all' });
+          }
+          loadData();
+        } catch (error: any) {
+          message.error(t.users.deleteFailed + (error.message || t.common.errors.systemError));
+        }
+      },
+    });
   };
 
   const handleViewDevices = (user: UserData) => {
@@ -500,7 +477,7 @@ export default function UsersPage() {
 
   const handleCopyIP = async (ip: string) => {
     await navigator.clipboard.writeText(ip);
-    toast.success(t.devices.ipCopied);
+    message.success(t.devices.ipCopied);
   };
 
   const openRenameDeviceDialog = (device: DeviceData) => {
@@ -522,27 +499,31 @@ export default function UsersPage() {
 
     try {
       await devicesAPI.rename(selectedDevice.id, newDeviceName.trim());
-      toast.success(t.devices.renameSuccess);
+      message.success(t.devices.renameSuccess);
       setRenameDeviceDialogOpen(false);
       setSelectedDevice(null);
       loadData();
     } catch (error: any) {
-      toast.error(t.devices.renameFailed + (error.message || t.common.errors.unknownError));
+      message.error(t.devices.renameFailed + (error.message || t.common.errors.unknownError));
     }
   };
 
-  const handleDeleteDevice = async (device: DeviceData) => {
-    if (!confirm(t.devices.confirmDelete.replace('{name}', device.given_name || device.name))) {
-      return;
-    }
-
-    try {
-      await devicesAPI.delete(device.id);
-      toast.success(t.devices.deleteSuccess);
-      loadData();
-    } catch (error: any) {
-      toast.error(t.devices.deleteFailed + (error.message ? `: ${error.message}` : ''));
-    }
+  const handleDeleteDevice = (device: DeviceData) => {
+    Modal.confirm({
+      title: t.devices.confirmDelete.replace('{name}', device.given_name || device.name),
+      okText: t.common.actions.delete,
+      okButtonProps: { danger: true },
+      cancelText: t.common.actions.cancel,
+      onOk: async () => {
+        try {
+          await devicesAPI.delete(device.id);
+          message.success(t.devices.deleteSuccess);
+          loadData();
+        } catch (error: any) {
+          message.error(t.devices.deleteFailed + (error.message ? `: ${error.message}` : ''));
+        }
+      },
+    });
   };
 
   const openAddDeviceDialog = (user?: UserData | null) => {
@@ -555,7 +536,7 @@ export default function UsersPage() {
     setRegisteringNode(false);
     setSelectedUser(user || null);
     if (!headscaleName) {
-      toast.error(t.devices.selectUserFirst);
+      message.error(t.devices.selectUserFirst);
       return;
     }
     setAddDeviceDialogOpen(true);
@@ -564,7 +545,7 @@ export default function UsersPage() {
   const handleGenerateDeviceKey = async () => {
     const owner = selectedTreeUser?.headscale_name || selectedTreeUser?.username;
     if (!owner) {
-      toast.error(t.devices.selectUserFirst);
+      message.error(t.devices.selectUserFirst);
       return;
     }
 
@@ -573,31 +554,31 @@ export default function UsersPage() {
       const res: any = await usersAPI.createPreAuthKey(owner, addDeviceReusable, addDeviceEphemeral, expiration);
       const key = res?.preAuthKey?.key || res?.key || res?.preauthkey?.key || '';
       if (!key) {
-        toast.error(t.devices.keyGenerateFailed);
+        message.error(t.devices.keyGenerateFailed);
         return;
       }
       setGeneratedKey(key);
-      toast.success(t.devices.keyGenerated);
+      message.success(t.devices.keyGenerated);
     } catch (error: any) {
-      toast.error(t.devices.keyGenerateFailed + (error.message ? `: ${error.message}` : ''));
+      message.error(t.devices.keyGenerateFailed + (error.message ? `: ${error.message}` : ''));
     }
   };
 
   const handleRegisterDevice = async () => {
     const owner = selectedTreeUser?.headscale_name || selectedTreeUser?.username;
     if (!owner || !machineKey.trim()) {
-      toast.error(t.devices.machineKeyRequired);
+      message.error(t.devices.machineKeyRequired);
       return;
     }
 
     setRegisteringNode(true);
     try {
       await devicesAPI.registerNode(owner, machineKey.trim());
-      toast.success(t.devices.registerNodeSuccess);
+      message.success(t.devices.registerNodeSuccess);
       setAddDeviceDialogOpen(false);
       loadData();
     } catch (error: any) {
-      toast.error(t.devices.registerNodeFailed + (error.message ? `: ${error.message}` : ''));
+      message.error(t.devices.registerNodeFailed + (error.message ? `: ${error.message}` : ''));
     } finally {
       setRegisteringNode(false);
     }
@@ -606,69 +587,50 @@ export default function UsersPage() {
   const renderDeviceCard = (device: DeviceData, user: UserData) => (
     <div
       key={device.id}
-      className="group/device flex items-center gap-3 rounded-lg border border-border/50 bg-background px-3 py-2.5 transition-colors hover:border-border hover:shadow-sm"
+      style={{
+        display: 'flex', alignItems: 'center', gap: 12,
+        borderRadius: token.borderRadius, border: `1px solid ${token.colorBorderSecondary}`,
+        background: token.colorBgContainer, padding: '10px 12px',
+      }}
     >
-      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted/60">
-        <Monitor className="h-4 w-4 text-muted-foreground" />
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 32, height: 32, borderRadius: 8, background: token.colorBgLayout, flexShrink: 0 }}>
+        <DesktopOutlined style={{ color: token.colorTextSecondary }} />
       </div>
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-medium text-foreground truncate">{device.given_name || device.name}</span>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <Text strong style={{ fontSize: 13 }}>{device.given_name || device.name}</Text>
           {device.online ? (
-            <span className="inline-flex items-center gap-1 text-[11px] text-green-600 dark:text-green-400">
-              <Wifi className="h-3 w-3" />
-              {t.common.status.online}
-            </span>
+            <Tag color="success" style={{ margin: 0, fontSize: 11 }}><WifiOutlined /> {t.common.status.online}</Tag>
           ) : (
-            <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
-              <WifiOff className="h-3 w-3" />
-              {t.common.status.offline}
-            </span>
+            <Tag style={{ margin: 0, fontSize: 11 }}>{t.common.status.offline}</Tag>
           )}
         </div>
-        <div className="mt-1 flex flex-wrap items-center gap-1.5">
+        <div style={{ marginTop: 4, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6 }}>
           {device.ip_addresses.map((ip) => (
-            <button
+            <Tag
               key={ip}
-              type="button"
-              className="inline-flex items-center gap-1 rounded bg-muted/80 px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary"
+              style={{ cursor: 'pointer', fontFamily: 'monospace', fontSize: 11, margin: 0 }}
               onClick={() => handleCopyIP(ip)}
             >
-              {ip}
-              <Copy className="h-2.5 w-2.5 opacity-0 group-hover/device:opacity-60" />
-            </button>
+              {ip} <CopyOutlined style={{ fontSize: 10 }} />
+            </Tag>
           ))}
           {device.last_seen && (
-            <span className="ml-1 inline-flex items-center gap-1 text-[11px] text-muted-foreground">
-              <Clock className="h-2.5 w-2.5" />
+            <Text type="secondary" style={{ fontSize: 11 }}>
+              <ClockCircleOutlined style={{ marginRight: 4, fontSize: 10 }} />
               {new Date(device.last_seen).toLocaleDateString()}
-            </span>
+            </Text>
           )}
         </div>
       </div>
-      <div className="flex items-center gap-0.5 opacity-0 transition-opacity group-hover/device:opacity-100">
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openRenameDeviceDialog(device)}>
-              <Edit className="h-3 w-3" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent side="bottom">{t.devices.renameDialogTitle}</TooltipContent>
+      <Space size={4}>
+        <Tooltip title={t.devices.renameDialogTitle}>
+          <Button type="text" size="small" icon={<EditOutlined />} onClick={() => openRenameDeviceDialog(device)} />
         </Tooltip>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7 text-destructive/60 hover:text-destructive hover:bg-destructive/10"
-              onClick={() => handleDeleteDevice(device)}
-            >
-              <Trash2 className="h-3 w-3" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent side="bottom">{t.common.actions.delete}</TooltipContent>
+        <Tooltip title={t.common.actions.delete}>
+          <Button type="text" size="small" danger icon={<DeleteOutlined />} onClick={() => handleDeleteDevice(device)} />
         </Tooltip>
-      </div>
+      </Space>
     </div>
   );
 
@@ -678,126 +640,79 @@ export default function UsersPage() {
     const isOnline = onlineUsers.has(user.headscale_name || user.username);
 
     return (
-      <motion.div
-        key={user.ID}
-        initial={{ opacity: 0, y: 6 }}
-        animate={{ opacity: 1, y: 0 }}
-        exit={{ opacity: 0, y: -6 }}
-        transition={{ duration: 0.18, delay: Math.min(index * 0.02, 0.2) }}
-      >
-        <div className="flex items-center gap-3 px-4 py-3 hover:bg-muted/30 transition-colors group/row">
-          <button
-            className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
+      <div key={user.ID}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px' }}>
+          <Button
+            type="text"
+            size="small"
+            style={{ width: 20, height: 20, padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            icon={isDevicesExpanded ? <DownOutlined style={{ fontSize: 10 }} /> : <RightOutlined style={{ fontSize: 10 }} />}
             onClick={() => toggleUserDevices(user.ID)}
-          >
-            {isDevicesExpanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
-          </button>
+          />
 
-          <div className="relative shrink-0">
-            <Avatar className="h-9 w-9">
-              <AvatarFallback className="bg-muted text-muted-foreground text-xs font-medium">
-                {(user.display_name || user.username).slice(0, 2).toUpperCase()}
-              </AvatarFallback>
+          <div style={{ position: 'relative', flexShrink: 0 }}>
+            <Avatar size={36} style={{ background: token.colorBgLayout, color: token.colorTextSecondary, fontSize: 12 }}>
+              {(user.display_name || user.username).slice(0, 2).toUpperCase()}
             </Avatar>
             <span
-              className={cn(
-                'absolute -bottom-0.5 -right-0.5 block h-3 w-3 rounded-full border-2 border-background',
-                isOnline ? 'bg-green-500' : 'bg-gray-300 dark:bg-gray-600'
-              )}
+              style={{
+                position: 'absolute', bottom: -2, right: -2,
+                width: 12, height: 12, borderRadius: '50%',
+                border: `2px solid ${token.colorBgContainer}`,
+                background: isOnline ? '#52c41a' : token.colorBorderSecondary,
+              }}
             />
           </div>
 
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-medium text-foreground truncate">{user.display_name || user.username}</span>
-              <span
-                className={cn(
-                  'text-[11px] px-1.5 py-px rounded font-normal',
-                  user.provider === 'oidc'
-                    ? 'text-blue-600 bg-blue-500/8 dark:text-blue-400 dark:bg-blue-500/15'
-                    : user.provider === 'headscale'
-                      ? 'text-teal-600 bg-teal-500/8 dark:text-teal-400 dark:bg-teal-500/15'
-                      : 'text-gray-500 bg-gray-500/8 dark:text-gray-400 dark:bg-gray-500/15'
-                )}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Text strong style={{ fontSize: 13 }}>{user.display_name || user.username}</Text>
+              <Tag
+                color={user.provider === 'oidc' ? 'blue' : user.provider === 'headscale' ? 'cyan' : undefined}
+                style={{ margin: 0, fontSize: 11 }}
               >
                 {user.provider === 'oidc' ? 'OIDC' : user.provider === 'headscale' ? 'Headscale' : t.users.providerLocal}
-              </span>
-              <span className="text-[11px] text-muted-foreground tabular-nums">
-                <Laptop className="inline h-3 w-3 mr-0.5 -mt-px" />
+              </Tag>
+              <Text type="secondary" style={{ fontSize: 11 }}>
+                <LaptopOutlined style={{ marginRight: 2 }} />
                 {userDevices.length}
-              </span>
+              </Text>
             </div>
-            <p className="text-xs text-muted-foreground truncate mt-px">{user.email || user.username}</p>
+            <Text type="secondary" style={{ fontSize: 12 }}>{user.email || user.username}</Text>
           </div>
 
-          <div className="flex items-center gap-0.5 opacity-0 group-hover/row:opacity-100 transition-opacity">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground" onClick={() => openAddDeviceDialog(user)}>
-                  <Plus className="w-3.5 h-3.5" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">{t.devices.addDevice}</TooltipContent>
+          <Space size={4}>
+            <Tooltip title={t.devices.addDevice}>
+              <Button type="text" size="small" icon={<PlusOutlined />} onClick={() => openAddDeviceDialog(user)} />
             </Tooltip>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground" onClick={() => handleViewRoutes(user)}>
-                  <Route className="w-3.5 h-3.5" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">{t.users.viewRoutes}</TooltipContent>
+            <Tooltip title={t.users.viewRoutes}>
+              <Button type="text" size="small" icon={<NodeIndexOutlined />} onClick={() => handleViewRoutes(user)} />
             </Tooltip>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground" onClick={() => handleEditUser(user)}>
-                  <Edit className="w-3.5 h-3.5" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">{t.users.editUser}</TooltipContent>
+            <Tooltip title={t.users.editUser}>
+              <Button type="text" size="small" icon={<EditOutlined />} onClick={() => handleEditUser(user)} />
             </Tooltip>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7 text-destructive/60 hover:text-destructive hover:bg-destructive/10 disabled:text-muted-foreground disabled:hover:bg-transparent"
-                  onClick={() => handleDeleteUser(user)}
-                  disabled={user.provider === 'oidc'}
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">
-                {user.provider === 'oidc' ? t.users.oidcManagedDeleteBlocked : t.users.deleteUser}
-              </TooltipContent>
+            <Tooltip title={user.provider === 'oidc' ? t.users.oidcManagedDeleteBlocked : t.users.deleteUser}>
+              <Button type="text" size="small" danger icon={<DeleteOutlined />} onClick={() => handleDeleteUser(user)} disabled={user.provider === 'oidc'} />
             </Tooltip>
-          </div>
+          </Space>
         </div>
 
-        <AnimatePresence initial={false}>
-          {isDevicesExpanded && (
-            <motion.div
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: 'auto', opacity: 1 }}
-              exit={{ height: 0, opacity: 0 }}
-              transition={{ duration: 0.2 }}
-              className="overflow-hidden"
-            >
-              <div className="px-4 pb-3 pt-0">
-                <div className="ml-[52px] space-y-1.5">
-                  {userDevices.length === 0 ? (
-                    <div className="rounded-lg border border-dashed border-border/60 px-4 py-3 text-center text-xs text-muted-foreground">
-                      {t.users.noDevices}
-                    </div>
-                  ) : (
-                    userDevices.map((device) => renderDeviceCard(device, user))
-                  )}
-                </div>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </motion.div>
+        {isDevicesExpanded && (
+          <div style={{ padding: '0 16px 12px' }}>
+            <div style={{ marginLeft: 52 }}>
+              <Space direction="vertical" style={{ width: '100%' }} size={6}>
+                {userDevices.length === 0 ? (
+                  <div style={{ border: `1px dashed ${token.colorBorderSecondary}`, borderRadius: token.borderRadius, padding: '12px 16px', textAlign: 'center' }}>
+                    <Text type="secondary" style={{ fontSize: 12 }}>{t.users.noDevices}</Text>
+                  </div>
+                ) : (
+                  userDevices.map((device) => renderDeviceCard(device, user))
+                )}
+              </Space>
+            </div>
+          </div>
+        )}
+      </div>
     );
   };
 
@@ -807,105 +722,68 @@ export default function UsersPage() {
     const isSelected = selectedNode.type === 'group' && selectedNode.groupId === group.ID;
 
     return (
-      <div key={group.ID} className="rounded-xl border border-transparent hover:border-border/60 transition-colors">
-        <div className="group/item relative">
-          <button
-            className={cn(
-              'w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-left transition-colors text-sm',
-              isSelected ? 'bg-primary/10 text-primary font-medium' : 'text-foreground hover:bg-muted/60'
-            )}
+      <div key={group.ID}>
+        <div style={{ position: 'relative' }}>
+          <div
+            style={{
+              display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px',
+              borderRadius: token.borderRadius, cursor: 'pointer',
+              background: isSelected ? token.colorPrimaryBg : 'transparent',
+              color: isSelected ? token.colorPrimaryText : token.colorText,
+              fontWeight: isSelected ? 500 : 400, fontSize: 13,
+            }}
             onClick={() => selectNode({ type: 'group', groupId: group.ID })}
           >
             <span
-              className="flex h-5 w-5 items-center justify-center rounded-md hover:bg-background/80"
-              onClick={(event) => {
-                event.stopPropagation();
-                toggleGroupExpanded(group.ID);
-              }}
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 20, height: 20 }}
+              onClick={(e) => { e.stopPropagation(); toggleGroupExpanded(group.ID); }}
             >
-              {isExpanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+              {isExpanded ? <DownOutlined style={{ fontSize: 10 }} /> : <RightOutlined style={{ fontSize: 10 }} />}
             </span>
-            <UsersRound className="w-4 h-4 shrink-0 opacity-60" />
-            <span className="flex-1 truncate">{group.name}</span>
-            <span className="text-xs tabular-nums text-muted-foreground">{memberUsers.length}</span>
-          </button>
-          <div className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-0.5 opacity-0 group-hover/item:opacity-100 transition-opacity">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-6 w-6 text-muted-foreground hover:text-foreground"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    handleEditGroup(group);
-                  }}
-                >
-                  <Edit className="w-3 h-3" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="right">{t.common.actions.edit}</TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-6 w-6 text-destructive/60 hover:text-destructive hover:bg-destructive/10"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    handleDeleteGroup(group);
-                  }}
-                >
-                  <Trash2 className="w-3 h-3" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="right">{t.common.actions.delete}</TooltipContent>
-            </Tooltip>
+            <TeamOutlined style={{ opacity: 0.6 }} />
+            <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{group.name}</span>
+            <Text type="secondary" style={{ fontSize: 12 }}>{memberUsers.length}</Text>
+            <Space size={2} style={{ marginLeft: 4 }}>
+              <Tooltip title={t.common.actions.edit}>
+                <Button type="text" size="small" icon={<EditOutlined style={{ fontSize: 12 }} />} onClick={(e) => { e.stopPropagation(); handleEditGroup(group); }} style={{ width: 22, height: 22, padding: 0 }} />
+              </Tooltip>
+              <Tooltip title={t.common.actions.delete}>
+                <Button type="text" size="small" danger icon={<DeleteOutlined style={{ fontSize: 12 }} />} onClick={(e) => { e.stopPropagation(); handleDeleteGroup(group); }} style={{ width: 22, height: 22, padding: 0 }} />
+              </Tooltip>
+            </Space>
           </div>
         </div>
 
-        <AnimatePresence initial={false}>
-          {isExpanded && (
-            <motion.div
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: 'auto', opacity: 1 }}
-              exit={{ height: 0, opacity: 0 }}
-              transition={{ duration: 0.2 }}
-              className="overflow-hidden"
-            >
-              <div className="pb-2 pr-2 pl-10 space-y-1">
-                {memberUsers.map((user, index) => {
-                  const isUserSelected = selectedNode.type === 'user' && selectedNode.userId === user.ID;
-                  return (
-                    <motion.button
-                      key={user.ID}
-                      initial={{ opacity: 0, x: -6 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ duration: 0.18, delay: index * 0.02 }}
-                      className={cn(
-                        'w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left text-sm transition-colors',
-                        isUserSelected ? 'bg-primary/10 text-primary' : 'hover:bg-muted/60 text-muted-foreground hover:text-foreground'
-                      )}
-                      onClick={() => selectNode({ type: 'user', userId: user.ID, groupId: group.ID })}
-                    >
-                      <span
-                        className={cn(
-                          'h-2.5 w-2.5 rounded-full',
-                          onlineUsers.has(user.headscale_name || user.username) ? 'bg-green-500' : 'bg-gray-300 dark:bg-gray-600'
-                        )}
-                      />
-                      <span className="truncate">{user.display_name || user.username}</span>
-                    </motion.button>
-                  );
-                })}
-                {memberUsers.length === 0 && (
-                  <div className="px-3 py-2 text-xs text-muted-foreground">{t.users.noUsers}</div>
-                )}
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+        {isExpanded && (
+          <div style={{ paddingBottom: 8, paddingRight: 8, paddingLeft: 40 }}>
+            <Space direction="vertical" style={{ width: '100%' }} size={4}>
+              {memberUsers.map((user) => {
+                const isUserSelected = selectedNode.type === 'user' && selectedNode.userId === user.ID;
+                return (
+                  <div
+                    key={user.ID}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px',
+                      borderRadius: token.borderRadius, cursor: 'pointer', fontSize: 13,
+                      background: isUserSelected ? token.colorPrimaryBg : 'transparent',
+                      color: isUserSelected ? token.colorPrimaryText : token.colorTextSecondary,
+                    }}
+                    onClick={() => selectNode({ type: 'user', userId: user.ID, groupId: group.ID })}
+                  >
+                    <span style={{
+                      width: 10, height: 10, borderRadius: '50%',
+                      background: onlineUsers.has(user.headscale_name || user.username) ? '#52c41a' : token.colorBorderSecondary,
+                    }} />
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user.display_name || user.username}</span>
+                  </div>
+                );
+              })}
+              {memberUsers.length === 0 && (
+                <Text type="secondary" style={{ padding: '8px 12px', fontSize: 12 }}>{t.users.noUsers}</Text>
+              )}
+            </Space>
+          </div>
+        )}
       </div>
     );
   };
@@ -913,8 +791,8 @@ export default function UsersPage() {
   if (loading) {
     return (
       <DashboardLayout>
-        <div className="flex items-center justify-center h-64">
-          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', padding: 80 }}>
+          <Spin indicator={<LoadingOutlined style={{ fontSize: 32 }} />} />
         </div>
       </DashboardLayout>
     );
@@ -933,604 +811,430 @@ export default function UsersPage() {
 
   return (
     <DashboardLayout>
-      <TooltipProvider>
-        <div className="space-y-5 animate-fade-in">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-bold text-foreground">{t.users.title}</h1>
-              <p className="text-muted-foreground mt-1">{t.users.description}</p>
-            </div>
-            <div className="flex gap-2">
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button variant="outline" onClick={loadData} disabled={loading}>
-                    <RefreshCw className={cn('h-4 w-4', loading && 'animate-spin')} />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>{t.common.actions.refresh}</TooltipContent>
-              </Tooltip>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button>
-                    <Plus className="h-4 w-4 mr-2" />
-                    {t.users.new}
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem onClick={() => setCreateUserDialogOpen(true)}>
-                    <UserPlus className="w-4 h-4 mr-2" />
-                    {t.users.newUser}
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setCreateGroupDialogOpen(true)}>
-                    <UsersRound className="w-4 h-4 mr-2" />
-                    {t.users.newGroup}
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <Title level={4} style={{ margin: 0 }}>{t.users.title}</Title>
+            <Text type="secondary">{t.users.description}</Text>
           </div>
+          <Space>
+            <Tooltip title={t.common.actions.refresh}>
+              <Button icon={<ReloadOutlined spin={loading} />} onClick={loadData} disabled={loading} />
+            </Tooltip>
+            <Dropdown
+              menu={{
+                items: [
+                  { key: 'user', icon: <UserAddOutlined />, label: t.users.newUser, onClick: () => setCreateUserDialogOpen(true) },
+                  { key: 'group', icon: <UsergroupAddOutlined />, label: t.users.newGroup, onClick: () => setCreateGroupDialogOpen(true) },
+                ],
+              }}
+            >
+              <Button type="primary" icon={<PlusOutlined />}>{t.users.new}</Button>
+            </Dropdown>
+          </Space>
+        </div>
 
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-            <Card className="p-5 hover:shadow-lg transition-shadow">
-              <div className="flex items-center justify-between">
+        {/* Stats */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 16 }}>
+          {[
+            { label: t.users.totalUsers, value: users.length, icon: <TeamOutlined style={{ fontSize: 28, color: '#1677ff' }} /> },
+            { label: t.users.onlineUsers, value: onlineCount, icon: <WifiOutlined style={{ fontSize: 28, color: '#52c41a' }} /> },
+            { label: t.users.groups, value: groups.length, icon: <UsergroupAddOutlined style={{ fontSize: 28, color: '#722ed1' }} /> },
+            { label: t.users.grouped, value: users.filter((u) => aclGroups.some((g) => userMatchesAclGroup(u, g.name))).length, icon: <UserAddOutlined style={{ fontSize: 28, color: '#52c41a' }} /> },
+            { label: t.users.ungrouped, value: ungroupedUsers.length, icon: <UserOutlined style={{ fontSize: 28, color: token.colorTextSecondary }} /> },
+          ].map((stat, i) => (
+            <Card key={i} size="small" style={{ padding: 4 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div>
-                  <p className="text-sm text-muted-foreground">{t.users.totalUsers}</p>
-                  <p className="text-2xl font-bold mt-1">{users.length}</p>
+                  <Text type="secondary" style={{ fontSize: 13 }}>{stat.label}</Text>
+                  <div style={{ fontSize: 24, fontWeight: 700, marginTop: 4 }}>{stat.value}</div>
                 </div>
-                <Users className="h-8 w-8 opacity-80 text-blue-500" />
+                {stat.icon}
               </div>
             </Card>
-            <Card className="p-5 hover:shadow-lg transition-shadow">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">{t.users.onlineUsers}</p>
-                  <p className="text-2xl font-bold mt-1">{onlineCount}</p>
-                </div>
-                <UserCheck className="h-8 w-8 opacity-80 text-green-500" />
-              </div>
-            </Card>
-            <Card className="p-5 hover:shadow-lg transition-shadow">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">{t.users.groups}</p>
-                  <p className="text-2xl font-bold mt-1">{groups.length}</p>
-                </div>
-                <UsersRound className="h-8 w-8 opacity-80 text-violet-500" />
-              </div>
-            </Card>
-            <Card className="p-5 hover:shadow-lg transition-shadow">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">{t.users.grouped}</p>
-                  <p className="text-2xl font-bold mt-1">{users.filter((u) => aclGroups.some((g) => userMatchesAclGroup(u, g.name))).length}</p>
-                </div>
-                <UserPlus className="h-8 w-8 opacity-80 text-emerald-500" />
-              </div>
-            </Card>
-            <Card className="p-5 hover:shadow-lg transition-shadow">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">{t.users.ungrouped}</p>
-                  <p className="text-2xl font-bold mt-1">{ungroupedUsers.length}</p>
-                </div>
-                <User className="h-8 w-8 opacity-80 text-gray-500" />
-              </div>
-            </Card>
-          </div>
+          ))}
+        </div>
 
-          <div className="grid grid-cols-12 gap-4">
-            <div className="col-span-12 lg:col-span-3">
-              <Card className="p-0 overflow-hidden">
-                <div className="flex min-h-[74px] items-center border-b border-border/60 px-5 py-3.5">
-                  <div className="flex items-baseline gap-2">
-                    <h2 className="text-base font-semibold tracking-[-0.01em] text-foreground">{t.users.treeTitle}</h2>
-                  </div>
-                </div>
-                <ScrollArea className="h-[calc(100vh-320px)]">
-                  <div className="p-2 space-y-3">
-                    <button
-                      className={cn(
-                        'w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-left transition-colors text-sm',
-                        selectedNode.type === 'all' ? 'bg-primary/10 text-primary font-medium' : 'text-foreground hover:bg-muted/60'
-                      )}
-                      onClick={() => selectNode({ type: 'all' })}
-                    >
-                      <Users className="w-4 h-4 shrink-0 opacity-60" />
-                      <span className="flex-1 truncate">{t.users.allUsers}</span>
-                      <span className="text-xs tabular-nums text-muted-foreground">{users.length}</span>
-                    </button>
-
-                    <div className="space-y-1">
-                      <div className="px-3 pt-1 pb-1.5">
-                        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t.users.groups}</p>
-                      </div>
-                      {groups.map(renderGroupBranch)}
-                    </div>
-
-                    <div className="space-y-1 rounded-xl border border-dashed border-border/60">
-                      <button
-                        className={cn(
-                          'w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-left transition-colors text-sm',
-                          selectedNode.type === 'ungrouped' ? 'bg-primary/10 text-primary font-medium' : 'text-foreground hover:bg-muted/60'
-                        )}
-                        onClick={() => selectNode({ type: 'ungrouped' })}
-                      >
-                        <span
-                          className="flex h-5 w-5 items-center justify-center rounded-md hover:bg-background/80"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            setUngroupedExpanded((current) => !current);
-                          }}
-                        >
-                          {ungroupedExpanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
-                        </span>
-                        <User className="w-4 h-4 shrink-0 opacity-60" />
-                        <span className="flex-1 truncate">{t.users.ungroupedUsers}</span>
-                        <span className="text-xs tabular-nums text-muted-foreground">{ungroupedUsers.length}</span>
-                      </button>
-
-                      <AnimatePresence initial={false}>
-                        {ungroupedExpanded && (
-                          <motion.div
-                            initial={{ height: 0, opacity: 0 }}
-                            animate={{ height: 'auto', opacity: 1 }}
-                            exit={{ height: 0, opacity: 0 }}
-                            transition={{ duration: 0.2 }}
-                            className="overflow-hidden"
-                          >
-                            <div className="pb-2 pr-2 pl-10 space-y-1">
-                              {ungroupedUsers.map((user, index) => {
-                                const isSelected = selectedNode.type === 'user' && selectedNode.userId === user.ID && !selectedNode.groupId;
-                                return (
-                                  <motion.button
-                                    key={user.ID}
-                                    initial={{ opacity: 0, x: -6 }}
-                                    animate={{ opacity: 1, x: 0 }}
-                                    transition={{ duration: 0.18, delay: index * 0.02 }}
-                                    className={cn(
-                                      'w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left text-sm transition-colors',
-                                      isSelected ? 'bg-primary/10 text-primary' : 'hover:bg-muted/60 text-muted-foreground hover:text-foreground'
-                                    )}
-                                    onClick={() => selectNode({ type: 'user', userId: user.ID })}
-                                  >
-                                    <span
-                                      className={cn(
-                                        'h-2.5 w-2.5 rounded-full',
-                                        onlineUsers.has(user.headscale_name || user.username) ? 'bg-green-500' : 'bg-gray-300 dark:bg-gray-600'
-                                      )}
-                                    />
-                                    <span className="truncate">{user.display_name || user.username}</span>
-                                  </motion.button>
-                                );
-                              })}
-                              {ungroupedUsers.length === 0 && (
-                                <div className="px-3 py-2 text-xs text-muted-foreground">{t.users.noUsers}</div>
-                              )}
-                            </div>
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
-                    </div>
-                  </div>
-                </ScrollArea>
-              </Card>
+        {/* Two-panel layout */}
+        <div style={{ display: 'grid', gridTemplateColumns: '280px 1fr', gap: 16 }}>
+          {/* Left: Tree sidebar */}
+          <Card styles={{ body: { padding: 0 } }}>
+            <div style={{ display: 'flex', alignItems: 'center', padding: '14px 20px', borderBottom: `1px solid ${token.colorBorderSecondary}` }}>
+              <Text strong style={{ fontSize: 15 }}>{t.users.treeTitle}</Text>
             </div>
-
-            <div className="col-span-12 lg:col-span-9">
-              <Card className="p-0 overflow-hidden">
-                <div className="flex min-h-[74px] items-center justify-between border-b border-border/60 px-5 py-3.5">
-                  <div className="flex items-center gap-2">
-                    <h2 className="text-base font-semibold tracking-[-0.01em] text-foreground">{rightPaneTitle}</h2>
-                    <span className="text-base font-medium text-muted-foreground tabular-nums">{rightPaneCount}</span>
-                  </div>
-                  <div className="relative w-64">
-                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                    <Input
-                      placeholder={t.users.searchPlaceholder}
-                      className="h-10 rounded-xl border-border/70 pl-10 text-sm"
-                      value={searchQuery}
-                      onChange={(event) => setSearchQuery(event.target.value)}
-                    />
-                  </div>
-                </div>
-
-                <AnimatePresence mode="wait">
-                  {selectedNode.type === 'user' && selectedTreeUser ? (
-                    <motion.div
-                      key={selectionKey(selectedNode)}
-                      initial={{ opacity: 0, x: 18 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      exit={{ opacity: 0, x: -18 }}
-                      transition={{ duration: 0.22 }}
-                    >
-                      <ScrollArea className="h-[calc(100vh-360px)]">
-                        <div className="divide-y divide-border/40">
-                          {renderUserRow(selectedTreeUser, 0)}
-                        </div>
-                      </ScrollArea>
-                    </motion.div>
-                  ) : (
-                    <motion.div
-                      key={selectionKey(selectedNode)}
-                      initial={{ opacity: 0, x: 18 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      exit={{ opacity: 0, x: -18 }}
-                      transition={{ duration: 0.22 }}
-                    >
-                      <ScrollArea className="h-[calc(100vh-360px)]">
-                        <div className="divide-y divide-border/40">
-                          {filteredUsers.length === 0 ? (
-                            <div className="p-12 text-center text-sm text-muted-foreground">
-                              {searchQuery ? t.users.noSearchResult : t.users.noUsers}
-                            </div>
-                          ) : (
-                            filteredUsers.map(renderUserRow)
-                          )}
-                        </div>
-                      </ScrollArea>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </Card>
-            </div>
-          </div>
-
-          <Dialog open={createUserDialogOpen} onOpenChange={setCreateUserDialogOpen}>
-            <DialogContent className="sm:max-w-[500px]">
-              <DialogHeader>
-                <DialogTitle className="flex items-center gap-2">
-                  <UserPlus className="w-5 h-5" />
-                  {t.users.createUserTitle}
-                </DialogTitle>
-                <DialogDescription>{oidcStatus.third_party ? t.users.createUserDescOidc : t.users.createUserDesc}</DialogDescription>
-              </DialogHeader>
-              {oidcStatus.oidc_enabled && (
+            <div style={{ height: 'calc(100vh - 320px)', overflow: 'auto', padding: 8 }}>
+              <Space direction="vertical" style={{ width: '100%' }} size={12}>
+                {/* All Users */}
                 <div
-                  className={cn(
-                    'rounded-lg border px-4 py-3 text-sm',
-                    oidcStatus.third_party
-                      ? 'border-blue-200 bg-blue-50 dark:bg-blue-950/30 dark:border-blue-800 text-blue-700 dark:text-blue-300'
-                      : 'border-amber-200 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-800 text-amber-700 dark:text-amber-300'
-                  )}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px',
+                    borderRadius: token.borderRadius, cursor: 'pointer', fontSize: 13,
+                    background: selectedNode.type === 'all' ? token.colorPrimaryBg : 'transparent',
+                    color: selectedNode.type === 'all' ? token.colorPrimaryText : token.colorText,
+                    fontWeight: selectedNode.type === 'all' ? 500 : 400,
+                  }}
+                  onClick={() => selectNode({ type: 'all' })}
                 >
-                  {oidcStatus.third_party ? t.users.oidcModeHint : t.users.builtinOidcHint}
+                  <TeamOutlined style={{ opacity: 0.6 }} />
+                  <span style={{ flex: 1 }}>{t.users.allUsers}</span>
+                  <Text type="secondary" style={{ fontSize: 12 }}>{users.length}</Text>
+                </div>
+
+                {/* Groups Section */}
+                <div>
+                  <div style={{ padding: '4px 12px 8px' }}>
+                    <Text type="secondary" style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: 1 }}>{t.users.groups}</Text>
+                  </div>
+                  <Space direction="vertical" style={{ width: '100%' }} size={4}>
+                    {groups.map(renderGroupBranch)}
+                  </Space>
+                </div>
+
+                {/* Ungrouped */}
+                <div style={{ border: `1px dashed ${token.colorBorderSecondary}`, borderRadius: token.borderRadius }}>
+                  <div
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px',
+                      borderRadius: token.borderRadius, cursor: 'pointer', fontSize: 13,
+                      background: selectedNode.type === 'ungrouped' ? token.colorPrimaryBg : 'transparent',
+                      color: selectedNode.type === 'ungrouped' ? token.colorPrimaryText : token.colorText,
+                      fontWeight: selectedNode.type === 'ungrouped' ? 500 : 400,
+                    }}
+                    onClick={() => selectNode({ type: 'ungrouped' })}
+                  >
+                    <span
+                      style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 20, height: 20 }}
+                      onClick={(e) => { e.stopPropagation(); setUngroupedExpanded(v => !v); }}
+                    >
+                      {ungroupedExpanded ? <DownOutlined style={{ fontSize: 10 }} /> : <RightOutlined style={{ fontSize: 10 }} />}
+                    </span>
+                    <UserOutlined style={{ opacity: 0.6 }} />
+                    <span style={{ flex: 1 }}>{t.users.ungroupedUsers}</span>
+                    <Text type="secondary" style={{ fontSize: 12 }}>{ungroupedUsers.length}</Text>
+                  </div>
+
+                  {ungroupedExpanded && (
+                    <div style={{ paddingBottom: 8, paddingRight: 8, paddingLeft: 40 }}>
+                      <Space direction="vertical" style={{ width: '100%' }} size={4}>
+                        {ungroupedUsers.map((user) => {
+                          const isSelected = selectedNode.type === 'user' && selectedNode.userId === user.ID && !selectedNode.groupId;
+                          return (
+                            <div
+                              key={user.ID}
+                              style={{
+                                display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px',
+                                borderRadius: token.borderRadius, cursor: 'pointer', fontSize: 13,
+                                background: isSelected ? token.colorPrimaryBg : 'transparent',
+                                color: isSelected ? token.colorPrimaryText : token.colorTextSecondary,
+                              }}
+                              onClick={() => selectNode({ type: 'user', userId: user.ID })}
+                            >
+                              <span style={{
+                                width: 10, height: 10, borderRadius: '50%',
+                                background: onlineUsers.has(user.headscale_name || user.username) ? '#52c41a' : token.colorBorderSecondary,
+                              }} />
+                              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user.display_name || user.username}</span>
+                            </div>
+                          );
+                        })}
+                        {ungroupedUsers.length === 0 && (
+                          <Text type="secondary" style={{ padding: '8px 12px', fontSize: 12 }}>{t.users.noUsers}</Text>
+                        )}
+                      </Space>
+                    </div>
+                  )}
+                </div>
+              </Space>
+            </div>
+          </Card>
+
+          {/* Right: User list */}
+          <Card styles={{ body: { padding: 0 } }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 20px', borderBottom: `1px solid ${token.colorBorderSecondary}` }}>
+              <Space>
+                <Text strong style={{ fontSize: 15 }}>{rightPaneTitle}</Text>
+                <Text type="secondary">{rightPaneCount}</Text>
+              </Space>
+              <Input
+                prefix={<SearchOutlined style={{ color: token.colorTextSecondary }} />}
+                placeholder={t.users.searchPlaceholder}
+                style={{ width: 256 }}
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                allowClear
+              />
+            </div>
+
+            <div style={{ height: 'calc(100vh - 360px)', overflow: 'auto' }}>
+              {selectedNode.type === 'user' && selectedTreeUser ? (
+                <div>{renderUserRow(selectedTreeUser, 0)}</div>
+              ) : (
+                <div>
+                  {filteredUsers.length === 0 ? (
+                    <div style={{ padding: 48, textAlign: 'center' }}>
+                      <Text type="secondary" style={{ fontSize: 13 }}>
+                        {searchQuery ? t.users.noSearchResult : t.users.noUsers}
+                      </Text>
+                    </div>
+                  ) : (
+                    filteredUsers.map(renderUserRow)
+                  )}
                 </div>
               )}
-              <div className="grid gap-4 py-4">
-                <div className="grid grid-cols-4 items-center gap-4">
-                  <Label htmlFor="create-username" className="text-right">
-                    {t.users.usernameLabel}
-                  </Label>
-                  <Input
-                    id="create-username"
-                    value={newUser.username}
-                    onChange={(event) => setNewUser({ ...newUser, username: event.target.value })}
-                    className="col-span-3"
-                    placeholder={t.users.usernamePlaceholder}
-                  />
-                </div>
-                {oidcStatus.password_required && (
-                  <div className="grid grid-cols-4 items-center gap-4">
-                    <Label htmlFor="create-password" className="text-right">
-                      {t.users.passwordLabel}
-                    </Label>
-                    <Input
-                      id="create-password"
-                      type="password"
-                      value={newUser.password}
-                      onChange={(event) => setNewUser({ ...newUser, password: event.target.value })}
-                      className="col-span-3"
-                      placeholder={t.users.passwordPlaceholder}
-                    />
-                  </div>
-                )}
-                <div className="grid grid-cols-4 items-center gap-4">
-                  <Label htmlFor="create-email" className="text-right">
-                    {t.users.emailLabel}
-                  </Label>
-                  <Input
-                    id="create-email"
-                    type="email"
-                    value={newUser.email}
-                    onChange={(event) => setNewUser({ ...newUser, email: event.target.value })}
-                    className="col-span-3"
-                  />
-                </div>
-                <div className="grid grid-cols-4 items-center gap-4">
-                  <Label htmlFor="create-display-name" className="text-right">
-                    {t.users.displayNameLabel}
-                  </Label>
-                  <Input
-                    id="create-display-name"
-                    value={newUser.display_name}
-                    onChange={(event) => setNewUser({ ...newUser, display_name: event.target.value })}
-                    className="col-span-3"
-                  />
-                </div>
-                <div className="grid grid-cols-4 items-center gap-4">
-                  <Label className="text-right">{t.users.groupLabel}</Label>
-                  <Select value={newUser.group_id || '__none__'} onValueChange={(value) => setNewUser({ ...newUser, group_id: value === '__none__' ? '' : value })}>
-                    <SelectTrigger className="col-span-3">
-                      <SelectValue placeholder={t.users.groupPlaceholder} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="__none__">{t.users.noGroup}</SelectItem>
-                      {groups.map((group) => (
-                        <SelectItem key={group.ID} value={String(group.ID)}>
-                          {group.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setCreateUserDialogOpen(false)}>
-                  {t.common.actions.cancel}
-                </Button>
-                <Button onClick={handleCreateUser}>{t.users.createUserBtn}</Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-
-          <Dialog open={editUserDialogOpen} onOpenChange={setEditUserDialogOpen}>
-            <DialogContent className="sm:max-w-[500px]">
-              <DialogHeader>
-                <DialogTitle>{t.users.editUserTitle.replace('{username}', selectedUser?.username || '')}</DialogTitle>
-                <DialogDescription>{t.users.editUserDesc}</DialogDescription>
-              </DialogHeader>
-              <div className="grid gap-4 py-4">
-                <div className="grid grid-cols-4 items-center gap-4">
-                  <Label htmlFor="edit-email" className="text-right">
-                    {t.users.emailLabel}
-                  </Label>
-                  <Input
-                    id="edit-email"
-                    type="email"
-                    value={editUser.email}
-                    onChange={(event) => setEditUser({ ...editUser, email: event.target.value })}
-                    className="col-span-3"
-                  />
-                </div>
-                <div className="grid grid-cols-4 items-center gap-4">
-                  <Label htmlFor="edit-display-name" className="text-right">
-                    {t.users.displayNameLabel}
-                  </Label>
-                  <Input
-                    id="edit-display-name"
-                    value={editUser.display_name}
-                    onChange={(event) => setEditUser({ ...editUser, display_name: event.target.value })}
-                    className="col-span-3"
-                  />
-                </div>
-                <div className="grid grid-cols-4 items-center gap-4">
-                  <Label htmlFor="edit-password" className="text-right">
-                    {t.users.newPasswordLabel}
-                  </Label>
-                  <Input
-                    id="edit-password"
-                    type="password"
-                    value={editUser.password}
-                    onChange={(event) => setEditUser({ ...editUser, password: event.target.value })}
-                    className="col-span-3"
-                    placeholder={t.users.newPasswordPlaceholder}
-                  />
-                </div>
-                <div className="grid grid-cols-4 items-center gap-4">
-                  <Label className="text-right">{t.users.groupLabel}</Label>
-                  <Select value={editUser.group_id || '__none__'} onValueChange={(value) => setEditUser({ ...editUser, group_id: value === '__none__' ? '' : value })}>
-                    <SelectTrigger className="col-span-3">
-                      <SelectValue placeholder={t.users.groupPlaceholder} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="__none__">{t.users.noGroup}</SelectItem>
-                      {groups.map((group) => (
-                        <SelectItem key={group.ID} value={String(group.ID)}>
-                          {group.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setEditUserDialogOpen(false)}>
-                  {t.common.actions.cancel}
-                </Button>
-                <Button onClick={handleUpdateUser}>{t.users.saveChanges}</Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-
-          <Dialog open={createGroupDialogOpen} onOpenChange={setCreateGroupDialogOpen}>
-            <DialogContent className="sm:max-w-[420px]">
-              <DialogHeader>
-                <DialogTitle>{t.users.createGroupTitle}</DialogTitle>
-                <DialogDescription>{t.users.createGroupDesc}</DialogDescription>
-              </DialogHeader>
-              <div className="py-4">
-                <Label htmlFor="new-group-name">{t.users.groupNameLabel}</Label>
-                <Input
-                  id="new-group-name"
-                  className="mt-2"
-                  value={newGroupName}
-                  onChange={(event) => setNewGroupName(event.target.value)}
-                  placeholder={t.users.groupNamePlaceholder}
-                />
-              </div>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setCreateGroupDialogOpen(false)}>
-                  {t.common.actions.cancel}
-                </Button>
-                <Button onClick={handleCreateGroup}>{t.common.actions.create}</Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-
-          <Dialog open={editGroupDialogOpen} onOpenChange={setEditGroupDialogOpen}>
-            <DialogContent className="sm:max-w-[420px]">
-              <DialogHeader>
-                <DialogTitle>{t.users.editGroupTitle}</DialogTitle>
-                <DialogDescription>{t.users.editGroupDesc}</DialogDescription>
-              </DialogHeader>
-              <div className="py-4">
-                <Label htmlFor="edit-group-name">{t.users.groupNameLabel}</Label>
-                <Input
-                  id="edit-group-name"
-                  className="mt-2"
-                  value={editGroupName}
-                  onChange={(event) => setEditGroupName(event.target.value)}
-                  placeholder={t.users.groupNamePlaceholder}
-                />
-              </div>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setEditGroupDialogOpen(false)}>
-                  {t.common.actions.cancel}
-                </Button>
-                <Button onClick={handleUpdateGroup}>{t.users.saveChanges}</Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-
-          <Dialog open={renameDeviceDialogOpen} onOpenChange={setRenameDeviceDialogOpen}>
-            <DialogContent className="sm:max-w-[460px]">
-              <DialogHeader>
-                <DialogTitle>{t.devices.renameDialogTitle}</DialogTitle>
-                <DialogDescription>
-                  {t.devices.renameDialogDesc.replace('{name}', selectedDevice?.name || '')}
-                </DialogDescription>
-              </DialogHeader>
-              <div className="space-y-4 py-2">
-                <div>
-                  <Label htmlFor="user-device-name">{t.devices.newNameLabel}</Label>
-                  <Input
-                    id="user-device-name"
-                    className="mt-2"
-                    value={newDeviceName}
-                    onChange={(event) => {
-                      const value = event.target.value.toLowerCase();
-                      setNewDeviceName(value);
-                      if (value && !/^[a-z0-9][a-z0-9-]*$/.test(value)) {
-                        setDeviceNameError(t.devices.nameLowercaseError);
-                      } else {
-                        setDeviceNameError('');
-                      }
-                    }}
-                  />
-                  {deviceNameError && <p className="mt-2 text-sm text-destructive">{deviceNameError}</p>}
-                  <p className="mt-2 text-xs text-muted-foreground">{t.devices.nameLowercaseHint}</p>
-                </div>
-              </div>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setRenameDeviceDialogOpen(false)}>
-                  {t.common.actions.cancel}
-                </Button>
-                <Button onClick={handleRenameDevice} disabled={!!deviceNameError || !newDeviceName.trim()}>
-                  {t.common.actions.save}
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-
-          <Dialog open={addDeviceDialogOpen} onOpenChange={setAddDeviceDialogOpen}>
-            <DialogContent className="sm:max-w-[720px]">
-              <DialogHeader>
-                <DialogTitle>{t.devices.addDeviceTitle}</DialogTitle>
-                <DialogDescription>{t.devices.addDeviceDesc}</DialogDescription>
-              </DialogHeader>
-              <div className="rounded-xl border border-border/70 bg-muted/20 px-4 py-3 text-sm">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-muted-foreground">{t.devices.selectUser}</span>
-                  <span className="font-medium text-foreground">{selectedTreeUser?.display_name || selectedTreeUser?.username}</span>
-                  <code className="rounded bg-background px-2 py-0.5 text-xs text-muted-foreground">
-                    {selectedTreeUser?.headscale_name || selectedTreeUser?.username}
-                  </code>
-                </div>
-              </div>
-
-              <Tabs value={addDeviceTab} onValueChange={(value) => { setAddDeviceTab(value); setGeneratedKey(''); setMachineKey(''); }}>
-                <TabsList className="grid w-full grid-cols-2">
-                  <TabsTrigger value="preauth">
-                    <Key className="mr-2 h-4 w-4" />
-                    {t.devices.tabPreAuth}
-                  </TabsTrigger>
-                  <TabsTrigger value="machinekey">
-                    <Terminal className="mr-2 h-4 w-4" />
-                    {t.devices.tabMachineKey}
-                  </TabsTrigger>
-                </TabsList>
-
-                <TabsContent value="preauth" className="mt-4 space-y-4">
-                  <div className="flex items-center justify-between rounded-xl border border-border/70 px-4 py-3">
-                    <div>
-                      <Label>{t.devices.reusableKey}</Label>
-                      <p className="text-xs text-muted-foreground">{t.devices.reusableKeyDesc}</p>
-                    </div>
-                    <Switch checked={addDeviceReusable} onCheckedChange={setAddDeviceReusable} />
-                  </div>
-                  <div className="flex items-center justify-between rounded-xl border border-border/70 px-4 py-3">
-                    <div>
-                      <Label>{t.devices.ephemeralKey}</Label>
-                      <p className="text-xs text-muted-foreground">{t.devices.ephemeralKeyDesc}</p>
-                    </div>
-                    <Switch checked={addDeviceEphemeral} onCheckedChange={setAddDeviceEphemeral} />
-                  </div>
-
-                  {!generatedKey ? (
-                    <Button onClick={handleGenerateDeviceKey} className="w-full">
-                      <Key className="mr-2 h-4 w-4" />
-                      {t.devices.generateKey}
-                    </Button>
-                  ) : (
-                    <div className="space-y-3 rounded-xl border border-border/70 px-4 py-4">
-                      <div className="flex items-center justify-between">
-                        <Label>{t.devices.preAuthKey}</Label>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => {
-                            navigator.clipboard.writeText(generatedKey);
-                            toast.success(t.devices.keyCopied);
-                          }}
-                        >
-                          <Copy className="mr-2 h-3.5 w-3.5" />
-                          {t.devices.copyCommand}
-                        </Button>
-                      </div>
-                      <Input readOnly value={generatedKey} className="font-mono text-xs" />
-                      <p className="text-xs text-muted-foreground">{t.devices.keyExpireHint}</p>
-                    </div>
-                  )}
-                </TabsContent>
-
-                <TabsContent value="machinekey" className="mt-4 space-y-4">
-                  <div>
-                    <Label htmlFor="selected-user-machine-key">{t.devices.machineKeyLabel}</Label>
-                    <Input
-                      id="selected-user-machine-key"
-                      className="mt-2 font-mono text-xs"
-                      placeholder={t.devices.machineKeyPlaceholder}
-                      value={machineKey}
-                      onChange={(event) => setMachineKey(event.target.value)}
-                    />
-                    <p className="mt-2 text-xs text-muted-foreground">{t.devices.machineKeyHint}</p>
-                  </div>
-                  <Button className="w-full" onClick={handleRegisterDevice} disabled={!machineKey.trim() || registeringNode}>
-                    {registeringNode ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <Terminal className="mr-2 h-4 w-4" />}
-                    {t.devices.registerNode}
-                  </Button>
-                </TabsContent>
-              </Tabs>
-
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setAddDeviceDialogOpen(false)}>
-                  {t.common.actions.close}
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
+            </div>
+          </Card>
         </div>
-      </TooltipProvider>
+
+        {/* Create User Modal */}
+        <Modal
+          open={createUserDialogOpen}
+          title={<span><UserAddOutlined style={{ marginRight: 8 }} />{t.users.createUserTitle}</span>}
+          onCancel={() => setCreateUserDialogOpen(false)}
+          onOk={handleCreateUser}
+          okText={t.users.createUserBtn}
+          cancelText={t.common.actions.cancel}
+          width={500}
+        >
+          <Text type="secondary" style={{ display: 'block', marginBottom: 16 }}>
+            {oidcStatus.third_party ? t.users.createUserDescOidc : t.users.createUserDesc}
+          </Text>
+          {oidcStatus.oidc_enabled && (
+            <div style={{
+              borderRadius: token.borderRadius, padding: '12px 16px', marginBottom: 16, fontSize: 13,
+              background: oidcStatus.third_party ? token.colorInfoBg : token.colorWarningBg,
+              border: `1px solid ${oidcStatus.third_party ? token.colorInfoBorder : token.colorWarningBorder}`,
+            }}>
+              {oidcStatus.third_party ? t.users.oidcModeHint : t.users.builtinOidcHint}
+            </div>
+          )}
+          <Space direction="vertical" style={{ width: '100%' }} size={12}>
+            <div style={{ display: 'grid', gridTemplateColumns: '100px 1fr', gap: 12, alignItems: 'center' }}>
+              <Text style={{ textAlign: 'right', fontSize: 13 }}>{t.users.usernameLabel}</Text>
+              <Input value={newUser.username} onChange={(e) => setNewUser({ ...newUser, username: e.target.value })} placeholder={t.users.usernamePlaceholder} />
+            </div>
+            {oidcStatus.password_required && (
+              <div style={{ display: 'grid', gridTemplateColumns: '100px 1fr', gap: 12, alignItems: 'center' }}>
+                <Text style={{ textAlign: 'right', fontSize: 13 }}>{t.users.passwordLabel}</Text>
+                <Input.Password value={newUser.password} onChange={(e) => setNewUser({ ...newUser, password: e.target.value })} placeholder={t.users.passwordPlaceholder} />
+              </div>
+            )}
+            <div style={{ display: 'grid', gridTemplateColumns: '100px 1fr', gap: 12, alignItems: 'center' }}>
+              <Text style={{ textAlign: 'right', fontSize: 13 }}>{t.users.emailLabel}</Text>
+              <Input type="email" value={newUser.email} onChange={(e) => setNewUser({ ...newUser, email: e.target.value })} />
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '100px 1fr', gap: 12, alignItems: 'center' }}>
+              <Text style={{ textAlign: 'right', fontSize: 13 }}>{t.users.displayNameLabel}</Text>
+              <Input value={newUser.display_name} onChange={(e) => setNewUser({ ...newUser, display_name: e.target.value })} />
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '100px 1fr', gap: 12, alignItems: 'center' }}>
+              <Text style={{ textAlign: 'right', fontSize: 13 }}>{t.users.groupLabel}</Text>
+              <Select
+                value={newUser.group_id || undefined}
+                onChange={(value) => setNewUser({ ...newUser, group_id: value || '' })}
+                placeholder={t.users.groupPlaceholder}
+                allowClear
+                style={{ width: '100%' }}
+                options={[
+                  { value: '', label: t.users.noGroup },
+                  ...groups.map(g => ({ value: String(g.ID), label: g.name })),
+                ]}
+              />
+            </div>
+          </Space>
+        </Modal>
+
+        {/* Edit User Modal */}
+        <Modal
+          open={editUserDialogOpen}
+          title={t.users.editUserTitle.replace('{username}', selectedUser?.username || '')}
+          onCancel={() => setEditUserDialogOpen(false)}
+          onOk={handleUpdateUser}
+          okText={t.users.saveChanges}
+          cancelText={t.common.actions.cancel}
+          width={500}
+        >
+          <Text type="secondary" style={{ display: 'block', marginBottom: 16 }}>{t.users.editUserDesc}</Text>
+          <Space direction="vertical" style={{ width: '100%' }} size={12}>
+            <div style={{ display: 'grid', gridTemplateColumns: '100px 1fr', gap: 12, alignItems: 'center' }}>
+              <Text style={{ textAlign: 'right', fontSize: 13 }}>{t.users.emailLabel}</Text>
+              <Input type="email" value={editUser.email} onChange={(e) => setEditUser({ ...editUser, email: e.target.value })} />
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '100px 1fr', gap: 12, alignItems: 'center' }}>
+              <Text style={{ textAlign: 'right', fontSize: 13 }}>{t.users.displayNameLabel}</Text>
+              <Input value={editUser.display_name} onChange={(e) => setEditUser({ ...editUser, display_name: e.target.value })} />
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '100px 1fr', gap: 12, alignItems: 'center' }}>
+              <Text style={{ textAlign: 'right', fontSize: 13 }}>{t.users.newPasswordLabel}</Text>
+              <Input.Password value={editUser.password} onChange={(e) => setEditUser({ ...editUser, password: e.target.value })} placeholder={t.users.newPasswordPlaceholder} />
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '100px 1fr', gap: 12, alignItems: 'center' }}>
+              <Text style={{ textAlign: 'right', fontSize: 13 }}>{t.users.groupLabel}</Text>
+              <Select
+                value={editUser.group_id || undefined}
+                onChange={(value) => setEditUser({ ...editUser, group_id: value || '' })}
+                placeholder={t.users.groupPlaceholder}
+                allowClear
+                style={{ width: '100%' }}
+                options={[
+                  { value: '', label: t.users.noGroup },
+                  ...groups.map(g => ({ value: String(g.ID), label: g.name })),
+                ]}
+              />
+            </div>
+          </Space>
+        </Modal>
+
+        {/* Create Group Modal */}
+        <Modal
+          open={createGroupDialogOpen}
+          title={t.users.createGroupTitle}
+          onCancel={() => setCreateGroupDialogOpen(false)}
+          onOk={handleCreateGroup}
+          okText={t.common.actions.create}
+          cancelText={t.common.actions.cancel}
+          width={420}
+        >
+          <Text type="secondary" style={{ display: 'block', marginBottom: 16 }}>{t.users.createGroupDesc}</Text>
+          <div>
+            <Text style={{ fontSize: 13, display: 'block', marginBottom: 4 }}>{t.users.groupNameLabel}</Text>
+            <Input value={newGroupName} onChange={(e) => setNewGroupName(e.target.value)} placeholder={t.users.groupNamePlaceholder} />
+          </div>
+        </Modal>
+
+        {/* Edit Group Modal */}
+        <Modal
+          open={editGroupDialogOpen}
+          title={t.users.editGroupTitle}
+          onCancel={() => setEditGroupDialogOpen(false)}
+          onOk={handleUpdateGroup}
+          okText={t.users.saveChanges}
+          cancelText={t.common.actions.cancel}
+          width={420}
+        >
+          <Text type="secondary" style={{ display: 'block', marginBottom: 16 }}>{t.users.editGroupDesc}</Text>
+          <div>
+            <Text style={{ fontSize: 13, display: 'block', marginBottom: 4 }}>{t.users.groupNameLabel}</Text>
+            <Input value={editGroupName} onChange={(e) => setEditGroupName(e.target.value)} placeholder={t.users.groupNamePlaceholder} />
+          </div>
+        </Modal>
+
+        {/* Rename Device Modal */}
+        <Modal
+          open={renameDeviceDialogOpen}
+          title={t.devices.renameDialogTitle}
+          onCancel={() => setRenameDeviceDialogOpen(false)}
+          onOk={handleRenameDevice}
+          okText={t.common.actions.save}
+          cancelText={t.common.actions.cancel}
+          okButtonProps={{ disabled: !!deviceNameError || !newDeviceName.trim() }}
+          width={460}
+        >
+          <Text type="secondary" style={{ display: 'block', marginBottom: 16 }}>
+            {t.devices.renameDialogDesc.replace('{name}', selectedDevice?.name || '')}
+          </Text>
+          <div>
+            <Text style={{ fontSize: 13, display: 'block', marginBottom: 4 }}>{t.devices.newNameLabel}</Text>
+            <Input
+              value={newDeviceName}
+              onChange={(e) => {
+                const value = e.target.value.toLowerCase();
+                setNewDeviceName(value);
+                if (value && !/^[a-z0-9][a-z0-9-]*$/.test(value)) {
+                  setDeviceNameError(t.devices.nameLowercaseError);
+                } else {
+                  setDeviceNameError('');
+                }
+              }}
+              status={deviceNameError ? 'error' : undefined}
+            />
+            {deviceNameError && <Text type="danger" style={{ fontSize: 12, marginTop: 4, display: 'block' }}>{deviceNameError}</Text>}
+            <Text type="secondary" style={{ fontSize: 12, marginTop: 4, display: 'block' }}>{t.devices.nameLowercaseHint}</Text>
+          </div>
+        </Modal>
+
+        {/* Add Device Modal */}
+        <Modal
+          open={addDeviceDialogOpen}
+          title={t.devices.addDeviceTitle}
+          onCancel={() => setAddDeviceDialogOpen(false)}
+          footer={<Button onClick={() => setAddDeviceDialogOpen(false)}>{t.common.actions.close}</Button>}
+          width={720}
+        >
+          <Text type="secondary" style={{ display: 'block', marginBottom: 12 }}>{t.devices.addDeviceDesc}</Text>
+          <div style={{ background: token.colorBgLayout, borderRadius: token.borderRadius, padding: '12px 16px', marginBottom: 16, fontSize: 13 }}>
+            <Space wrap>
+              <Text type="secondary">{t.devices.selectUser}</Text>
+              <Text strong>{selectedTreeUser?.display_name || selectedTreeUser?.username}</Text>
+              <Text code style={{ fontSize: 12 }}>{selectedTreeUser?.headscale_name || selectedTreeUser?.username}</Text>
+            </Space>
+          </div>
+
+          <Tabs
+            activeKey={addDeviceTab}
+            onChange={(key) => { setAddDeviceTab(key); setGeneratedKey(''); setMachineKey(''); }}
+            items={[
+              {
+                key: 'preauth',
+                label: <span><KeyOutlined style={{ marginRight: 8 }} />{t.devices.tabPreAuth}</span>,
+                children: (
+                  <Space direction="vertical" style={{ width: '100%' }} size={16}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', border: `1px solid ${token.colorBorderSecondary}`, borderRadius: token.borderRadius, padding: '12px 16px' }}>
+                      <div>
+                        <Text style={{ fontSize: 13 }}>{t.devices.reusableKey}</Text>
+                        <div><Text type="secondary" style={{ fontSize: 12 }}>{t.devices.reusableKeyDesc}</Text></div>
+                      </div>
+                      <Switch checked={addDeviceReusable} onChange={setAddDeviceReusable} />
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', border: `1px solid ${token.colorBorderSecondary}`, borderRadius: token.borderRadius, padding: '12px 16px' }}>
+                      <div>
+                        <Text style={{ fontSize: 13 }}>{t.devices.ephemeralKey}</Text>
+                        <div><Text type="secondary" style={{ fontSize: 12 }}>{t.devices.ephemeralKeyDesc}</Text></div>
+                      </div>
+                      <Switch checked={addDeviceEphemeral} onChange={setAddDeviceEphemeral} />
+                    </div>
+
+                    {!generatedKey ? (
+                      <Button block icon={<KeyOutlined />} onClick={handleGenerateDeviceKey}>{t.devices.generateKey}</Button>
+                    ) : (
+                      <div style={{ border: `1px solid ${token.colorBorderSecondary}`, borderRadius: token.borderRadius, padding: 16 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                          <Text style={{ fontSize: 13 }}>{t.devices.preAuthKey}</Text>
+                          <Button type="text" size="small" icon={<CopyOutlined />} onClick={() => { navigator.clipboard.writeText(generatedKey); message.success(t.devices.keyCopied); }}>
+                            {t.devices.copyCommand}
+                          </Button>
+                        </div>
+                        <Input readOnly value={generatedKey} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+                        <Text type="secondary" style={{ fontSize: 12, marginTop: 8, display: 'block' }}>{t.devices.keyExpireHint}</Text>
+                      </div>
+                    )}
+                  </Space>
+                ),
+              },
+              {
+                key: 'machinekey',
+                label: <span><DesktopOutlined style={{ marginRight: 8 }} />{t.devices.tabMachineKey}</span>,
+                children: (
+                  <Space direction="vertical" style={{ width: '100%' }} size={16}>
+                    <div>
+                      <Text style={{ fontSize: 13, display: 'block', marginBottom: 4 }}>{t.devices.machineKeyLabel}</Text>
+                      <Input
+                        style={{ fontFamily: 'monospace', fontSize: 12 }}
+                        placeholder={t.devices.machineKeyPlaceholder}
+                        value={machineKey}
+                        onChange={(e) => setMachineKey(e.target.value)}
+                      />
+                      <Text type="secondary" style={{ fontSize: 12, marginTop: 4, display: 'block' }}>{t.devices.machineKeyHint}</Text>
+                    </div>
+                    <Button block type="primary" onClick={handleRegisterDevice} disabled={!machineKey.trim()} loading={registeringNode} icon={<DesktopOutlined />}>
+                      {t.devices.registerNode}
+                    </Button>
+                  </Space>
+                ),
+              },
+            ]}
+          />
+        </Modal>
+      </div>
     </DashboardLayout>
   );
 }

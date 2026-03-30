@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { toast } from 'sonner';
+import { message } from 'antd';
 import { getAuthToken, redirectToLoginWithNotice } from './auth';
 import { getTranslations } from '@/i18n/index';
 
@@ -35,9 +35,9 @@ api.interceptors.response.use(
     if (AUTH_ERROR_CODES.has(code) && !isSetupRequest) {
       handleUnauthorized();
     } else if (code === 403 && !isSetupRequest) {
-      toast.error(t.common.errors.forbidden);
+      message.error(t.common.errors.forbidden);
     } else if (!isSetupRequest) {
-      toast.error(detail, code === 50000 ? { duration: 6000 } : undefined);
+      message.error(detail, code === 50000 ? 6 : undefined);
     }
     return Promise.reject(new Error(detail));
   },
@@ -49,14 +49,14 @@ api.interceptors.response.use(
       if (status === 401 && !isSetupRequest) {
         handleUnauthorized();
       } else if (status === 403 && !isSetupRequest) {
-        toast.error(t.common.errors.forbidden);
+        message.error(t.common.errors.forbidden);
       } else if (status >= 500 && !isSetupRequest) {
-        toast.error(t.common.errors.serverError);
+        message.error(t.common.errors.serverError);
       } else if (!isSetupRequest) {
-        toast.error(error.response.data?.msg || t.common.errors.requestFailed);
+        message.error(error.response.data?.msg || t.common.errors.requestFailed);
       }
     } else if (error.request && !isSetupRequest) {
-      toast.error(t.common.errors.networkError);
+      message.error(t.common.errors.networkError);
     }
     return Promise.reject(error);
   }

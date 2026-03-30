@@ -1,18 +1,27 @@
-import { Card } from '@/components/ui/card';
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { Separator } from '@/components/ui/separator';
-import { Switch } from '@/components/ui/switch';
-import { Label } from '@/components/ui/label';
+import { Button, Card, Drawer, Switch, Tag, Typography, message, theme } from 'antd';
+import {
+  CopyOutlined, CodeOutlined, WifiOutlined,
+  ZoomInOutlined, ZoomOutOutlined, ExpandOutlined,
+  ExclamationCircleOutlined, LaptopOutlined, MobileOutlined,
+  DesktopOutlined, TabletOutlined, CloudServerOutlined,
+  DragOutlined, EyeOutlined, EyeInvisibleOutlined,
+} from '@ant-design/icons';
 import { useCallback, useEffect, useRef, useState, useMemo } from 'react';
-import { Copy, Terminal, Wifi, ZoomIn, ZoomOut, Maximize2, AlertCircle, Laptop, Smartphone, Monitor, Tablet, Server, Move, Eye, EyeOff, ChevronDown, ChevronUp } from 'lucide-react';
-import { toast } from 'sonner';
 import { useTranslation } from '@/i18n/index';
 
-// Maximum devices to show per user before collapsing
-const MAX_VISIBLE_DEVICES_PER_USER = 6;
+const { Text } = Typography;
+
+// User color palette for visual grouping
+const USER_COLORS = [
+  { gradient: 'linear-gradient(135deg, #60a5fa, #2563eb)', border: '#93c5fd' },
+  { gradient: 'linear-gradient(135deg, #34d399, #059669)', border: '#6ee7b7' },
+  { gradient: 'linear-gradient(135deg, #a78bfa, #7c3aed)', border: '#c4b5fd' },
+  { gradient: 'linear-gradient(135deg, #fbbf24, #d97706)', border: '#fcd34d' },
+  { gradient: 'linear-gradient(135deg, #fb7185, #e11d48)', border: '#fda4af' },
+  { gradient: 'linear-gradient(135deg, #22d3ee, #0891b2)', border: '#67e8f9' },
+  { gradient: 'linear-gradient(135deg, #e879f9, #a21caf)', border: '#f0abfc' },
+  { gradient: 'linear-gradient(135deg, #a3e635, #65a30d)', border: '#bef264' },
+];
 
 interface Device {
   id: string;
@@ -350,25 +359,6 @@ export default function NetworkTopology({ data, deviceStatuses }: NetworkTopolog
     // Bounds: min 450px, max 1200px (raised for better canvas fill)
     return Math.min(Math.max(calculatedHeight, 450), 1200);
   }, [topologyData]);
-
-  // User colors for visual grouping in circular layout
-  const userColors = useMemo(() => {
-    const colors = [
-      { bg: 'from-blue-400 to-blue-600', border: 'border-blue-300 dark:border-blue-600', light: 'bg-blue-100 dark:bg-blue-900', text: 'text-blue-600 dark:text-blue-400' },
-      { bg: 'from-emerald-400 to-emerald-600', border: 'border-emerald-300 dark:border-emerald-600', light: 'bg-emerald-100 dark:bg-emerald-900', text: 'text-emerald-600 dark:text-emerald-400' },
-      { bg: 'from-violet-400 to-violet-600', border: 'border-violet-300 dark:border-violet-600', light: 'bg-violet-100 dark:bg-violet-900', text: 'text-violet-600 dark:text-violet-400' },
-      { bg: 'from-amber-400 to-amber-600', border: 'border-amber-300 dark:border-amber-600', light: 'bg-amber-100 dark:bg-amber-900', text: 'text-amber-600 dark:text-amber-400' },
-      { bg: 'from-rose-400 to-rose-600', border: 'border-rose-300 dark:border-rose-600', light: 'bg-rose-100 dark:bg-rose-900', text: 'text-rose-600 dark:text-rose-400' },
-      { bg: 'from-cyan-400 to-cyan-600', border: 'border-cyan-300 dark:border-cyan-600', light: 'bg-cyan-100 dark:bg-cyan-900', text: 'text-cyan-600 dark:text-cyan-400' },
-      { bg: 'from-fuchsia-400 to-fuchsia-600', border: 'border-fuchsia-300 dark:border-fuchsia-600', light: 'bg-fuchsia-100 dark:bg-fuchsia-900', text: 'text-fuchsia-600 dark:text-fuchsia-400' },
-      { bg: 'from-lime-400 to-lime-600', border: 'border-lime-300 dark:border-lime-600', light: 'bg-lime-100 dark:bg-lime-900', text: 'text-lime-600 dark:text-lime-400' },
-    ];
-    const colorMap: Record<string, typeof colors[0]> = {};
-    topologyData?.users.forEach((user, index) => {
-      colorMap[user.id] = colors[index % colors.length];
-    });
-    return colorMap;
-  }, [topologyData?.users]);
 
   // Radial layout algorithm - users extend outward with device rings around each user
   // Dynamically allocate angle space based on device count
@@ -1065,19 +1055,18 @@ export default function NetworkTopology({ data, deviceStatuses }: NetworkTopolog
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
-    toast.success(t.topology.copiedToClipboard);
+    message.success(t.topology.copiedToClipboard);
   };
 
   const DeviceIcon = ({ type, online, size = 20 }: { type: string; online: boolean; size?: number }) => {
-    const iconClass = `${online ? 'text-blue-500' : 'text-gray-400'}`;
-    
+    const style = { fontSize: size, color: online ? '#1677ff' : '#999' };
     switch (type) {
-      case 'laptop': return <Laptop size={size} className={iconClass} strokeWidth={1.5} />;
-      case 'phone': return <Smartphone size={size} className={iconClass} strokeWidth={1.5} />;
-      case 'desktop': return <Monitor size={size} className={iconClass} strokeWidth={1.5} />;
-      case 'tablet': return <Tablet size={size} className={iconClass} strokeWidth={1.5} />;
-      case 'server': return <Server size={size} className={iconClass} strokeWidth={1.5} />;
-      default: return <Monitor size={size} className={iconClass} strokeWidth={1.5} />;
+      case 'laptop': return <LaptopOutlined style={style} />;
+      case 'phone': return <MobileOutlined style={style} />;
+      case 'desktop': return <DesktopOutlined style={style} />;
+      case 'tablet': return <TabletOutlined style={style} />;
+      case 'server': return <CloudServerOutlined style={style} />;
+      default: return <DesktopOutlined style={style} />;
     }
   };
 
@@ -1122,14 +1111,16 @@ export default function NetworkTopology({ data, deviceStatuses }: NetworkTopolog
     return devicesByUser;
   }, [selectedDevice, topologyData, canAccess]);
 
+  const { token } = theme.useToken();
+
   if (!topologyData) {
     return (
-      <Card className="relative overflow-hidden bg-gradient-to-br from-slate-50 via-blue-50/20 to-slate-50 dark:from-slate-900 dark:via-blue-950/20 dark:to-slate-900">
-        <div ref={containerRef} className="relative w-full flex items-center justify-center" style={{ height: '500px' }}>
-          <div className="text-center text-muted-foreground">
-            <AlertCircle className="w-12 h-12 mx-auto mb-4 opacity-50" />
-            <p className="text-lg font-medium">{t.topology.noData}</p>
-            <p className="text-sm">{t.topology.waitForData}</p>
+      <Card style={{ position: 'relative', overflow: 'hidden' }}>
+        <div ref={containerRef} style={{ position: 'relative', width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', height: 500 }}>
+          <div style={{ textAlign: 'center', color: token.colorTextSecondary }}>
+            <ExclamationCircleOutlined style={{ fontSize: 48, opacity: 0.5, display: 'block', margin: '0 auto 16px' }} />
+            <p style={{ fontSize: 18, fontWeight: 500 }}>{t.topology.noData}</p>
+            <p style={{ fontSize: 14 }}>{t.topology.waitForData}</p>
           </div>
         </div>
       </Card>
@@ -1137,59 +1128,50 @@ export default function NetworkTopology({ data, deviceStatuses }: NetworkTopolog
   }
 
   return (
-    <Card className="relative overflow-hidden bg-gradient-to-br from-slate-50 via-blue-50/20 to-slate-50 dark:from-slate-900 dark:via-blue-950/20 dark:to-slate-900">
+    <Card style={{ position: 'relative', overflow: 'hidden' }} styles={{ body: { padding: 0 } }}>
       {/* Controls */}
-      <div className="absolute top-3 left-3 z-30 flex gap-1">
-        <Button variant="outline" size="icon" className="h-7 w-7 bg-white/90 hover:bg-white dark:bg-slate-800/90 dark:hover:bg-slate-800" onClick={() => setZoom(z => Math.min(z + 0.15, 2.5))}>
-          <ZoomIn className="h-3.5 w-3.5" />
-        </Button>
-        <Button variant="outline" size="icon" className="h-7 w-7 bg-white/90 hover:bg-white dark:bg-slate-800/90 dark:hover:bg-slate-800" onClick={() => setZoom(z => Math.max(z - 0.15, 0.3))}>
-          <ZoomOut className="h-3.5 w-3.5" />
-        </Button>
-        <Button variant="outline" size="icon" className="h-7 w-7 bg-white/90 hover:bg-white dark:bg-slate-800/90 dark:hover:bg-slate-800" onClick={resetView}>
-          <Maximize2 className="h-3.5 w-3.5" />
-        </Button>
-        <div className="h-7 w-px bg-gray-200 dark:bg-gray-700 mx-1" />
+      <div style={{ position: 'absolute', top: 12, left: 12, zIndex: 30, display: 'flex', gap: 4 }}>
+        <Button size="small" icon={<ZoomInOutlined />} onClick={() => setZoom(z => Math.min(z + 0.15, 2.5))} />
+        <Button size="small" icon={<ZoomOutOutlined />} onClick={() => setZoom(z => Math.max(z - 0.15, 0.3))} />
+        <Button size="small" icon={<ExpandOutlined />} onClick={resetView} />
+        <div style={{ width: 1, height: 28, background: token.colorBorderSecondary, margin: '0 4px' }} />
         <Button
-          variant={hideOfflineDevices ? "default" : "outline"}
-          size="sm"
-          className={`h-7 px-2 text-xs gap-1 ${hideOfflineDevices ? 'bg-primary' : 'bg-white/90 hover:bg-white dark:bg-slate-800/90 dark:hover:bg-slate-800'}`}
+          size="small"
+          type={hideOfflineDevices ? 'primary' : 'default'}
+          icon={hideOfflineDevices ? <EyeInvisibleOutlined /> : <EyeOutlined />}
           onClick={() => setHideOfflineDevices(!hideOfflineDevices)}
         >
-          {hideOfflineDevices ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
-          <span className="hidden sm:inline">{hideOfflineDevices ? t.topology.showOffline : t.topology.hideOffline}</span>
+          {hideOfflineDevices ? t.topology.showOffline : t.topology.hideOffline}
         </Button>
       </div>
 
-      <div 
-        ref={containerRef} 
-        className={`relative w-full select-none ${isPanning ? 'cursor-grabbing' : 'cursor-grab'}`}
-        style={{ height: `${dynamicContainerHeight}px` }}
+      <div
+        ref={containerRef}
+        style={{ position: 'relative', width: '100%', userSelect: 'none', cursor: isPanning ? 'grabbing' : 'grab', height: dynamicContainerHeight }}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
         onWheel={handleWheel}
       >
-        <canvas ref={canvasRef} className="absolute inset-0 w-full h-full" style={{ pointerEvents: 'none' }} />
+        <canvas ref={canvasRef} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none' }} />
 
-        <div 
-          className="absolute inset-0 transition-transform duration-75" 
-          style={{ 
+        <div
+          style={{
+            position: 'absolute', inset: 0,
             transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
             transformOrigin: 'center center',
             pointerEvents: isDragging ? 'none' : 'auto',
           }}
         >
-          {/* Offset container for virtual canvas */}
           <div style={{ transform: `translate(${canvasOffset.x}px, ${canvasOffset.y}px)` }}>
             {/* Server Node */}
             {nodePositions['server'] && (
-              <div className="absolute transform -translate-x-1/2 -translate-y-1/2 z-20" style={{ left: nodePositions['server'].x, top: nodePositions['server'].y }}>
-                <div className="relative group cursor-pointer">
-                  <div className="absolute -inset-4 bg-gradient-to-r from-blue-400/25 via-primary/35 to-blue-400/25 blur-xl rounded-full animate-pulse" style={{ animationDuration: '2s' }} />
-                  <div className="relative w-14 h-10 flex items-center justify-center">
-                    <svg viewBox="0 0 120 70" className="w-full h-full drop-shadow-lg" style={{ filter: 'drop-shadow(0 3px 10px rgba(0, 102, 255, 0.35))' }}>
+              <div style={{ position: 'absolute', transform: 'translate(-50%, -50%)', zIndex: 20, left: nodePositions['server'].x, top: nodePositions['server'].y }}>
+                <div style={{ position: 'relative', cursor: 'pointer' }}>
+                  <div style={{ position: 'absolute', inset: -16, background: 'linear-gradient(to right, rgba(96,165,250,0.25), rgba(59,130,246,0.35), rgba(96,165,250,0.25))', filter: 'blur(16px)', borderRadius: '50%' }} />
+                  <div style={{ position: 'relative', width: 56, height: 40, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <svg viewBox="0 0 120 70" style={{ width: '100%', height: '100%', filter: 'drop-shadow(0 3px 10px rgba(0, 102, 255, 0.35))' }}>
                       <defs>
                         <linearGradient id="cloudGradient" x1="0%" y1="0%" x2="100%" y2="100%">
                           <stop offset="0%" stopColor="#60A5FA" />
@@ -1201,7 +1183,7 @@ export default function NetworkTopology({ data, deviceStatuses }: NetworkTopolog
                           <stop offset="100%" stopColor="rgba(255,255,255,0)" />
                         </linearGradient>
                       </defs>
-                      <path d="M95 50 C115 50 115 30 95 30 C95 10 70 5 55 18 C40 5 15 10 15 30 C-5 30 -5 50 15 50 Z" fill="url(#cloudGradient)" className="transition-transform duration-500 group-hover:scale-105" style={{ transformOrigin: 'center' }} />
+                      <path d="M95 50 C115 50 115 30 95 30 C95 10 70 5 55 18 C40 5 15 10 15 30 C-5 30 -5 50 15 50 Z" fill="url(#cloudGradient)" />
                       <path d="M90 45 C105 45 105 30 90 30 C90 15 70 12 58 22 C48 12 28 15 28 30 C15 30 15 45 28 45 Z" fill="url(#cloudHighlight)" />
                       <g transform="translate(45, 24)">
                         <rect x="2" y="1" width="14" height="5" rx="1" fill="rgba(255,255,255,0.95)" />
@@ -1211,8 +1193,8 @@ export default function NetworkTopology({ data, deviceStatuses }: NetworkTopolog
                       </g>
                     </svg>
                   </div>
-                  <div className="absolute -bottom-4 left-1/2 transform -translate-x-1/2 whitespace-nowrap">
-                    <span className="text-[8px] font-bold text-primary bg-white/95 dark:bg-slate-900/95 px-1.5 py-0.5 rounded-full shadow-sm border border-blue-100 dark:border-blue-800">{topologyData.server.name}</span>
+                  <div style={{ position: 'absolute', bottom: -16, left: '50%', transform: 'translateX(-50%)', whiteSpace: 'nowrap' }}>
+                    <span style={{ fontSize: 8, fontWeight: 700, color: token.colorPrimary, background: token.colorBgContainer, padding: '2px 6px', borderRadius: 10, boxShadow: '0 1px 3px rgba(0,0,0,0.1)', border: `1px solid ${token.colorPrimaryBorder}` }}>{topologyData.server.name}</span>
                   </div>
                 </div>
               </div>
@@ -1222,38 +1204,52 @@ export default function NetworkTopology({ data, deviceStatuses }: NetworkTopolog
             {topologyData.users.map((user) => {
               const pos = nodePositions[`user_${user.id}`];
               if (!pos) return null;
-              const userColor = userColors[user.id];
-              
-              // Check if a device is being hovered and if this user is in its access path
-              const hoveredDevice = visibleDevices.find(d => d.id === hoveredNode);
-              const isInAccessPath = hoveredDevice ? getAccessibleDevicesWithPaths(hoveredDevice.id).pathNodes.has(user.id) : false;
-              const shouldDim = hoveredDevice && !isInAccessPath;
-              
+              const userColor = USER_COLORS[topologyData.users.indexOf(user) % USER_COLORS.length];
+
+              const hoveredDev = visibleDevices.find(d => d.id === hoveredNode);
+              const isInAccessPath = hoveredDev ? getAccessibleDevicesWithPaths(hoveredDev.id).pathNodes.has(user.id) : false;
+              const shouldDim = hoveredDev && !isInAccessPath;
+
               return (
-                <div key={user.id} className="absolute transform -translate-x-1/2 -translate-y-1/2 z-10" style={{ left: pos.x, top: pos.y }}>
+                <div key={user.id} style={{ position: 'absolute', transform: 'translate(-50%, -50%)', zIndex: 10, left: pos.x, top: pos.y }}>
                   <div
-                    className={`relative flex items-center gap-1 px-1.5 py-0.5 rounded-full shadow-sm transition-all duration-200 cursor-pointer
-                      ${user.online ? `bg-white dark:bg-slate-800 hover:shadow-md hover:scale-105 border ${userColor?.border || 'border-blue-200 dark:border-blue-600'}` : 'bg-gray-50/90 dark:bg-gray-800/90 border border-gray-300 dark:border-gray-600'}
-                      ${isInAccessPath ? 'ring-2 ring-green-500 ring-offset-1 shadow-lg shadow-green-200 dark:shadow-green-900' : ''}
-                      ${shouldDim ? 'opacity-30' : ''}
-                    `}
+                    style={{
+                      position: 'relative', display: 'flex', alignItems: 'center', gap: 4,
+                      padding: '2px 6px', borderRadius: 20, cursor: 'pointer',
+                      background: user.online ? token.colorBgContainer : token.colorBgLayout,
+                      border: `1px solid ${user.online ? userColor.border : token.colorBorderSecondary}`,
+                      boxShadow: isInAccessPath ? `0 0 0 2px #52c41a, 0 4px 12px rgba(82,196,26,0.3)` : '0 1px 3px rgba(0,0,0,0.1)',
+                      opacity: shouldDim ? 0.3 : 1,
+                      transition: 'all 0.2s',
+                    }}
                     onMouseEnter={() => setHoveredNode(user.id)}
                     onMouseLeave={() => setHoveredNode(null)}
                   >
-                    <div className="relative">
-                      <div className={`rounded-full flex items-center justify-center text-white font-semibold ${user.online ? `bg-gradient-to-br ${userColor?.bg || 'from-blue-400 to-blue-600'}` : 'bg-gray-400'}`} style={{ width: nodeSize.user, height: nodeSize.user, fontSize: nodeSize.user * 0.38 }}>
+                    <div style={{ position: 'relative' }}>
+                      <div style={{
+                        width: nodeSize.user, height: nodeSize.user, borderRadius: '50%',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        color: '#fff', fontWeight: 600, fontSize: nodeSize.user * 0.38,
+                        background: user.online ? userColor.gradient : '#999',
+                      }}>
                         {user.name.charAt(0).toUpperCase()}
                       </div>
-                      <div className={`absolute -bottom-0.5 -right-0.5 rounded-full border-2 border-white dark:border-slate-800 ${user.online ? 'bg-green-500' : 'bg-gray-400'}`} style={{ width: 8, height: 8 }}>
-                        {user.online && <span className="absolute inset-0 rounded-full bg-green-500 animate-ping opacity-60" style={{ animationDuration: '1.5s' }} />}
-                      </div>
+                      <div style={{
+                        position: 'absolute', bottom: -2, right: -2, width: 8, height: 8,
+                        borderRadius: '50%', border: `2px solid ${token.colorBgContainer}`,
+                        background: user.online ? '#52c41a' : '#999',
+                      }} />
                     </div>
-                    <span className={`text-[9px] font-medium ${user.online ? 'text-gray-700 dark:text-gray-200' : 'text-gray-500 dark:text-gray-400'}`}>{user.name}</span>
+                    <span style={{ fontSize: 9, fontWeight: 500, color: user.online ? token.colorText : token.colorTextSecondary }}>{user.name}</span>
                     {user.deviceCount > 0 && (
-                      <span className="absolute -top-1 -right-1 bg-primary text-white rounded-full flex items-center justify-center font-bold shadow text-[7px]" style={{ width: 13, height: 13 }}>{user.deviceCount}</span>
+                      <span style={{
+                        position: 'absolute', top: -4, right: -4, width: 13, height: 13,
+                        background: token.colorPrimary, color: '#fff', borderRadius: '50%',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        fontSize: 7, fontWeight: 700,
+                      }}>{user.deviceCount}</span>
                     )}
                   </div>
-                  {/* Expand/Collapse button removed - always show all devices */}
                 </div>
               );
             })}
@@ -1264,56 +1260,60 @@ export default function NetworkTopology({ data, deviceStatuses }: NetworkTopolog
               if (!pos) return null;
               const isSelected = selectedDevice?.id === device.id;
               const isHovered = hoveredNode === device.id;
-              const deviceUserColor = userColors[device.userId];
-              
-              // Check if another device is being hovered
-              const hoveredDevice = visibleDevices.find(d => d.id === hoveredNode);
-              const isAccessible = hoveredDevice && hoveredDevice.id !== device.id 
-                ? canAccess(hoveredDevice.id, device.id) 
-                : false;
-              const shouldDim = hoveredDevice && hoveredDevice.id !== device.id && !isAccessible;
+              const deviceUserColor = USER_COLORS[topologyData.users.findIndex(u => u.id === device.userId) % USER_COLORS.length];
+
+              const hoveredDev = visibleDevices.find(d => d.id === hoveredNode);
+              const isAccessible = hoveredDev && hoveredDev.id !== device.id ? canAccess(hoveredDev.id, device.id) : false;
+              const shouldDim = hoveredDev && hoveredDev.id !== device.id && !isAccessible;
 
               return (
-                <div 
-                  key={device.id} 
-                  className={`absolute transform -translate-x-1/2 -translate-y-1/2 z-10 transition-opacity duration-200 ${shouldDim ? 'opacity-30' : ''}`} 
-                  style={{ left: pos.x, top: pos.y }}
+                <div
+                  key={device.id}
+                  style={{
+                    position: 'absolute', transform: 'translate(-50%, -50%)', zIndex: 10,
+                    left: pos.x, top: pos.y,
+                    opacity: shouldDim ? 0.3 : 1,
+                    transition: 'opacity 0.2s',
+                  }}
                 >
                   <div
-                    className={`relative cursor-pointer transition-all duration-200 ${isSelected ? 'scale-115' : isHovered ? 'scale-110' : 'hover:scale-105'}`}
+                    style={{ position: 'relative', cursor: 'pointer', transform: isSelected ? 'scale(1.15)' : isHovered ? 'scale(1.1)' : 'scale(1)', transition: 'transform 0.2s' }}
                     onClick={(e) => handleDeviceClick(device, e)}
                     onMouseEnter={() => setHoveredNode(device.id)}
                     onMouseLeave={() => setHoveredNode(null)}
                   >
                     {(isSelected || isHovered || isAccessible) && (
-                      <div className={`absolute inset-0 rounded-full blur-md transition-all duration-200 scale-150
-                        ${isSelected ? 'bg-blue-400/40' : isHovered ? 'bg-blue-400/30' : 'bg-green-400/35'}
-                      `} />
+                      <div style={{
+                        position: 'absolute', inset: 0, borderRadius: '50%', filter: 'blur(8px)',
+                        transform: 'scale(1.5)',
+                        background: isSelected ? 'rgba(96,165,250,0.4)' : isHovered ? 'rgba(96,165,250,0.3)' : 'rgba(82,196,26,0.35)',
+                      }} />
                     )}
                     <div
-                      className={`relative rounded-full flex flex-col items-center justify-center shadow transition-all duration-200
-                        ${device.online ? `bg-white dark:bg-slate-800 border-2 ${deviceUserColor?.border || 'border-blue-200 dark:border-blue-600'}` : 'bg-gray-100 dark:bg-gray-800 border-2 border-gray-300 dark:border-gray-600'}
-                        ${isSelected ? 'ring-2 ring-blue-500 ring-offset-2' : ''}
-                        ${isHovered ? 'ring-2 ring-blue-400 ring-offset-1 shadow-lg' : ''}
-                        ${isAccessible ? 'ring-2 ring-green-500 ring-offset-1' : ''}
-                        ${!isSelected && !isHovered ? 'shadow-sm' : ''}
-                      `}
-                      style={{ width: nodeSize.device, height: nodeSize.device }}
+                      style={{
+                        position: 'relative', borderRadius: '50%', display: 'flex', flexDirection: 'column',
+                        alignItems: 'center', justifyContent: 'center',
+                        width: nodeSize.device, height: nodeSize.device,
+                        background: device.online ? token.colorBgContainer : token.colorBgLayout,
+                        border: `2px solid ${device.online ? deviceUserColor.border : token.colorBorderSecondary}`,
+                        boxShadow: isSelected ? '0 0 0 2px #1677ff, 0 0 0 4px rgba(22,119,255,0.2)' : isHovered ? '0 0 0 2px rgba(96,165,250,0.5), 0 4px 12px rgba(0,0,0,0.15)' : isAccessible ? '0 0 0 2px #52c41a, 0 0 0 4px rgba(82,196,26,0.2)' : '0 1px 3px rgba(0,0,0,0.08)',
+                      }}
                     >
                       <DeviceIcon type={device.type} online={device.online} size={nodeSize.icon} />
-                      <div className={`absolute -top-0.5 -right-0.5 rounded-full border-2 border-white dark:border-slate-800 flex items-center justify-center ${device.online ? 'bg-green-500' : 'bg-gray-400'}`} style={{ width: 9, height: 9 }}>
-                        {device.online && <Wifi className="w-1.5 h-1.5 text-white" />}
+                      <div style={{
+                        position: 'absolute', top: -2, right: -2, width: 9, height: 9,
+                        borderRadius: '50%', border: `2px solid ${token.colorBgContainer}`,
+                        background: device.online ? '#52c41a' : '#999',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      }}>
+                        {device.online && <WifiOutlined style={{ fontSize: 5, color: '#fff' }} />}
                       </div>
-                      {/* User color indicator dot */}
-                      {device.online && deviceUserColor && (
-                        <div className={`absolute -bottom-0.5 -left-0.5 w-2.5 h-2.5 rounded-full border border-white dark:border-slate-800 ${deviceUserColor.light}`} />
-                      )}
                     </div>
-                    <div className="absolute -bottom-7 left-1/2 transform -translate-x-1/2 text-center whitespace-nowrap">
-                      <p className={`text-[8px] font-medium leading-tight ${device.online ? (deviceUserColor?.text || 'text-gray-700 dark:text-gray-200') : 'text-gray-500 dark:text-gray-400'}`}>
+                    <div style={{ position: 'absolute', bottom: -28, left: '50%', transform: 'translateX(-50%)', textAlign: 'center', whiteSpace: 'nowrap' }}>
+                      <p style={{ fontSize: 8, fontWeight: 500, lineHeight: 1.2, color: device.online ? token.colorText : token.colorTextSecondary }}>
                         {device.name.length > 10 ? device.name.slice(0, 10) + '...' : device.name}
                       </p>
-                      <p className="text-[7px] text-muted-foreground font-mono">{device.ip}</p>
+                      <p style={{ fontSize: 7, color: token.colorTextSecondary, fontFamily: 'monospace' }}>{device.ip}</p>
                     </div>
                   </div>
                 </div>
@@ -1323,134 +1323,145 @@ export default function NetworkTopology({ data, deviceStatuses }: NetworkTopolog
         </div>
 
         {/* Legend */}
-        <div className="absolute bottom-2 left-2 bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm rounded-lg p-2 shadow-sm border border-gray-200 dark:border-gray-700 z-30">
-          <p className="text-[8px] font-semibold text-gray-600 dark:text-gray-300 mb-1">{t.topology.legend}</p>
-          <div className="space-y-0.5">
-            <div className="flex items-center gap-1 text-[8px]"><div className="w-2 h-2 rounded-full bg-green-500" /><span className="text-gray-600 dark:text-gray-300">{t.common.status.online}</span></div>
-            <div className="flex items-center gap-1 text-[8px]"><div className="w-2 h-2 rounded-full bg-gray-400" /><span className="text-gray-600 dark:text-gray-300">{t.common.status.offline}</span></div>
-            <div className="flex items-center gap-1 text-[8px]"><div className="w-4 h-0.5 bg-green-500 rounded" /><span className="text-gray-600 dark:text-gray-300">{t.topology.accessiblePath}</span></div>
+        <div style={{ position: 'absolute', bottom: 8, left: 8, background: token.colorBgElevated, borderRadius: 8, padding: 8, boxShadow: '0 1px 3px rgba(0,0,0,0.1)', border: `1px solid ${token.colorBorderSecondary}`, zIndex: 30 }}>
+          <p style={{ fontSize: 8, fontWeight: 600, color: token.colorTextSecondary, marginBottom: 4 }}>{t.topology.legend}</p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 8 }}><div style={{ width: 8, height: 8, borderRadius: '50%', background: '#52c41a' }} /><span style={{ color: token.colorTextSecondary }}>{t.common.status.online}</span></div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 8 }}><div style={{ width: 8, height: 8, borderRadius: '50%', background: '#999' }} /><span style={{ color: token.colorTextSecondary }}>{t.common.status.offline}</span></div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 8 }}><div style={{ width: 16, height: 2, background: '#52c41a', borderRadius: 2 }} /><span style={{ color: token.colorTextSecondary }}>{t.topology.accessiblePath}</span></div>
           </div>
-          {/* User color legend */}
           {topologyData.users.length > 0 && (
-            <div className="mt-1.5 pt-1 border-t border-gray-200 dark:border-gray-700">
-              <p className="text-[7px] text-gray-500 dark:text-gray-400 mb-0.5">{t.topology.userColors}</p>
-              <div className="flex flex-wrap gap-1">
-                {topologyData.users.slice(0, 6).map((user) => {
-                  const color = userColors[user.id];
+            <div style={{ marginTop: 6, paddingTop: 4, borderTop: `1px solid ${token.colorBorderSecondary}` }}>
+              <p style={{ fontSize: 7, color: token.colorTextSecondary, marginBottom: 2 }}>{t.topology.userColors}</p>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                {topologyData.users.slice(0, 6).map((user, idx) => {
+                  const color = USER_COLORS[idx % USER_COLORS.length];
                   return (
-                    <div key={user.id} className="flex items-center gap-0.5">
-                      <div className={`w-2 h-2 rounded-full bg-gradient-to-br ${color?.bg || 'from-blue-400 to-blue-600'}`} />
-                      <span className="text-[7px] text-gray-500 dark:text-gray-400">{user.name.slice(0, 3)}</span>
+                    <div key={user.id} style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                      <div style={{ width: 8, height: 8, borderRadius: '50%', background: color.gradient }} />
+                      <span style={{ fontSize: 7, color: token.colorTextSecondary }}>{user.name.slice(0, 3)}</span>
                     </div>
                   );
                 })}
-                {topologyData.users.length > 6 && <span className="text-[7px] text-gray-400 dark:text-gray-500">+{topologyData.users.length - 6}</span>}
+                {topologyData.users.length > 6 && <span style={{ fontSize: 7, color: token.colorTextSecondary }}>+{topologyData.users.length - 6}</span>}
               </div>
             </div>
           )}
         </div>
 
         {/* Stats */}
-        <div className="absolute bottom-2 right-2 bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm rounded-lg px-2 py-1 shadow-sm border border-gray-200 dark:border-gray-700 z-30">
-          <p className="text-[8px] text-gray-600 dark:text-gray-300 font-medium">
+        <div style={{ position: 'absolute', bottom: 8, right: 8, background: token.colorBgElevated, borderRadius: 8, padding: '4px 8px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', border: `1px solid ${token.colorBorderSecondary}`, zIndex: 30 }}>
+          <p style={{ fontSize: 8, color: token.colorTextSecondary, fontWeight: 500 }}>
             {topologyData.users.length} {t.topology.usersLabel} · {visibleDevices.length}/{topologyData.devices.length} {t.topology.devicesLabel} · {visibleDevices.filter(d => d.online).length} {t.common.status.online}
-            {hideOfflineDevices && <span className="text-amber-600 dark:text-amber-400 ml-1">({t.topology.onlineOnly})</span>}
+            {hideOfflineDevices && <span style={{ color: '#faad14', marginLeft: 4 }}>({t.topology.onlineOnly})</span>}
           </p>
         </div>
 
         {/* Instructions */}
-        <div className="absolute top-2 right-2 bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm rounded-lg px-2 py-1 shadow-sm border border-gray-200 dark:border-gray-700 z-30">
-          <p className="text-[8px] text-gray-600 dark:text-gray-300 flex items-center gap-1"><Move className="w-3 h-3" /> {t.topology.instructions}</p>
+        <div style={{ position: 'absolute', top: 8, right: 8, background: token.colorBgElevated, borderRadius: 8, padding: '4px 8px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', border: `1px solid ${token.colorBorderSecondary}`, zIndex: 30 }}>
+          <p style={{ fontSize: 8, color: token.colorTextSecondary, display: 'flex', alignItems: 'center', gap: 4 }}><DragOutlined style={{ fontSize: 12 }} /> {t.topology.instructions}</p>
         </div>
       </div>
 
-      {/* Device Detail Sheet */}
-      <Sheet open={!!selectedDevice} onOpenChange={() => setSelectedDevice(null)}>
-        <SheetContent className="p-0">
-          <div className="p-6">
-            <SheetHeader>
-              <SheetTitle className="flex items-center gap-3">
-                <div className={`w-10 h-10 rounded-full flex items-center justify-center ${selectedDevice?.online ? 'bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800' : 'bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700'}`}>
-                  {selectedDevice && <DeviceIcon type={selectedDevice.type} online={selectedDevice.online} size={22} />}
-                </div>
-                <div>
-                  <p className="text-base font-semibold">{selectedDevice?.name}</p>
-                  <p className="text-sm text-muted-foreground font-mono">{selectedDevice?.ip}</p>
-                </div>
-              </SheetTitle>
-            </SheetHeader>
-
-            {selectedDevice && (
-              <div className="mt-5 space-y-4">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">{t.topology.status}</span>
-                  <Badge variant={selectedDevice.online ? 'default' : 'secondary'} className={selectedDevice.online ? 'bg-green-500' : ''}>{selectedDevice.online ? t.common.status.online : t.common.status.offline}</Badge>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">{t.topology.belongsToUser}</span>
-                  <span className="text-sm font-medium">{selectedDevice.userName || selectedDevice.userId}</span>
-                </div>
-                {selectedDevice.lastSeen && (
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-muted-foreground">{t.topology.lastOnline}</span>
-                    <span className="text-sm">{new Date(selectedDevice.lastSeen).toLocaleString('zh-CN')}</span>
-                  </div>
-                )}
-
-                <Separator />
-
-                <div>
-                  <p className="text-sm font-medium mb-2 flex items-center gap-2">
-                    {t.topology.aclPermissions}
-                    <Badge variant="outline" className="text-[10px] font-normal">{getDeviceACL(selectedDevice.id).allowed.length} {t.topology.allow} / {getDeviceACL(selectedDevice.id).denied.length} {t.topology.deny}</Badge>
-                  </p>
-                  <ScrollArea className="h-[240px]">
-                    <div className="space-y-3 pr-4">
-                      {Object.entries(getACLSortedDevices()).map(([userName, devices]) => (
-                        <div key={userName}>
-                          <p className="text-xs font-medium text-muted-foreground mb-1.5 flex items-center gap-1">
-                            <span className="w-4 h-4 rounded-full bg-primary/10 text-primary text-[9px] flex items-center justify-center font-semibold">{userName.charAt(0).toUpperCase()}</span>
-                            {userName}
-                            <span className="text-[9px] text-gray-400 dark:text-gray-500">({devices.length})</span>
-                          </p>
-                          <div className="space-y-1 ml-2">
-                            {devices.map(({ device, canAccessTo }) => (
-                              <div key={device.id} className={`flex items-center justify-between p-1.5 rounded-lg transition-colors ${canAccessTo ? 'bg-green-50/50 dark:bg-green-950/50 border border-green-100 dark:border-green-800' : 'bg-red-50/50 dark:bg-red-950/50 border border-red-100 dark:border-red-800'}`}>
-                                <div className="flex items-center gap-1.5">
-                                  <div className={`w-6 h-6 rounded-full flex items-center justify-center ${device.online ? 'bg-white dark:bg-slate-800' : 'bg-gray-50 dark:bg-gray-800'}`}>
-                                    <DeviceIcon type={device.type} online={device.online} size={13} />
-                                  </div>
-                                  <div>
-                                    <span className="text-[10px] block font-medium">{device.name}</span>
-                                    <span className="text-[9px] text-muted-foreground font-mono">{device.ip}</span>
-                                  </div>
-                                </div>
-                                <Badge variant={canAccessTo ? 'default' : 'destructive'} className={`text-[9px] px-1 py-0 ${canAccessTo ? 'bg-green-500' : ''}`}>{canAccessTo ? t.topology.allow : t.topology.deny}</Badge>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </ScrollArea>
-                </div>
-
-                <Separator />
-
-                <div className="space-y-1.5">
-                  <p className="text-sm font-medium mb-1.5">{t.topology.quickActions}</p>
-                  <Button variant="outline" size="sm" className="w-full justify-start gap-2 h-8" onClick={() => copyToClipboard(`ssh root@${selectedDevice.ip}`)}>
-                    <Terminal className="w-3 h-3" /><span className="text-xs">{t.topology.copySSH}</span>
-                  </Button>
-                  <Button variant="outline" size="sm" className="w-full justify-start gap-2 h-8" onClick={() => copyToClipboard(selectedDevice.ip)}>
-                    <Copy className="w-3 h-3" /><span className="text-xs">{t.topology.copyIP}</span>
-                  </Button>
-                </div>
+      {/* Device Detail Drawer */}
+      <Drawer
+        open={!!selectedDevice}
+        onClose={() => setSelectedDevice(null)}
+        title={
+          selectedDevice ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <div style={{
+                width: 40, height: 40, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                background: selectedDevice.online ? token.colorPrimaryBg : token.colorBgLayout,
+                border: `1px solid ${selectedDevice.online ? token.colorPrimaryBorder : token.colorBorderSecondary}`,
+              }}>
+                <DeviceIcon type={selectedDevice.type} online={selectedDevice.online} size={22} />
+              </div>
+              <div>
+                <div style={{ fontSize: 16, fontWeight: 600 }}>{selectedDevice.name}</div>
+                <Text type="secondary" style={{ fontFamily: 'monospace', fontSize: 13 }}>{selectedDevice.ip}</Text>
+              </div>
+            </div>
+          ) : null
+        }
+        width={400}
+      >
+        {selectedDevice && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Text type="secondary">{t.topology.status}</Text>
+              <Tag color={selectedDevice.online ? 'success' : 'default'}>{selectedDevice.online ? t.common.status.online : t.common.status.offline}</Tag>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Text type="secondary">{t.topology.belongsToUser}</Text>
+              <Text strong>{selectedDevice.userName || selectedDevice.userId}</Text>
+            </div>
+            {selectedDevice.lastSeen && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <Text type="secondary">{t.topology.lastOnline}</Text>
+                <Text>{new Date(selectedDevice.lastSeen).toLocaleString('zh-CN')}</Text>
               </div>
             )}
+
+            <div style={{ height: 1, background: token.colorBorderSecondary }} />
+
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                <Text strong>{t.topology.aclPermissions}</Text>
+                <Tag>{getDeviceACL(selectedDevice.id).allowed.length} {t.topology.allow} / {getDeviceACL(selectedDevice.id).denied.length} {t.topology.deny}</Tag>
+              </div>
+              <div style={{ maxHeight: 240, overflow: 'auto', paddingRight: 4 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  {Object.entries(getACLSortedDevices()).map(([userName, devices]) => (
+                    <div key={userName}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 6, fontSize: 12, color: token.colorTextSecondary }}>
+                        <span style={{ width: 16, height: 16, borderRadius: '50%', background: token.colorPrimaryBg, color: token.colorPrimary, fontSize: 9, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 600 }}>{userName.charAt(0).toUpperCase()}</span>
+                        {userName}
+                        <span style={{ fontSize: 9, color: token.colorTextQuaternary }}>({devices.length})</span>
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginLeft: 8 }}>
+                        {devices.map(({ device, canAccessTo }) => (
+                          <div key={device.id} style={{
+                            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                            padding: 6, borderRadius: 8,
+                            background: canAccessTo ? 'rgba(82,196,26,0.06)' : 'rgba(255,77,79,0.06)',
+                            border: `1px solid ${canAccessTo ? 'rgba(82,196,26,0.2)' : 'rgba(255,77,79,0.2)'}`,
+                          }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                              <div style={{ width: 24, height: 24, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: device.online ? token.colorBgContainer : token.colorBgLayout }}>
+                                <DeviceIcon type={device.type} online={device.online} size={13} />
+                              </div>
+                              <div>
+                                <div style={{ fontSize: 10, fontWeight: 500 }}>{device.name}</div>
+                                <div style={{ fontSize: 9, color: token.colorTextSecondary, fontFamily: 'monospace' }}>{device.ip}</div>
+                              </div>
+                            </div>
+                            <Tag color={canAccessTo ? 'success' : 'error'} style={{ fontSize: 9, margin: 0, padding: '0 4px' }}>{canAccessTo ? t.topology.allow : t.topology.deny}</Tag>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div style={{ height: 1, background: token.colorBorderSecondary }} />
+
+            <div>
+              <Text strong style={{ display: 'block', marginBottom: 6 }}>{t.topology.quickActions}</Text>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <Button block size="small" icon={<CodeOutlined />} onClick={() => copyToClipboard(`ssh root@${selectedDevice.ip}`)}>
+                  {t.topology.copySSH}
+                </Button>
+                <Button block size="small" icon={<CopyOutlined />} onClick={() => copyToClipboard(selectedDevice.ip)}>
+                  {t.topology.copyIP}
+                </Button>
+              </div>
+            </div>
           </div>
-        </SheetContent>
-      </Sheet>
+        )}
+      </Drawer>
     </Card>
   );
 }

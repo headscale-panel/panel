@@ -1,76 +1,34 @@
-import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import { Badge } from '@/components/ui/badge';
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@/components/ui/popover';
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-  CommandSeparator,
-} from '@/components/ui/command';
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/tooltip';
+  CheckCircleFilled,
+  CheckOutlined,
+  CloseCircleFilled,
+  CloseOutlined,
+  CodeOutlined,
+  CopyOutlined,
+  DatabaseOutlined,
+  DeleteOutlined,
+  DesktopOutlined,
+  EditOutlined,
+  GlobalOutlined,
+  HolderOutlined,
+  LaptopOutlined,
+  LoadingOutlined,
+  MobileOutlined,
+  PlusOutlined,
+  ReloadOutlined,
+  SafetyCertificateOutlined,
+  TabletOutlined,
+  TagOutlined,
+  TeamOutlined,
+  UserOutlined,
+} from '@ant-design/icons';
+import { Button, Card, Input, Modal, Popover, Select, Space, Spin, Tag, Tooltip, Typography, message, theme } from 'antd';
 import DashboardLayout from '@/components/DashboardLayout';
 import { useTranslation } from '@/i18n/index';
 import { buildACLDeviceOptions } from '@/lib/acl';
 import { loadACLPageData } from '@/lib/page-data';
 import type { ACLPolicy, HeadscaleUserOption, NormalizedResource } from '@/lib/normalizers';
-import {
-  ArrowRight,
-  Check,
-  CheckCircle2,
-  Copy,
-  FileCode,
-  Globe,
-  Database,
-  Edit2,
-  GripVertical,
-  Laptop,
-  Loader2,
-  Monitor,
-  Plus,
-  RefreshCw,
-  Server,
-  Shield,
-  Smartphone,
-  Tablet,
-  Tag,
-  Trash2,
-  User,
-  Users,
-  XCircle,
-  X,
-} from 'lucide-react';
-import { useState, useEffect, useCallback } from 'react';
-import { toast } from 'sonner';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 
 import { aclAPI, devicesAPI, resourcesAPI, usersAPI } from '@/lib/api';
 
@@ -92,6 +50,8 @@ import { CSS } from '@dnd-kit/utilities';
 
 import Editor from '@monaco-editor/react';
 
+const { Text, Title } = Typography;
+
 interface ACLRule {
   id: number;
   name: string;
@@ -111,6 +71,83 @@ interface DeviceItem {
 type ResourceItem = NormalizedResource;
 type HeadscaleUser = HeadscaleUserOption;
 
+/* -- Searchable Popover for selecting ACL targets -- */
+
+interface ACLOptionGroup {
+  label: string;
+  options: { key: string; label: React.ReactNode; value: string; selected: boolean }[];
+}
+
+function ACLTargetPicker({
+  groups,
+  onSelect,
+  children,
+  searchPlaceholder,
+}: {
+  groups: ACLOptionGroup[];
+  onSelect: (value: string) => void;
+  children: React.ReactNode;
+  searchPlaceholder?: string;
+}) {
+  const [search, setSearch] = useState('');
+  const [open, setOpen] = useState(false);
+
+  const filteredGroups = useMemo(() => {
+    if (!search) return groups;
+    const lower = search.toLowerCase();
+    return groups
+      .map(g => ({
+        ...g,
+        options: g.options.filter(o => o.value.toLowerCase().includes(lower) || (typeof o.label === 'string' && o.label.toLowerCase().includes(lower))),
+      }))
+      .filter(g => g.options.length > 0);
+  }, [groups, search]);
+
+  return (
+    <Popover
+      open={open}
+      onOpenChange={setOpen}
+      trigger="click"
+      placement="bottomLeft"
+      content={
+        <div style={{ width: 320 }}>
+          <Input
+            placeholder={searchPlaceholder}
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            allowClear
+            style={{ marginBottom: 8 }}
+          />
+          <div style={{ maxHeight: 400, overflow: 'auto' }}>
+            {filteredGroups.length === 0 && <Text type="secondary" style={{ padding: 8, display: 'block' }}>No results</Text>}
+            {filteredGroups.map((group, gi) => (
+              <div key={gi}>
+                <Text type="secondary" style={{ fontSize: 12, display: 'block', padding: '4px 8px' }}>{group.label}</Text>
+                {group.options.map(opt => (
+                  <div
+                    key={opt.key}
+                    style={{ padding: '6px 8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, borderRadius: 4 }}
+                    onClick={() => { onSelect(opt.value); }}
+                    onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.background = 'rgba(0,0,0,0.04)'; }}
+                    onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.background = 'transparent'; }}
+                  >
+                    <CheckOutlined style={{ fontSize: 12, opacity: opt.selected ? 1 : 0, color: '#1677ff' }} />
+                    {opt.label}
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+        </div>
+      }
+    >
+      {children}
+    </Popover>
+  );
+}
+
+/* -- SortableRuleCard -- */
+
 interface SortableRuleCardProps {
   id: string;
   children: React.ReactNode;
@@ -118,6 +155,7 @@ interface SortableRuleCardProps {
 
 function SortableRuleCard({ id, children }: SortableRuleCardProps) {
   const t = useTranslation();
+  const { token } = theme.useToken();
   const {
     attributes,
     listeners,
@@ -137,14 +175,14 @@ function SortableRuleCard({ id, children }: SortableRuleCardProps) {
 
   return (
     <div ref={setNodeRef} style={style} {...attributes}>
-      <div className="bg-card border rounded-lg p-4 hover:shadow-md transition-all">
-        <div className="flex items-start gap-2">
+      <div style={{ background: token.colorBgContainer, border: `1px solid ${token.colorBorderSecondary}`, borderRadius: token.borderRadius, padding: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
           <div
             {...listeners}
-            className="flex items-center justify-center w-6 h-full pt-1 cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground transition-colors"
+            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 24, paddingTop: 4, cursor: 'grab', color: token.colorTextSecondary }}
             title={t.acl.dragToSort}
           >
-            <GripVertical className="h-5 w-5" />
+            <HolderOutlined style={{ fontSize: 18 }} />
           </div>
           {children}
         </div>
@@ -155,6 +193,7 @@ function SortableRuleCard({ id, children }: SortableRuleCardProps) {
 
 export default function ACL() {
   const t = useTranslation();
+  const { token } = theme.useToken();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [rules, setRules] = useState<ACLRule[]>([]);
@@ -185,7 +224,6 @@ export default function ACL() {
     document.documentElement.classList.contains('dark')
   );
 
-  // Reactively detect dark mode changes
   useEffect(() => {
     const observer = new MutationObserver(() => {
       setIsDarkMode(document.documentElement.classList.contains('dark'));
@@ -197,7 +235,6 @@ export default function ACL() {
     return () => observer.disconnect();
   }, []);
 
-  // Drag-and-drop sensors
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
   );
@@ -242,7 +279,7 @@ export default function ACL() {
       setHeadscaleUsers(headscaleUsers);
     } catch (error) {
       console.error('Failed to load ACL data:', error);
-      toast.error(t.acl.loadFailed);
+      message.error(t.acl.loadFailed);
     } finally {
       setLoading(false);
     }
@@ -252,7 +289,7 @@ export default function ACL() {
 
   const handleAddRule = async () => {
     if (!newRule.name || !newRule.sources?.length || !newRule.destinations?.length) {
-      toast.error(t.acl.ruleIncomplete);
+      message.error(t.acl.ruleIncomplete);
       return;
     }
     setSaving(true);
@@ -263,14 +300,14 @@ export default function ACL() {
         destinations: newRule.destinations,
         action: newRule.action || 'accept',
       });
-      toast.success(t.acl.addSuccess);
+      message.success(t.acl.addSuccess);
       setShowAddDialog(false);
       setNewRule({ name: '', sources: [], destinations: [], action: 'accept' });
       setSourceInput('');
       setDestInput('');
       loadData();
     } catch (error) {
-      toast.error(t.acl.addFailed);
+      message.error(t.acl.addFailed);
     } finally {
       setSaving(false);
     }
@@ -278,7 +315,7 @@ export default function ACL() {
 
   const handleUpdateRule = async () => {
     if (!newRule.name || !newRule.sources?.length || !newRule.destinations?.length) {
-      toast.error(t.acl.ruleIncomplete);
+      message.error(t.acl.ruleIncomplete);
       return;
     }
     setSaving(true);
@@ -290,14 +327,14 @@ export default function ACL() {
         destinations: newRule.destinations,
         action: newRule.action || 'accept',
       });
-      toast.success(t.acl.updateSuccess);
+      message.success(t.acl.updateSuccess);
       setShowAddDialog(false);
       setEditingRule(null);
       setEditingIndex(-1);
       setNewRule({ name: '', sources: [], destinations: [], action: 'accept' });
       loadData();
     } catch (error) {
-      toast.error(t.acl.updateFailed);
+      message.error(t.acl.updateFailed);
     } finally {
       setSaving(false);
     }
@@ -307,10 +344,10 @@ export default function ACL() {
     setSaving(true);
     try {
       await aclAPI.deleteRuleByIndex(index);
-      toast.success(t.acl.deleteRuleSuccess);
+      message.success(t.acl.deleteRuleSuccess);
       loadData();
     } catch (error) {
-      toast.error(t.acl.deleteRuleFailed);
+      message.error(t.acl.deleteRuleFailed);
     } finally {
       setSaving(false);
     }
@@ -331,7 +368,7 @@ export default function ACL() {
         setShowJsonEditor(true);
       }
     } catch (error) {
-      toast.error(t.acl.getPolicyFailed);
+      message.error(t.acl.getPolicyFailed);
     }
   };
 
@@ -339,11 +376,11 @@ export default function ACL() {
     setSaving(true);
     try {
       await aclAPI.setPolicyRaw(jsonContent);
-      toast.success(t.acl.importSuccess);
+      message.success(t.acl.importSuccess);
       setShowJsonEditor(false);
       loadData();
     } catch (e) {
-      toast.error(t.acl.importFailed);
+      message.error(t.acl.importFailed);
     } finally {
       setSaving(false);
     }
@@ -353,10 +390,10 @@ export default function ACL() {
     setSaving(true);
     try {
       await aclAPI.syncResourcesAsHosts();
-      toast.success(t.acl.syncSuccess);
+      message.success(t.acl.syncSuccess);
       loadData();
     } catch (error) {
-      toast.error(t.acl.syncFailed);
+      message.error(t.acl.syncFailed);
     } finally {
       setSaving(false);
     }
@@ -372,7 +409,6 @@ export default function ACL() {
     const newRules = arrayMove(rules, oldIndex, newIndex);
     setRules(newRules);
 
-    // Rebuild and save the policy
     if (policy) {
       const newPolicy = { ...policy };
       newPolicy.acls = newRules.map(rule => ({
@@ -383,10 +419,9 @@ export default function ACL() {
       }));
       try {
         await aclAPI.updatePolicy(newPolicy);
-        toast.success(t.acl.orderUpdated);
+        message.success(t.acl.orderUpdated);
         loadData();
       } catch {
-        // revert on error
         loadData();
       }
     }
@@ -416,11 +451,129 @@ export default function ACL() {
 
   const getDeviceIcon = (device: DeviceItem) => {
     const name = device.givenName?.toLowerCase() || device.name?.toLowerCase() || '';
-    if (name.includes('phone') || name.includes('iphone')) return <Smartphone className="h-4 w-4" />;
-    if (name.includes('ipad') || name.includes('tablet')) return <Tablet className="h-4 w-4" />;
-    if (name.includes('server') || name.includes('nas')) return <Server className="h-4 w-4" />;
-    if (name.includes('mac') || name.includes('laptop')) return <Laptop className="h-4 w-4" />;
-    return <Monitor className="h-4 w-4" />;
+    if (name.includes('phone') || name.includes('iphone')) return <MobileOutlined />;
+    if (name.includes('ipad') || name.includes('tablet')) return <TabletOutlined />;
+    if (name.includes('server') || name.includes('nas')) return <DesktopOutlined />;
+    if (name.includes('mac') || name.includes('laptop')) return <LaptopOutlined />;
+    return <DesktopOutlined />;
+  };
+
+  /* -- Build option groups for source/destination pickers -- */
+
+  const buildSourceGroups = (): ACLOptionGroup[] => {
+    const groups: ACLOptionGroup[] = [];
+    groups.push({
+      label: t.acl.quickOptions,
+      options: [{ key: 'all-star', label: <span>{t.acl.allStar}</span>, value: '*', selected: !!newRule.sources?.includes('*') }],
+    });
+    groups.push({
+      label: t.acl.autogroupsHeading,
+      options: [
+        { key: 'autogroup-member', label: <span><SafetyCertificateOutlined style={{ marginRight: 8 }} />autogroup:member</span>, value: 'autogroup:member', selected: !!newRule.sources?.includes('autogroup:member') },
+        { key: 'autogroup-tagged', label: <span><SafetyCertificateOutlined style={{ marginRight: 8 }} />autogroup:tagged</span>, value: 'autogroup:tagged', selected: !!newRule.sources?.includes('autogroup:tagged') },
+      ],
+    });
+    if (policy?.tagOwners && Object.keys(policy.tagOwners).length > 0) {
+      groups.push({
+        label: t.acl.tagsHeading,
+        options: Object.keys(policy.tagOwners).map(tagName => ({
+          key: `tag-src-${tagName}`, label: <span><TagOutlined style={{ marginRight: 8 }} />{tagName}</span>, value: tagName, selected: !!newRule.sources?.includes(tagName),
+        })),
+      });
+    }
+    if (Object.keys(aclGroups).length > 0) {
+      groups.push({
+        label: t.acl.aclGroupsHeading,
+        options: Object.keys(aclGroups).map(groupName => ({
+          key: `group-src-${groupName}`, label: <span><TeamOutlined style={{ marginRight: 8 }} />{groupName}</span>, value: groupName, selected: !!newRule.sources?.includes(groupName),
+        })),
+      });
+    }
+    if (headscaleUsers.length > 0) {
+      groups.push({
+        label: t.acl.headscaleUsersHeading,
+        options: headscaleUsers.map(user => ({
+          key: `user-src-${user.name}`, label: <span><UserOutlined style={{ marginRight: 8 }} />{user.name}@</span>, value: `${user.name}@`, selected: !!newRule.sources?.includes(`${user.name}@`),
+        })),
+      });
+    }
+    if (aclDeviceOptions.length > 0) {
+      groups.push({
+        label: t.acl.devicesHeading,
+        options: aclDeviceOptions.map(device => ({
+          key: `device-src-${device.id}`,
+          label: <span>{getDeviceIcon(devices.find(d => d.id === device.id) || { id: device.id, givenName: device.label, name: device.label, ipAddresses: [device.ipAddress] })} <span style={{ marginLeft: 8 }}>{device.label}</span> <Text type="secondary" style={{ fontSize: 12, marginLeft: 4 }}>{device.ipAddress}</Text></span>,
+          value: device.sourceValue,
+          selected: !!newRule.sources?.includes(device.sourceValue),
+        })),
+      });
+    }
+    return groups;
+  };
+
+  const buildDestGroups = (): ACLOptionGroup[] => {
+    const groups: ACLOptionGroup[] = [];
+    groups.push({
+      label: t.acl.quickOptions,
+      options: [{ key: 'all-star-colon', label: <span>{t.acl.allStarColon}</span>, value: '*:*', selected: !!newRule.destinations?.includes('*:*') }],
+    });
+    groups.push({
+      label: t.acl.autogroupsHeading,
+      options: [
+        { key: 'autogroup-internet', label: <span><SafetyCertificateOutlined style={{ marginRight: 8 }} />autogroup:internet:*</span>, value: 'autogroup:internet:*', selected: !!newRule.destinations?.includes('autogroup:internet:*') },
+        { key: 'autogroup-self', label: <span><SafetyCertificateOutlined style={{ marginRight: 8 }} />autogroup:self:*</span>, value: 'autogroup:self:*', selected: !!newRule.destinations?.includes('autogroup:self:*') },
+      ],
+    });
+    if (policy?.tagOwners && Object.keys(policy.tagOwners).length > 0) {
+      groups.push({
+        label: t.acl.tagsHeading,
+        options: Object.keys(policy.tagOwners).map(tagName => ({
+          key: `tag-dst-${tagName}`, label: <span><TagOutlined style={{ marginRight: 8 }} />{tagName}:*</span>, value: `${tagName}:*`, selected: !!newRule.destinations?.includes(`${tagName}:*`),
+        })),
+      });
+    }
+    if (Object.keys(aclGroups).length > 0) {
+      groups.push({
+        label: t.acl.aclGroupsHeading,
+        options: Object.keys(aclGroups).map(groupName => ({
+          key: `group-dst-${groupName}`, label: <span><TeamOutlined style={{ marginRight: 8 }} />{groupName}:*</span>, value: `${groupName}:*`, selected: !!newRule.destinations?.includes(`${groupName}:*`),
+        })),
+      });
+    }
+    if (policy?.hosts && Object.keys(policy.hosts).length > 0) {
+      groups.push({
+        label: t.acl.hostAliasesHeading,
+        options: Object.entries(policy.hosts).map(([hostName, ip]) => ({
+          key: `host-dst-${hostName}`,
+          label: <span><GlobalOutlined style={{ marginRight: 8 }} />{hostName}:* <Text type="secondary" style={{ fontSize: 12, marginLeft: 4 }}>{ip}</Text></span>,
+          value: `${hostName}:*`,
+          selected: !!newRule.destinations?.includes(`${hostName}:*`),
+        })),
+      });
+    }
+    if (resources.length > 0) {
+      groups.push({
+        label: t.acl.resourcesHeading,
+        options: resources.map(resource => ({
+          key: `resource-dst-${resource.id}`,
+          label: <span><DatabaseOutlined style={{ marginRight: 8 }} />{resource.name}:{resource.port || '*'} <Text type="secondary" style={{ fontSize: 12, marginLeft: 4 }}>{resource.ip_address}</Text></span>,
+          value: `${resource.name}:${resource.port || '*'}`,
+          selected: !!newRule.destinations?.includes(`${resource.name}:${resource.port || '*'}`),
+        })),
+      });
+    }
+    if (aclDeviceOptions.length > 0) {
+      groups.push({
+        label: t.acl.devicesHeading,
+        options: aclDeviceOptions.map(device => ({
+          key: `device-dst-${device.id}`,
+          label: <span>{getDeviceIcon(devices.find(d => d.id === device.id) || { id: device.id, givenName: device.label, name: device.label, ipAddresses: [device.ipAddress] })} <span style={{ marginLeft: 8 }}>{device.label}</span> <Text type="secondary" style={{ fontSize: 12, marginLeft: 4 }}>{device.ipAddress}</Text></span>,
+          value: device.destinationValue,
+          selected: !!newRule.destinations?.includes(device.destinationValue),
+        })),
+      });
+    }
+    return groups;
   };
 
   const stats = {
@@ -435,8 +588,8 @@ export default function ACL() {
   if (loading) {
     return (
       <DashboardLayout>
-        <div className="flex items-center justify-center h-64">
-          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', padding: 80 }}>
+          <Spin indicator={<LoadingOutlined style={{ fontSize: 32 }} />} />
         </div>
       </DashboardLayout>
     );
@@ -444,313 +597,259 @@ export default function ACL() {
 
   return (
     <DashboardLayout>
-      <TooltipProvider>
-        <div className="space-y-6 animate-fade-in">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-bold text-foreground">{t.acl.title}</h1>
-              <p className="text-muted-foreground mt-1">{t.acl.description}</p>
-            </div>
-            <div className="flex gap-2">
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button variant="outline" onClick={loadData} disabled={saving}>
-                    <RefreshCw className={`h-4 w-4 ${saving ? 'animate-spin' : ''}`} />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>{t.common.actions.refresh}</TooltipContent>
-              </Tooltip>
-              <Button variant="outline" onClick={handleSyncResources} disabled={saving}>
-                <Database className="h-4 w-4 mr-2" />{t.acl.syncResources}
-              </Button>
-              <Button variant="outline" onClick={handleExportJson}>
-                <FileCode className="h-4 w-4 mr-2" />{t.acl.jsonEditor}
-              </Button>
-              <Button onClick={() => {
-                setEditingRule(null);
-                setEditingIndex(-1);
-                setNewRule({ name: '', sources: [], destinations: [], action: 'accept' });
-                setShowAddDialog(true);
-              }}>
-                <Plus className="h-4 w-4 mr-2" />{t.acl.addRule}
-              </Button>
-            </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <Title level={4} style={{ margin: 0 }}>{t.acl.title}</Title>
+            <Text type="secondary">{t.acl.description}</Text>
           </div>
+          <Space>
+            <Tooltip title={t.common.actions.refresh}>
+              <Button icon={<ReloadOutlined spin={saving} />} onClick={loadData} disabled={saving} />
+            </Tooltip>
+            <Button icon={<DatabaseOutlined />} onClick={handleSyncResources} disabled={saving}>{t.acl.syncResources}</Button>
+            <Button icon={<CodeOutlined />} onClick={handleExportJson}>{t.acl.jsonEditor}</Button>
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => {
+              setEditingRule(null);
+              setEditingIndex(-1);
+              setNewRule({ name: '', sources: [], destinations: [], action: 'accept' });
+              setShowAddDialog(true);
+            }}>{t.acl.addRule}</Button>
+          </Space>
+        </div>
 
-          <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
-            <Card className="p-5 hover:shadow-lg transition-shadow">
-              <div className="flex items-center justify-between">
+        {/* Stats Grid */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 16 }}>
+          {[
+            { label: t.acl.totalRules, value: stats.total, icon: <CodeOutlined style={{ fontSize: 28, color: '#1677ff' }} /> },
+            { label: t.acl.allowRules, value: stats.allow, icon: <CheckCircleFilled style={{ fontSize: 28, color: '#52c41a' }} /> },
+            { label: t.acl.denyRules, value: stats.deny, icon: <CloseCircleFilled style={{ fontSize: 28, color: '#ff4d4f' }} /> },
+            { label: t.acl.groupsLabel, value: stats.groups, icon: <TeamOutlined style={{ fontSize: 28, color: '#1677ff' }} /> },
+            { label: t.acl.tagsLabel, value: stats.tags, icon: <TagOutlined style={{ fontSize: 28, color: '#52c41a' }} /> },
+            { label: t.acl.hostsResources, value: stats.hosts, icon: <GlobalOutlined style={{ fontSize: 28, color: '#722ed1' }} /> },
+          ].map((stat, i) => (
+            <Card key={i} size="small" style={{ padding: 4 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div>
-                  <p className="text-sm text-muted-foreground">{t.acl.totalRules}</p>
-                  <p className="text-2xl font-bold mt-1">{stats.total}</p>
+                  <Text type="secondary" style={{ fontSize: 13 }}>{stat.label}</Text>
+                  <div style={{ fontSize: 24, fontWeight: 700, marginTop: 4 }}>{stat.value}</div>
                 </div>
-                <FileCode className="h-8 w-8 opacity-80 text-blue-500" />
+                {stat.icon}
               </div>
             </Card>
-            <Card className="p-5 hover:shadow-lg transition-shadow">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">{t.acl.allowRules}</p>
-                  <p className="text-2xl font-bold mt-1">{stats.allow}</p>
-                </div>
-                <CheckCircle2 className="h-8 w-8 opacity-80 text-green-500" />
-              </div>
-            </Card>
-            <Card className="p-5 hover:shadow-lg transition-shadow">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">{t.acl.denyRules}</p>
-                  <p className="text-2xl font-bold mt-1">{stats.deny}</p>
-                </div>
-                <XCircle className="h-8 w-8 opacity-80 text-red-500" />
-              </div>
-            </Card>
-            <Card className="p-5 hover:shadow-lg transition-shadow">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">{t.acl.groupsLabel}</p>
-                  <p className="text-2xl font-bold mt-1">{stats.groups}</p>
-                </div>
-                <Users className="h-8 w-8 opacity-80 text-blue-500" />
-              </div>
-            </Card>
-            <Card className="p-5 hover:shadow-lg transition-shadow">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">{t.acl.tagsLabel}</p>
-                  <p className="text-2xl font-bold mt-1">{stats.tags}</p>
-                </div>
-                <Tag className="h-8 w-8 opacity-80 text-emerald-500" />
-              </div>
-            </Card>
-            <Card className="p-5 hover:shadow-lg transition-shadow">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">{t.acl.hostsResources}</p>
-                  <p className="text-2xl font-bold mt-1">{stats.hosts}</p>
-                </div>
-                <Globe className="h-8 w-8 opacity-80 text-purple-500" />
-              </div>
-            </Card>
-          </div>
+          ))}
+        </div>
 
-          <Card className="p-6">
-            <h2 className="text-xl font-semibold mb-4">{t.acl.ruleListTitle}</h2>
-            <p className="text-sm text-muted-foreground mb-4">{t.acl.ruleListDesc}</p>
+        {/* Rule List */}
+        <Card>
+          <Title level={5} style={{ marginBottom: 4 }}>{t.acl.ruleListTitle}</Title>
+          <Text type="secondary" style={{ fontSize: 13, display: 'block', marginBottom: 16 }}>{t.acl.ruleListDesc}</Text>
 
-            {rules.length === 0 ? (
-              <div className="text-center py-12 text-muted-foreground">
-                <FileCode className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                <p>{t.acl.noRules}</p>
-                <p className="text-sm mt-2">{t.acl.noRulesHint}</p>
-              </div>
-            ) : (
-              <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-                <SortableContext items={rules.map((_, i) => `rule-${i}`)} strategy={verticalListSortingStrategy}>
-                  <div className="space-y-3">
-                    {rules.map((rule, index) => (
-                      <SortableRuleCard key={`rule-${index}`} id={`rule-${index}`}>
-                        <div className="flex items-center justify-center w-8 h-8 rounded-full bg-muted text-sm font-medium flex-shrink-0">{index + 1}</div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-2">
-                            <span className="font-semibold text-lg">{rule.name}</span>
-                            <Badge variant={rule.action === 'accept' ? 'default' : 'destructive'} className="ml-2">{rule.action === 'accept' ? t.acl.allow : t.acl.deny}</Badge>
-                          </div>
-                          <div className="flex items-center gap-2 text-sm flex-wrap">
-                            <div className="flex flex-wrap gap-1">
-                              {rule.sources.map((src, idx) => (<Badge key={idx} variant="secondary" className="bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300">{src}</Badge>))}
-                            </div>
-                            <ArrowRight className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                            <div className="flex flex-wrap gap-1">
-                              {rule.destinations.map((dest, idx) => (<Badge key={idx} variant="secondary" className="bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-300">{dest}</Badge>))}
-                            </div>
-                          </div>
+          {rules.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '48px 0', color: token.colorTextSecondary }}>
+              <CodeOutlined style={{ fontSize: 48, opacity: 0.5, display: 'block', marginBottom: 16 }} />
+              <p>{t.acl.noRules}</p>
+              <Text type="secondary" style={{ fontSize: 13 }}>{t.acl.noRulesHint}</Text>
+            </div>
+          ) : (
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+              <SortableContext items={rules.map((_, i) => `rule-${i}`)} strategy={verticalListSortingStrategy}>
+                <Space direction="vertical" style={{ width: '100%' }} size={12}>
+                  {rules.map((rule, index) => (
+                    <SortableRuleCard key={`rule-${index}`} id={`rule-${index}`}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 32, height: 32, borderRadius: '50%', background: token.colorBgLayout, fontSize: 13, fontWeight: 500, flexShrink: 0 }}>{index + 1}</div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                          <Text strong style={{ fontSize: 16 }}>{rule.name}</Text>
+                          <Tag color={rule.action === 'accept' ? 'success' : 'error'}>{rule.action === 'accept' ? t.acl.allow : t.acl.deny}</Tag>
                         </div>
-                        <div className="flex gap-1 flex-shrink-0">
-                          <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon" onClick={() => handleOpenEditDialog(rule, index)}><Edit2 className="h-4 w-4" /></Button></TooltipTrigger><TooltipContent>{t.common.actions.edit}</TooltipContent></Tooltip>
-                          <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon" onClick={() => { navigator.clipboard.writeText(JSON.stringify(rule, null, 2)); toast.success(t.acl.ruleCopied); }}><Copy className="h-4 w-4" /></Button></TooltipTrigger><TooltipContent>{t.acl.copy}</TooltipContent></Tooltip>
-                          <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon" onClick={() => handleDeleteRule(index)} disabled={saving}><Trash2 className="h-4 w-4 text-destructive" /></Button></TooltipTrigger><TooltipContent>{t.common.actions.delete}</TooltipContent></Tooltip>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', fontSize: 13 }}>
+                          <Space size={4} wrap>
+                            {rule.sources.map((src, idx) => (<Tag key={idx} color="blue">{src}</Tag>))}
+                          </Space>
+                          <span style={{ color: token.colorTextSecondary }}>→</span>
+                          <Space size={4} wrap>
+                            {rule.destinations.map((dest, idx) => (<Tag key={idx} color="orange">{dest}</Tag>))}
+                          </Space>
                         </div>
-                      </SortableRuleCard>
-                    ))}
-                  </div>
-                </SortableContext>
-              </DndContext>
+                      </div>
+                      <Space size={4} style={{ flexShrink: 0 }}>
+                        <Tooltip title={t.common.actions.edit}><Button type="text" size="small" icon={<EditOutlined />} onClick={() => handleOpenEditDialog(rule, index)} /></Tooltip>
+                        <Tooltip title={t.acl.copy}><Button type="text" size="small" icon={<CopyOutlined />} onClick={() => { navigator.clipboard.writeText(JSON.stringify(rule, null, 2)); message.success(t.acl.ruleCopied); }} /></Tooltip>
+                        <Tooltip title={t.common.actions.delete}><Button type="text" size="small" danger icon={<DeleteOutlined />} onClick={() => handleDeleteRule(index)} disabled={saving} /></Tooltip>
+                      </Space>
+                    </SortableRuleCard>
+                  ))}
+                </Space>
+              </SortableContext>
+            </DndContext>
+          )}
+        </Card>
+
+        {/* Info Cards: Groups / Tags / Hosts */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
+          <Card>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+              <TeamOutlined style={{ fontSize: 18 }} />
+              <Text strong style={{ fontSize: 15 }}>{t.acl.aclGroups}</Text>
+            </div>
+            {Object.keys(aclGroups).length === 0 ? (<Text type="secondary" style={{ fontSize: 13 }}>{t.acl.noGroups}</Text>) : (
+              <div style={{ maxHeight: 256, overflow: 'auto' }}>
+                <Space direction="vertical" style={{ width: '100%' }} size={8}>
+                  {Object.entries(aclGroups).map(([groupName, members]) => (
+                    <div key={groupName} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: 8, borderRadius: token.borderRadius, background: token.colorBgLayout }}>
+                      <Tag>{groupName}</Tag>
+                      <Space size={4} wrap>{members.map((member, idx) => (<Text key={idx} type="secondary" style={{ fontSize: 13 }}>{member}</Text>))}</Space>
+                    </div>
+                  ))}
+                </Space>
+              </div>
             )}
           </Card>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <Card className="p-6">
-              <h3 className="text-lg font-semibold mb-4 flex items-center gap-2"><Users className="h-5 w-5" />{t.acl.aclGroups}</h3>
-              {Object.keys(aclGroups).length === 0 ? (<p className="text-muted-foreground text-sm">{t.acl.noGroups}</p>) : (
-                <div className="space-y-2 max-h-64 overflow-y-auto">
-                  {Object.entries(aclGroups).map(([groupName, members]) => (
-                    <div key={groupName} className="flex items-start gap-2 p-2 rounded-md bg-muted/50">
-                      <Badge variant="outline" className="shrink-0">{groupName}</Badge>
-                      <div className="flex flex-wrap gap-1">{members.map((member, idx) => (<span key={idx} className="text-sm text-muted-foreground">{member}</span>))}</div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </Card>
-
-            <Card className="p-6">
-              <h3 className="text-lg font-semibold mb-4 flex items-center gap-2"><Tag className="h-5 w-5" />{t.acl.tagOwnersTitle}</h3>
-              {!policy?.tagOwners || Object.keys(policy.tagOwners).length === 0 ? (<p className="text-muted-foreground text-sm">{t.acl.noTagOwners}</p>) : (
-                <div className="space-y-2 max-h-64 overflow-y-auto">
+          <Card>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+              <TagOutlined style={{ fontSize: 18 }} />
+              <Text strong style={{ fontSize: 15 }}>{t.acl.tagOwnersTitle}</Text>
+            </div>
+            {!policy?.tagOwners || Object.keys(policy.tagOwners).length === 0 ? (<Text type="secondary" style={{ fontSize: 13 }}>{t.acl.noTagOwners}</Text>) : (
+              <div style={{ maxHeight: 256, overflow: 'auto' }}>
+                <Space direction="vertical" style={{ width: '100%' }} size={8}>
                   {Object.entries(policy.tagOwners).map(([tagName, owners]) => (
-                    <div key={tagName} className="flex items-start gap-2 p-2 rounded-md bg-muted/50">
-                      <Badge variant="outline" className="shrink-0 bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-800">{tagName}</Badge>
-                      <div className="flex flex-wrap gap-1">{owners.map((owner, idx) => (<span key={idx} className="text-sm text-muted-foreground">{owner}</span>))}</div>
+                    <div key={tagName} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: 8, borderRadius: token.borderRadius, background: token.colorBgLayout }}>
+                      <Tag color="green">{tagName}</Tag>
+                      <Space size={4} wrap>{owners.map((owner, idx) => (<Text key={idx} type="secondary" style={{ fontSize: 13 }}>{owner}</Text>))}</Space>
                     </div>
                   ))}
-                </div>
-              )}
-            </Card>
+                </Space>
+              </div>
+            )}
+          </Card>
 
-            <Card className="p-6">
-              <h3 className="text-lg font-semibold mb-4 flex items-center gap-2"><Globe className="h-5 w-5" />{t.acl.hostAliases}</h3>
-              {!policy?.hosts || Object.keys(policy.hosts).length === 0 ? (<p className="text-muted-foreground text-sm">{t.acl.noHosts}</p>) : (
-                <div className="space-y-2 max-h-64 overflow-y-auto">
+          <Card>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+              <GlobalOutlined style={{ fontSize: 18 }} />
+              <Text strong style={{ fontSize: 15 }}>{t.acl.hostAliases}</Text>
+            </div>
+            {!policy?.hosts || Object.keys(policy.hosts).length === 0 ? (<Text type="secondary" style={{ fontSize: 13 }}>{t.acl.noHosts}</Text>) : (
+              <div style={{ maxHeight: 256, overflow: 'auto' }}>
+                <Space direction="vertical" style={{ width: '100%' }} size={8}>
                   {Object.entries(policy.hosts).map(([hostName, ip]) => (
-                    <div key={hostName} className="flex items-center justify-between p-2 rounded-md bg-muted/50">
-                      <Badge variant="outline">{hostName}</Badge>
-                      <span className="text-sm font-mono text-muted-foreground">{ip}</span>
+                    <div key={hostName} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 8, borderRadius: token.borderRadius, background: token.colorBgLayout }}>
+                      <Tag>{hostName}</Tag>
+                      <Text type="secondary" code style={{ fontSize: 13 }}>{ip}</Text>
                     </div>
                   ))}
-                </div>
-              )}
-            </Card>
-          </div>
-
-          {/* Add/Edit Rule Dialog */}
-          <Dialog open={showAddDialog} onOpenChange={(open) => { if (!open) { setEditingRule(null); setEditingIndex(-1); } setShowAddDialog(open); }}>
-            <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
-              <DialogHeader>
-                <DialogTitle>{editingRule ? t.acl.editRuleTitle : t.acl.addRuleTitle}</DialogTitle>
-                <DialogDescription>{editingRule ? t.acl.editRuleDesc : t.acl.addRuleDesc}</DialogDescription>
-              </DialogHeader>
-              <div className="space-y-4">
-                <div>
-                  <Label htmlFor="rule-name">{t.acl.ruleNameLabel}</Label>
-                  <Input id="rule-name" placeholder={t.acl.ruleNamePlaceholder} value={newRule.name} onChange={(e) => setNewRule({ ...newRule, name: e.target.value })} className="mt-1" />
-                </div>
-                <div>
-                  <Label>{t.acl.sourceLabel}</Label>
-                  <p className="text-sm text-muted-foreground mb-2">{t.acl.sourceDesc}</p>
-                  <div className="flex gap-2 mb-2">
-                    <Popover modal={true}>
-                      <PopoverTrigger asChild><Button variant="outline" className="flex-1"><Plus className="h-4 w-4 mr-2" />{t.acl.selectSource}</Button></PopoverTrigger>
-                      <PopoverContent className="w-80 p-0" align="start" side="bottom" sideOffset={4}>
-                        <Command>
-                          <CommandInput placeholder={t.acl.searchPlaceholder} />
-                          <CommandList className="max-h-[400px]">
-                            <CommandEmpty>{t.acl.noResults}</CommandEmpty>
-                            <CommandGroup heading={t.acl.quickOptions}>
-                              <CommandItem value="all-star" onSelect={() => addSource('*')}><Check className={`mr-2 h-4 w-4 ${newRule.sources?.includes('*') ? 'opacity-100' : 'opacity-0'}`} />{t.acl.allStar}</CommandItem>
-                            </CommandGroup>
-                            <CommandSeparator />
-                            <CommandGroup heading={t.acl.autogroupsHeading}>
-                              <CommandItem value="autogroup-member" onSelect={() => addSource('autogroup:member')}><Check className={`mr-2 h-4 w-4 ${newRule.sources?.includes('autogroup:member') ? 'opacity-100' : 'opacity-0'}`} /><Shield className="mr-2 h-4 w-4" /><div className="flex flex-col"><span>autogroup:member</span><span className="text-xs text-muted-foreground">{t.acl.autogroupMemberDesc}</span></div></CommandItem>
-                              <CommandItem value="autogroup-tagged" onSelect={() => addSource('autogroup:tagged')}><Check className={`mr-2 h-4 w-4 ${newRule.sources?.includes('autogroup:tagged') ? 'opacity-100' : 'opacity-0'}`} /><Shield className="mr-2 h-4 w-4" /><div className="flex flex-col"><span>autogroup:tagged</span><span className="text-xs text-muted-foreground">{t.acl.autogroupTaggedDesc}</span></div></CommandItem>
-                            </CommandGroup>
-                            {policy?.tagOwners && Object.keys(policy.tagOwners).length > 0 && (<><CommandSeparator /><CommandGroup heading={t.acl.tagsHeading}>{Object.keys(policy.tagOwners).map((tagName) => (<CommandItem key={tagName} value={`tag-src-${tagName}`} onSelect={() => addSource(tagName)}><Check className={`mr-2 h-4 w-4 ${newRule.sources?.includes(tagName) ? 'opacity-100' : 'opacity-0'}`} /><Tag className="mr-2 h-4 w-4" /><span>{tagName}</span></CommandItem>))}</CommandGroup></>)}
-                            {Object.keys(aclGroups).length > 0 && (<><CommandSeparator /><CommandGroup heading={t.acl.aclGroupsHeading}>{Object.keys(aclGroups).map((groupName) => (<CommandItem key={groupName} value={`group-src-${groupName}`} onSelect={() => addSource(groupName)}><Check className={`mr-2 h-4 w-4 ${newRule.sources?.includes(groupName) ? 'opacity-100' : 'opacity-0'}`} /><Users className="mr-2 h-4 w-4" /><span>{groupName}</span></CommandItem>))}</CommandGroup></>)}
-                            {headscaleUsers.length > 0 && (<><CommandSeparator /><CommandGroup heading={t.acl.headscaleUsersHeading}>{headscaleUsers.map((user) => (<CommandItem key={user.id} value={`user-src-${user.name}`} onSelect={() => addSource(`${user.name}@`)}><Check className={`mr-2 h-4 w-4 ${newRule.sources?.includes(`${user.name}@`) ? 'opacity-100' : 'opacity-0'}`} /><User className="mr-2 h-4 w-4" /><span>{user.name}@</span></CommandItem>))}</CommandGroup></>)}
-                            {aclDeviceOptions.length > 0 && (<><CommandSeparator /><CommandGroup heading={t.acl.devicesHeading}>{aclDeviceOptions.map((device) => (<CommandItem key={device.id} value={`device-src-${device.label}-${device.ipAddress}`} onSelect={() => addSource(device.sourceValue)}><Check className={`mr-2 h-4 w-4 ${newRule.sources?.includes(device.sourceValue) ? 'opacity-100' : 'opacity-0'}`} />{getDeviceIcon(devices.find((item) => item.id === device.id) || { id: device.id, givenName: device.label, name: device.label, ipAddresses: [device.ipAddress] })}<div className="flex flex-col ml-2"><span>{device.label}</span><span className="text-xs text-muted-foreground">{device.ipAddress}</span></div></CommandItem>))}</CommandGroup></>)}
-                          </CommandList>
-                        </Command>
-                      </PopoverContent>
-                    </Popover>
-                  </div>
-                  <div className="flex gap-2">
-                    <Input placeholder={t.acl.customSourcePlaceholder} value={sourceInput} onChange={(e) => setSourceInput(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && sourceInput) addSource(sourceInput); }} />
-                    <Button variant="outline" onClick={() => sourceInput && addSource(sourceInput)}>{t.common.actions.add}</Button>
-                  </div>
-                  <div className="flex flex-wrap gap-2 mt-2">{newRule.sources?.map((src, idx) => (<Badge key={idx} variant="secondary" className="bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300">{src}<button onClick={() => removeSource(src)} className="ml-2 hover:text-destructive"><X className="h-3 w-3" /></button></Badge>))}</div>
-                </div>
-                <div>
-                  <Label>{t.acl.destinationLabel}</Label>
-                  <p className="text-sm text-muted-foreground mb-2">{t.acl.destinationDesc}</p>
-                  <div className="flex gap-2 mb-2">
-                    <Popover modal={true}>
-                      <PopoverTrigger asChild><Button variant="outline" className="flex-1"><Plus className="h-4 w-4 mr-2" />{t.acl.selectDestination}</Button></PopoverTrigger>
-                      <PopoverContent className="w-80 p-0" align="start" side="bottom" sideOffset={4}>
-                        <Command>
-                          <CommandInput placeholder={t.acl.searchPlaceholder} />
-                          <CommandList className="max-h-[400px]">
-                            <CommandEmpty>{t.acl.noResults}</CommandEmpty>
-                            <CommandGroup heading={t.acl.quickOptions}>
-                              <CommandItem value="all-star-colon" onSelect={() => addDestination('*:*')}><Check className={`mr-2 h-4 w-4 ${newRule.destinations?.includes('*:*') ? 'opacity-100' : 'opacity-0'}`} />{t.acl.allStarColon}</CommandItem>
-                            </CommandGroup>
-                            <CommandSeparator />
-                            <CommandGroup heading={t.acl.autogroupsHeading}>
-                              <CommandItem value="autogroup-internet" onSelect={() => addDestination('autogroup:internet:*')}><Check className={`mr-2 h-4 w-4 ${newRule.destinations?.includes('autogroup:internet:*') ? 'opacity-100' : 'opacity-0'}`} /><Shield className="mr-2 h-4 w-4" /><div className="flex flex-col"><span>autogroup:internet:*</span><span className="text-xs text-muted-foreground">{t.acl.autogroupInternetDesc}</span></div></CommandItem>
-                              <CommandItem value="autogroup-self" onSelect={() => addDestination('autogroup:self:*')}><Check className={`mr-2 h-4 w-4 ${newRule.destinations?.includes('autogroup:self:*') ? 'opacity-100' : 'opacity-0'}`} /><Shield className="mr-2 h-4 w-4" /><div className="flex flex-col"><span>autogroup:self:*</span><span className="text-xs text-muted-foreground">{t.acl.autogroupSelfDesc}</span></div></CommandItem>
-                            </CommandGroup>
-                            {policy?.tagOwners && Object.keys(policy.tagOwners).length > 0 && (<><CommandSeparator /><CommandGroup heading={t.acl.tagsHeading}>{Object.keys(policy.tagOwners).map((tagName) => (<CommandItem key={tagName} value={`tag-dst-${tagName}`} onSelect={() => addDestination(`${tagName}:*`)}><Check className={`mr-2 h-4 w-4 ${newRule.destinations?.includes(`${tagName}:*`) ? 'opacity-100' : 'opacity-0'}`} /><Tag className="mr-2 h-4 w-4" /><span>{tagName}:*</span></CommandItem>))}</CommandGroup></>)}
-                            {Object.keys(aclGroups).length > 0 && (<><CommandSeparator /><CommandGroup heading={t.acl.aclGroupsHeading}>{Object.keys(aclGroups).map((groupName) => (<CommandItem key={groupName} value={`group-dst-${groupName}`} onSelect={() => addDestination(`${groupName}:*`)}><Check className={`mr-2 h-4 w-4 ${newRule.destinations?.includes(`${groupName}:*`) ? 'opacity-100' : 'opacity-0'}`} /><Users className="mr-2 h-4 w-4" /><span>{groupName}:*</span></CommandItem>))}</CommandGroup></>)}
-                            {policy?.hosts && Object.keys(policy.hosts).length > 0 && (<><CommandSeparator /><CommandGroup heading={t.acl.hostAliasesHeading}>{Object.entries(policy.hosts).map(([hostName, ip]) => (<CommandItem key={hostName} value={`host-dst-${hostName}`} onSelect={() => addDestination(`${hostName}:*`)}><Check className={`mr-2 h-4 w-4 ${newRule.destinations?.includes(`${hostName}:*`) ? 'opacity-100' : 'opacity-0'}`} /><Globe className="mr-2 h-4 w-4" /><div className="flex flex-col"><span>{hostName}:*</span><span className="text-xs text-muted-foreground">{ip}</span></div></CommandItem>))}</CommandGroup></>)}
-                            {resources.length > 0 && (<><CommandSeparator /><CommandGroup heading={t.acl.resourcesHeading}>{resources.map((resource) => (<CommandItem key={resource.id} value={`resource-dst-${resource.name}`} onSelect={() => addDestination(`${resource.name}:${resource.port || '*'}`)}><Check className={`mr-2 h-4 w-4 ${newRule.destinations?.includes(`${resource.name}:${resource.port || '*'}`) ? 'opacity-100' : 'opacity-0'}`} /><Database className="mr-2 h-4 w-4" /><div className="flex flex-col"><span>{resource.name}:{resource.port || '*'}</span><span className="text-xs text-muted-foreground">{resource.ip_address}</span></div></CommandItem>))}</CommandGroup></>)}
-                            {aclDeviceOptions.length > 0 && (<><CommandSeparator /><CommandGroup heading={t.acl.devicesHeading}>{aclDeviceOptions.map((device) => (<CommandItem key={device.id} value={`device-dst-${device.label}-${device.ipAddress}`} onSelect={() => addDestination(device.destinationValue)}><Check className={`mr-2 h-4 w-4 ${newRule.destinations?.includes(device.destinationValue) ? 'opacity-100' : 'opacity-0'}`} />{getDeviceIcon(devices.find((item) => item.id === device.id) || { id: device.id, givenName: device.label, name: device.label, ipAddresses: [device.ipAddress] })}<div className="flex flex-col ml-2"><span>{device.label}</span><span className="text-xs text-muted-foreground">{device.ipAddress}</span></div></CommandItem>))}</CommandGroup></>)}
-                          </CommandList>
-                        </Command>
-                      </PopoverContent>
-                    </Popover>
-                  </div>
-                  <div className="flex gap-2">
-                    <Input placeholder={t.acl.customDestPlaceholder} value={destInput} onChange={(e) => setDestInput(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && destInput) addDestination(destInput); }} />
-                    <Button variant="outline" onClick={() => destInput && addDestination(destInput)}>{t.common.actions.add}</Button>
-                  </div>
-                  <div className="flex flex-wrap gap-2 mt-2">{newRule.destinations?.map((dest, idx) => (<Badge key={idx} variant="secondary" className="bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-300">{dest}<button onClick={() => removeDestination(dest)} className="ml-2 hover:text-destructive"><X className="h-3 w-3" /></button></Badge>))}</div>
-                </div>
-                <div>
-                  <Label>{t.acl.actionLabel}</Label>
-                  <Select value={newRule.action} onValueChange={(value: 'accept' | 'deny') => setNewRule({ ...newRule, action: value })}>
-                    <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
-                    <SelectContent><SelectItem value="accept">{t.acl.actionAccept}</SelectItem><SelectItem value="deny">{t.acl.actionDeny}</SelectItem></SelectContent>
-                  </Select>
-                </div>
+                </Space>
               </div>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setShowAddDialog(false)}>{t.common.actions.cancel}</Button>
-                <Button onClick={editingRule ? handleUpdateRule : handleAddRule} disabled={saving}>{saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}{editingRule ? t.acl.saveChanges : t.acl.createRule}</Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-
-          {/* JSON Editor Dialog with Monaco */}
-          <Dialog open={showJsonEditor} onOpenChange={setShowJsonEditor}>
-            <DialogContent className="max-w-4xl h-[80vh] flex flex-col">
-              <DialogHeader>
-                <DialogTitle>{t.acl.jsonEditorTitle}</DialogTitle>
-                <DialogDescription>{t.acl.jsonEditorDesc}</DialogDescription>
-              </DialogHeader>
-              <div className="flex-1 min-h-0 border rounded-md overflow-hidden">
-                <Editor
-                  height="100%"
-                  language="json"
-                  theme={isDarkMode ? 'vs-dark' : 'light'}
-                  value={jsonContent}
-                  onChange={(value) => setJsonContent(value || '')}
-                  options={{
-                    minimap: { enabled: false },
-                    fontSize: 14,
-                    wordWrap: 'on',
-                    scrollBeyondLastLine: false,
-                    automaticLayout: true,
-                    tabSize: 2,
-                  }}
-                />
-              </div>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setShowJsonEditor(false)}>{t.common.actions.cancel}</Button>
-                <Button onClick={handleImportJson} disabled={saving}>{saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}{t.acl.saveAndApply}</Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
+            )}
+          </Card>
         </div>
-      </TooltipProvider>
+
+        {/* Add/Edit Rule Modal */}
+        <Modal
+          open={showAddDialog}
+          title={editingRule ? t.acl.editRuleTitle : t.acl.addRuleTitle}
+          width={720}
+          onCancel={() => { setShowAddDialog(false); setEditingRule(null); setEditingIndex(-1); }}
+          footer={[
+            <Button key="cancel" onClick={() => setShowAddDialog(false)}>{t.common.actions.cancel}</Button>,
+            <Button key="ok" type="primary" onClick={editingRule ? handleUpdateRule : handleAddRule} loading={saving}>
+              {editingRule ? t.acl.saveChanges : t.acl.createRule}
+            </Button>,
+          ]}
+        >
+          <Text type="secondary" style={{ display: 'block', marginBottom: 16 }}>{editingRule ? t.acl.editRuleDesc : t.acl.addRuleDesc}</Text>
+          <Space direction="vertical" style={{ width: '100%' }} size={16}>
+            <div>
+              <Text style={{ fontSize: 13, display: 'block', marginBottom: 4 }}>{t.acl.ruleNameLabel}</Text>
+              <Input placeholder={t.acl.ruleNamePlaceholder} value={newRule.name} onChange={(e) => setNewRule({ ...newRule, name: e.target.value })} />
+            </div>
+
+            {/* Sources */}
+            <div>
+              <Text style={{ fontSize: 13, display: 'block', marginBottom: 4 }}>{t.acl.sourceLabel}</Text>
+              <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 8 }}>{t.acl.sourceDesc}</Text>
+              <ACLTargetPicker groups={buildSourceGroups()} onSelect={addSource} searchPlaceholder={t.acl.searchPlaceholder}>
+                <Button icon={<PlusOutlined />} block style={{ marginBottom: 8 }}>{t.acl.selectSource}</Button>
+              </ACLTargetPicker>
+              <Space.Compact style={{ width: '100%', marginBottom: 8 }}>
+                <Input placeholder={t.acl.customSourcePlaceholder} value={sourceInput} onChange={(e) => setSourceInput(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && sourceInput) addSource(sourceInput); }} />
+                <Button onClick={() => sourceInput && addSource(sourceInput)}>{t.common.actions.add}</Button>
+              </Space.Compact>
+              <Space size={[4, 4]} wrap>
+                {newRule.sources?.map((src, idx) => (
+                  <Tag key={idx} color="blue" closable onClose={() => removeSource(src)}>{src}</Tag>
+                ))}
+              </Space>
+            </div>
+
+            {/* Destinations */}
+            <div>
+              <Text style={{ fontSize: 13, display: 'block', marginBottom: 4 }}>{t.acl.destinationLabel}</Text>
+              <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 8 }}>{t.acl.destinationDesc}</Text>
+              <ACLTargetPicker groups={buildDestGroups()} onSelect={addDestination} searchPlaceholder={t.acl.searchPlaceholder}>
+                <Button icon={<PlusOutlined />} block style={{ marginBottom: 8 }}>{t.acl.selectDestination}</Button>
+              </ACLTargetPicker>
+              <Space.Compact style={{ width: '100%', marginBottom: 8 }}>
+                <Input placeholder={t.acl.customDestPlaceholder} value={destInput} onChange={(e) => setDestInput(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && destInput) addDestination(destInput); }} />
+                <Button onClick={() => destInput && addDestination(destInput)}>{t.common.actions.add}</Button>
+              </Space.Compact>
+              <Space size={[4, 4]} wrap>
+                {newRule.destinations?.map((dest, idx) => (
+                  <Tag key={idx} color="orange" closable onClose={() => removeDestination(dest)}>{dest}</Tag>
+                ))}
+              </Space>
+            </div>
+
+            {/* Action */}
+            <div>
+              <Text style={{ fontSize: 13, display: 'block', marginBottom: 4 }}>{t.acl.actionLabel}</Text>
+              <Select
+                value={newRule.action}
+                onChange={(value: 'accept' | 'deny') => setNewRule({ ...newRule, action: value })}
+                style={{ width: '100%' }}
+                options={[
+                  { value: 'accept', label: t.acl.actionAccept },
+                  { value: 'deny', label: t.acl.actionDeny },
+                ]}
+              />
+            </div>
+          </Space>
+        </Modal>
+
+        {/* JSON Editor Modal with Monaco */}
+        <Modal
+          open={showJsonEditor}
+          title={t.acl.jsonEditorTitle}
+          width={900}
+          onCancel={() => setShowJsonEditor(false)}
+          styles={{ body: { height: '60vh', padding: 0 } }}
+          footer={[
+            <Button key="cancel" onClick={() => setShowJsonEditor(false)}>{t.common.actions.cancel}</Button>,
+            <Button key="ok" type="primary" onClick={handleImportJson} loading={saving}>{t.acl.saveAndApply}</Button>,
+          ]}
+        >
+          <Text type="secondary" style={{ display: 'block', padding: '0 0 8px 0' }}>{t.acl.jsonEditorDesc}</Text>
+          <div style={{ height: 'calc(60vh - 40px)', border: `1px solid ${token.colorBorderSecondary}`, borderRadius: token.borderRadius, overflow: 'hidden' }}>
+            <Editor
+              height="100%"
+              language="json"
+              theme={isDarkMode ? 'vs-dark' : 'light'}
+              value={jsonContent}
+              onChange={(value) => setJsonContent(value || '')}
+              options={{
+                minimap: { enabled: false },
+                fontSize: 14,
+                wordWrap: 'on',
+                scrollBeyondLastLine: false,
+                automaticLayout: true,
+                tabSize: 2,
+              }}
+            />
+          </div>
+        </Modal>
+      </div>
     </DashboardLayout>
   );
 }

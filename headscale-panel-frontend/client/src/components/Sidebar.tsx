@@ -1,56 +1,69 @@
-import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/lib/store';
 import { useTranslation } from '@/i18n/index';
 import { clearStoredAuthState } from '@/lib/auth';
+import { Layout, Menu, Avatar, Button, Typography, theme } from 'antd';
 import {
-  Activity,
-  BarChart3,
-  Globe,
-  Home,
-  Lock,
-  LogOut,
-  Route,
-  Server,
-  Settings,
-  Users,
-  Database,
-} from 'lucide-react';
-import { Link, useLocation } from 'wouter';
+  HomeOutlined,
+  DesktopOutlined,
+  TeamOutlined,
+  NodeIndexOutlined,
+  DatabaseOutlined,
+  LockOutlined,
+  GlobalOutlined,
+  BarChartOutlined,
+  SettingOutlined,
+  LogoutOutlined,
+} from '@ant-design/icons';
+import { useLocation } from 'wouter';
+import type { MenuProps } from 'antd';
+
+const { Sider } = Layout;
+const { Text } = Typography;
 
 interface SidebarProps {
   collapsed?: boolean;
   isMobile?: boolean;
-  open?: boolean;
   onNavigate?: () => void;
 }
 
-const menuItems = [
-  { icon: Home, key: 'dashboard' as const, path: '/' },
-  { icon: Server, key: 'devices' as const, path: '/devices' },
-  { icon: Users, key: 'users' as const, path: '/users', adminOnly: true },
-  { icon: Route, key: 'routes' as const, path: '/routes' },
-  { icon: Database, key: 'resources' as const, path: '/resources', adminOnly: true },
-  { icon: Lock, key: 'acl' as const, path: '/acl', adminOnly: true },
-  { icon: Globe, key: 'dns' as const, path: '/dns', adminOnly: true },
-  { icon: BarChart3, key: 'metrics' as const, path: '/metrics', adminOnly: true },
-  { icon: Settings, key: 'settings' as const, path: '/settings' },
-];
+const menuIconMap: Record<string, React.ReactNode> = {
+  dashboard: <HomeOutlined />,
+  devices: <DesktopOutlined />,
+  users: <TeamOutlined />,
+  routes: <NodeIndexOutlined />,
+  resources: <DatabaseOutlined />,
+  acl: <LockOutlined />,
+  dns: <GlobalOutlined />,
+  metrics: <BarChartOutlined />,
+  settings: <SettingOutlined />,
+};
+
+const menuPaths: Record<string, string> = {
+  dashboard: '/',
+  devices: '/devices',
+  users: '/users',
+  routes: '/routes',
+  resources: '/resources',
+  acl: '/acl',
+  dns: '/dns',
+  metrics: '/metrics',
+  settings: '/settings',
+};
+
+const adminOnlyKeys = new Set(['users', 'resources', 'acl', 'dns', 'metrics']);
 
 export default function Sidebar({
   collapsed = false,
   isMobile = false,
-  open = false,
   onNavigate,
 }: SidebarProps) {
   const t = useTranslation();
   const [location, setLocation] = useLocation();
   const { user } = useAuthStore();
+  const { token: themeToken } = theme.useToken();
 
   const isAdmin = user?.role === 'admin';
-  const visibleMenuItems = menuItems.filter((item) => !item.adminOnly || isAdmin);
-
   const displayName = user?.display_name || user?.username || t.sidebar.defaultUser;
-  const email = user?.email || '';
   const avatarLetter = (user?.username || 'U')[0].toUpperCase();
 
   const handleLogout = () => {
@@ -59,82 +72,103 @@ export default function Sidebar({
     onNavigate?.();
   };
 
+  // Build menu items
+  const allKeys = ['dashboard', 'devices', 'users', 'routes', 'resources', 'acl', 'dns', 'metrics', 'settings'];
+  const menuItems: MenuProps['items'] = allKeys
+    .filter((key) => !adminOnlyKeys.has(key) || isAdmin)
+    .map((key) => ({
+      key,
+      icon: menuIconMap[key],
+      label: t.sidebar[key as keyof typeof t.sidebar] as string,
+    }));
+
+  // Determine selected key from location
+  const selectedKey = allKeys.find((key) => {
+    const path = menuPaths[key];
+    if (path === '/') return location === '/';
+    return location === path;
+  }) || 'dashboard';
+
+  const handleMenuClick: MenuProps['onClick'] = ({ key }) => {
+    const path = menuPaths[key];
+    if (path) {
+      setLocation(path);
+      onNavigate?.();
+    }
+  };
+
   return (
-    <aside
-      className={cn(
-        'fixed left-0 top-0 h-screen bg-card border-r border-border transition-all duration-300 z-50',
-        isMobile
-          ? cn('w-72 shadow-xl lg:hidden', open ? 'translate-x-0' : '-translate-x-full')
-          : collapsed
-            ? 'w-16'
-            : 'w-60'
-      )}
+    <Sider
+      collapsed={collapsed}
+      width={240}
+      collapsedWidth={isMobile ? 0 : 64}
+      trigger={null}
+      style={{
+        height: '100vh',
+        position: isMobile ? 'relative' : 'fixed',
+        left: 0,
+        top: 0,
+        bottom: 0,
+        zIndex: 50,
+        background: themeToken.colorBgContainer,
+        borderRight: `1px solid ${themeToken.colorBorderSecondary}`,
+      }}
     >
-      <div className="h-16 flex items-center justify-center border-b border-border px-4">
+      <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      <div style={{
+        height: 64,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderBottom: `1px solid ${themeToken.colorBorderSecondary}`,
+        flexShrink: 0,
+      }}>
         {collapsed ? (
-          <Activity className="w-8 h-8 text-primary" />
+          <HomeOutlined style={{ fontSize: 24, color: themeToken.colorPrimary }} />
         ) : (
-          <span className="text-xl font-bold text-foreground">Headscale Panel</span>
+          <Text strong style={{ fontSize: 18 }}>Headscale Panel</Text>
         )}
       </div>
 
-      <nav className="p-2 space-y-1">
-        {visibleMenuItems.map((item) => {
-          const Icon = item.icon;
-          const isActive = location === item.path;
-          return (
-            <Link key={item.path} href={item.path}>
-              <div
-                className={cn(
-                  'flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer transition-all duration-200',
-                  'hover:bg-accent hover:text-accent-foreground',
-                  isActive ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground'
-                )}
-                onClick={() => onNavigate?.()}
-              >
-                <Icon className="w-5 h-5 flex-shrink-0" />
-                {!collapsed && <span className="text-sm font-medium">{t.sidebar[item.key]}</span>}
-              </div>
-            </Link>
-          );
-        })}
-      </nav>
+      <Menu
+        mode="inline"
+        selectedKeys={[selectedKey]}
+        items={menuItems}
+        onClick={handleMenuClick}
+        style={{ borderRight: 0, flex: 1, overflow: 'auto', background: 'transparent' }}
+      />
 
-      <div className="absolute bottom-0 left-0 right-0 border-t border-border">
-        {collapsed ? (
-          <div className="p-2 space-y-2 flex flex-col items-center">
-            <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
-              <span className="text-sm font-semibold text-primary">{avatarLetter}</span>
+      <div style={{
+        borderTop: `1px solid ${themeToken.colorBorderSecondary}`,
+        padding: collapsed ? '12px 8px' : '12px 16px',
+        flexShrink: 0,
+        display: 'flex',
+        alignItems: 'center',
+        gap: 10,
+      }}>
+        <Avatar size={collapsed ? 32 : 36} style={{ backgroundColor: themeToken.colorPrimary, fontSize: 13, flexShrink: 0 }}>
+          {avatarLetter}
+        </Avatar>
+        {!collapsed && (
+          <>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <Text strong ellipsis style={{ display: 'block', fontSize: 13 }}>{displayName}</Text>
+              {user?.email && (
+                <Text type="secondary" ellipsis style={{ display: 'block', fontSize: 11 }}>{user.email}</Text>
+              )}
             </div>
-            <button
+            <Button
+              type="text"
+              danger
+              icon={<LogoutOutlined />}
               onClick={handleLogout}
               title={t.sidebar.logout}
-              className="w-10 h-10 rounded-lg flex items-center justify-center text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors"
-            >
-              <LogOut className="w-4 h-4" />
-            </button>
-          </div>
-        ) : (
-          <div className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
-                <span className="text-sm font-semibold text-primary">{avatarLetter}</span>
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="text-sm font-medium text-foreground truncate">{displayName}</div>
-                <div className="text-xs text-muted-foreground truncate">{email}</div>
-              </div>
-              <button
-                onClick={handleLogout}
-                title={t.sidebar.logout}
-                className="p-2 rounded-lg text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors flex-shrink-0"
-              >
-                <LogOut className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
+              size="small"
+            />
+          </>
         )}
       </div>
-    </aside>
+      </div>
+    </Sider>
   );
 }

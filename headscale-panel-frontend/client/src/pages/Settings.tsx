@@ -1,10 +1,17 @@
-import { Card } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Switch } from '@/components/ui/switch';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
+import {
+  CheckCircleOutlined,
+  CheckOutlined,
+  CloseOutlined,
+  CopyOutlined,
+  DatabaseOutlined,
+  EyeInvisibleOutlined,
+  EyeOutlined,
+  LoadingOutlined,
+  PlusOutlined,
+  SafetyCertificateOutlined,
+  SaveOutlined,
+} from '@ant-design/icons';
+import { Button, Card, Input, Space, Spin, Switch, Tabs, Tag, Typography, message, theme } from 'antd';
 import DashboardLayout from '@/components/DashboardLayout';
 import { useTranslation } from '@/i18n/index';
 import { panelSettingsAPI } from '@/lib/api';
@@ -15,8 +22,8 @@ import {
   type OIDCFormValues,
 } from '@/lib/normalizers';
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { toast } from 'sonner';
-import { Loader2, Save, Plus, X, CheckCircle2, ShieldCheck, Database, Eye, EyeOff, Copy, Check } from 'lucide-react';
+
+const { Title, Text } = Typography;
 
 /* -- Helper Components -- */
 
@@ -34,25 +41,20 @@ function ArrayEditor({ value, onChange, placeholder }: {
   };
 
   return (
-    <div className="space-y-2">
+    <Space direction="vertical" style={{ width: '100%' }} size={8}>
       {value.map((item, i) => (
-        <div key={i} className="flex gap-2">
+        <Space.Compact key={i} style={{ width: '100%' }}>
           <Input
             value={item}
             onChange={(e) => updateItem(i, e.target.value)}
             placeholder={placeholder}
-            className="flex-1"
+            style={{ flex: 1 }}
           />
-          <Button variant="ghost" size="icon" onClick={() => removeItem(i)} className="shrink-0">
-            <X className="w-4 h-4" />
-          </Button>
-        </div>
+          <Button icon={<CloseOutlined />} onClick={() => removeItem(i)} />
+        </Space.Compact>
       ))}
-      <Button variant="outline" size="sm" onClick={addItem}>
-        <Plus className="w-4 h-4 mr-1" />
-        {placeholder || 'Add'}
-      </Button>
-    </div>
+      <Button icon={<PlusOutlined />} size="small" onClick={addItem}>{placeholder || 'Add'}</Button>
+    </Space>
   );
 }
 
@@ -63,15 +65,17 @@ function SectionCard({ title, description, children, actions }: {
   actions?: React.ReactNode;
 }) {
   return (
-    <Card className="p-6 space-y-4">
-      <div className="flex items-start justify-between">
+    <Card>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
         <div>
-          <h3 className="text-base font-semibold text-foreground">{title}</h3>
-          {description && <p className="text-sm text-muted-foreground mt-1">{description}</p>}
+          <Text strong style={{ fontSize: 15 }}>{title}</Text>
+          {description && <div><Text type="secondary" style={{ fontSize: 13 }}>{description}</Text></div>}
         </div>
         {actions}
       </div>
-      {children}
+      <Space direction="vertical" style={{ width: '100%' }} size={16}>
+        {children}
+      </Space>
     </Card>
   );
 }
@@ -82,10 +86,10 @@ function FieldRow({ label, description, children }: {
   children: React.ReactNode;
 }) {
   return (
-    <div className="space-y-1.5">
-      <Label className="text-sm">{label}</Label>
+    <div>
+      <Text style={{ fontSize: 13, display: 'block', marginBottom: 4 }}>{label}</Text>
       {children}
-      {description && <p className="text-xs text-muted-foreground">{description}</p>}
+      {description && <Text type="secondary" style={{ fontSize: 12 }}>{description}</Text>}
     </div>
   );
 }
@@ -97,12 +101,12 @@ function SwitchRow({ label, description, checked, onCheckedChange }: {
   onCheckedChange: (v: boolean) => void;
 }) {
   return (
-    <div className="flex items-center justify-between py-1">
-      <div className="space-y-0.5">
-        <Label className="text-sm">{label}</Label>
-        {description && <p className="text-xs text-muted-foreground">{description}</p>}
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 0' }}>
+      <div>
+        <Text style={{ fontSize: 13 }}>{label}</Text>
+        {description && <div><Text type="secondary" style={{ fontSize: 12 }}>{description}</Text></div>}
       </div>
-      <Switch checked={checked} onCheckedChange={onCheckedChange} />
+      <Switch checked={checked} onChange={onCheckedChange} />
     </div>
   );
 }
@@ -111,8 +115,8 @@ function SwitchRow({ label, description, checked, onCheckedChange }: {
 
 export default function Settings() {
   const t = useTranslation();
+  const { token } = theme.useToken();
 
-  // Panel connection state
   const [grpcAddr, setGrpcAddr] = useState('');
   const [apiKeyInput, setApiKeyInput] = useState('');
   const [insecure, setInsecure] = useState(false);
@@ -120,12 +124,10 @@ export default function Settings() {
   const [isConnected, setIsConnected] = useState(false);
   const [showApiKeyInput, setShowApiKeyInput] = useState(false);
 
-  // OIDC state
   const [oidcForm, setOidcForm] = useState<OIDCFormValues>(defaultOIDCFormValues);
   const [useBuiltinOidc, setUseBuiltinOidc] = useState(false);
   const [builtinOidcLoading, setBuiltinOidcLoading] = useState(false);
 
-  // Loading
   const [loadingConnection, setLoadingConnection] = useState(true);
   const [loadingConfig, setLoadingConfig] = useState(true);
   const [savingGrpc, setSavingGrpc] = useState(false);
@@ -133,10 +135,8 @@ export default function Settings() {
   const [testingConnection, setTestingConnection] = useState(false);
   const [syncing, setSyncing] = useState(false);
 
-  // OIDC preview
   const [previewCopied, setPreviewCopied] = useState(false);
 
-  /* -- Load panel connection settings -- */
   const loadConnectionSettings = useCallback(async () => {
     setLoadingConnection(true);
     try {
@@ -148,13 +148,12 @@ export default function Settings() {
       setApiKeyInput('');
       setShowApiKeyInput(false);
     } catch {
-      toast.error(t.common.errors.requestFailed);
+      message.error(t.common.errors.requestFailed);
     } finally {
       setLoadingConnection(false);
     }
   }, [t]);
 
-  /* -- Load headscale config (for OIDC section) -- */
   const loadHeadscaleConfig = useCallback(async () => {
     setLoadingConfig(true);
     try {
@@ -172,7 +171,6 @@ export default function Settings() {
     loadHeadscaleConfig();
   }, [loadConnectionSettings, loadHeadscaleConfig]);
 
-  /* -- Generate OIDC YAML preview -- */
   const oidcYamlPreview = useMemo(() => {
     if (!oidcForm.enabled) return '';
     const lines: string[] = ['oidc:'];
@@ -212,8 +210,6 @@ export default function Settings() {
     return lines.join('\n');
   }, [oidcForm]);
 
-  /* -- Handlers -- */
-
   const handleTestConnection = async () => {
     setTestingConnection(true);
     try {
@@ -227,12 +223,12 @@ export default function Settings() {
       });
       const allOk = data?.all_reachable === true;
       if (allOk) {
-        toast.success(t.settings.headscaleConnection.connectionTestDesc);
+        message.success(t.settings.headscaleConnection.connectionTestDesc);
       } else {
-        toast.error(t.setupWelcome.toastConnectivityFailed);
+        message.error(t.setupWelcome.toastConnectivityFailed);
       }
     } catch {
-      toast.error(t.common.errors.requestFailed);
+      message.error(t.common.errors.requestFailed);
     } finally {
       setTestingConnection(false);
     }
@@ -240,7 +236,7 @@ export default function Settings() {
 
   const handleSaveGrpc = async () => {
     if (!grpcAddr.trim()) {
-      toast.error(t.setupWelcome.toastGrpcRequired);
+      message.error(t.setupWelcome.toastGrpcRequired);
       return;
     }
     setSavingGrpc(true);
@@ -250,12 +246,12 @@ export default function Settings() {
         api_key: apiKeyInput.trim() || undefined,
         insecure,
       });
-      toast.success(t.settings.toast.connectionSaved);
+      message.success(t.settings.toast.connectionSaved);
       setApiKeyInput('');
       setShowApiKeyInput(false);
       loadConnectionSettings();
     } catch {
-      toast.error(t.common.errors.requestFailed);
+      message.error(t.common.errors.requestFailed);
     } finally {
       setSavingGrpc(false);
     }
@@ -276,10 +272,10 @@ export default function Settings() {
             client_secret: data.client_secret || '',
             scope: data.scope || ['openid', 'profile', 'email'],
           }));
-          toast.success(t.settings.toast.builtinOidcEnabled);
+          message.success(t.settings.toast.builtinOidcEnabled);
         }
       } catch {
-        toast.error(t.common.errors.requestFailed);
+        message.error(t.common.errors.requestFailed);
         setUseBuiltinOidc(false);
       } finally {
         setBuiltinOidcLoading(false);
@@ -291,9 +287,9 @@ export default function Settings() {
     setSyncing(true);
     try {
       await panelSettingsAPI.syncData();
-      toast.success(t.settings.toast.syncSuccess);
+      message.success(t.settings.toast.syncSuccess);
     } catch {
-      toast.error(t.settings.toast.syncFailed);
+      message.error(t.settings.toast.syncFailed);
     } finally {
       setSyncing(false);
     }
@@ -303,9 +299,9 @@ export default function Settings() {
     setSavingOidc(true);
     try {
       await panelSettingsAPI.saveOIDCSettings(oidcForm);
-      toast.success(t.settings.toast.oidcSettingsSaved);
+      message.success(t.settings.toast.oidcSettingsSaved);
     } catch {
-      toast.error(t.common.errors.requestFailed);
+      message.error(t.common.errors.requestFailed);
     } finally {
       setSavingOidc(false);
     }
@@ -314,7 +310,7 @@ export default function Settings() {
   const handleCopyPreview = () => {
     navigator.clipboard.writeText(oidcYamlPreview);
     setPreviewCopied(true);
-    toast.success(t.settings.oidcConfig.previewCopied);
+    message.success(t.settings.oidcConfig.previewCopied);
     setTimeout(() => setPreviewCopied(false), 2000);
   };
 
@@ -323,8 +319,8 @@ export default function Settings() {
   if (loading) {
     return (
       <DashboardLayout>
-        <div className="flex items-center justify-center py-20">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', padding: 80 }}>
+          <Spin indicator={<LoadingOutlined style={{ fontSize: 32 }} />} />
         </div>
       </DashboardLayout>
     );
@@ -332,290 +328,194 @@ export default function Settings() {
 
   return (
     <DashboardLayout>
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-foreground">{t.settings.title}</h1>
-            <p className="text-sm text-muted-foreground mt-1">{t.settings.description}</p>
-          </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+        <div>
+          <Title level={4} style={{ margin: 0 }}>{t.settings.title}</Title>
+          <Text type="secondary" style={{ fontSize: 13 }}>{t.settings.description}</Text>
         </div>
 
-        <Tabs defaultValue="grpc" className="space-y-4">
-          <TabsList>
-            <TabsTrigger value="grpc">{t.settings.tabs.headscale}</TabsTrigger>
-            <TabsTrigger value="oidc">{t.settings.tabs.oidc}</TabsTrigger>
-          </TabsList>
-
-          {/* gRPC Connection Tab */}
-          <TabsContent value="grpc" className="space-y-4">
-            <SectionCard
-              title={t.settings.headscaleConnection.title}
-              description={t.settings.headscaleConnection.description}
-              actions={
-                <div className="flex items-center gap-2">
-                  {isConnected ? (
-                    <Badge variant="outline" className="text-emerald-600 border-emerald-300 dark:text-emerald-400 dark:border-emerald-800">
-                      <CheckCircle2 className="w-3 h-3 mr-1" />
-                      {t.common.status.online}
-                    </Badge>
-                  ) : (
-                    <Badge variant="outline" className="text-destructive border-destructive/30">
-                      {t.common.status.offline}
-                    </Badge>
-                  )}
-                </div>
-              }
-            >
-              <FieldRow label={t.settings.headscaleConnection.serverUrlLabel} description={t.settings.headscaleConnection.serverUrlDesc}>
-                <Input
-                  value={grpcAddr}
-                  onChange={(e) => setGrpcAddr(e.target.value)}
-                  placeholder="127.0.0.1:50443"
-                />
-              </FieldRow>
-
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <Label className="text-sm">{t.settings.headscaleConnection.apiKeyLabel}</Label>
-                  <div className="flex items-center gap-2">
-                    {hasApiKey && !showApiKeyInput && (
-                      <Badge variant="secondary" className="text-xs">
-                        <ShieldCheck className="w-3 h-3 mr-1" />
-                        {t.settings.headscaleConnection.apiKeyConfigured}
-                      </Badge>
-                    )}
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-6 text-xs"
-                      onClick={() => setShowApiKeyInput(!showApiKeyInput)}
-                    >
-                      {showApiKeyInput ? <EyeOff className="w-3 h-3 mr-1" /> : <Eye className="w-3 h-3 mr-1" />}
-                      {showApiKeyInput ? t.settings.headscaleConnection.hideApiKey : t.settings.headscaleConnection.changeApiKey}
-                    </Button>
-                  </div>
-                </div>
-                {showApiKeyInput && (
-                  <Input
-                    value={apiKeyInput}
-                    onChange={(e) => setApiKeyInput(e.target.value)}
-                    placeholder={hasApiKey ? t.settings.headscaleConnection.apiKeyKeepPlaceholder : t.settings.headscaleConnection.apiKeyPlaceholder}
-                    type="password"
-                  />
-                )}
-                <p className="text-xs text-muted-foreground">{t.settings.headscaleConnection.apiKeyDesc}</p>
-              </div>
-
-              <SwitchRow
-                label={t.settings.headscaleConnection.skipTlsLabel}
-                description={t.settings.headscaleConnection.skipTlsDesc}
-                checked={insecure}
-                onCheckedChange={setInsecure}
-              />
-
-              <div className="flex gap-3 pt-2">
-                <Button variant="outline" onClick={handleTestConnection} disabled={testingConnection}>
-                  {testingConnection ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
-                  {t.settings.headscaleConnection.testConnection}
-                </Button>
-                <Button onClick={handleSaveGrpc} disabled={savingGrpc}>
-                  {savingGrpc ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
-                  {t.settings.headscaleConnection.saveSettings}
-                </Button>
-              </div>
-            </SectionCard>
-
-            {/* Data Sync Section */}
-            <SectionCard
-              title={t.settings.dataSync.title}
-              description={t.settings.dataSync.description}
-            >
-              <div className="flex gap-3">
-                <Button variant="outline" onClick={handleSyncData} disabled={syncing}>
-                  {syncing ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Database className="h-4 w-4 mr-2" />}
-                  {t.settings.dataSync.syncButton}
-                </Button>
-              </div>
-            </SectionCard>
-          </TabsContent>
-
-          {/* OIDC Tab */}
-          <TabsContent value="oidc" className="space-y-4">
-            <SectionCard
-              title={t.settings.oidcConfig.title}
-              description={t.settings.oidcConfig.description}
-            >
-              <SwitchRow
-                label={t.settings.oidcConfig.enableOidc}
-                description={t.settings.oidcConfig.enableOidcDesc}
-                checked={oidcForm.enabled}
-                onCheckedChange={(v) => setOidcForm(prev => ({ ...prev, enabled: v }))}
-              />
-              {oidcForm.enabled && (
-                <div className="flex items-center justify-between py-1 border-t pt-3 mt-2">
-                  <div className="space-y-0.5">
-                    <Label className="text-sm">{t.settings.oidcConfig.useBuiltinOidc}</Label>
-                    <p className="text-xs text-muted-foreground">{t.settings.oidcConfig.useBuiltinOidcDesc}</p>
-                  </div>
-                  <Button
-                    variant={useBuiltinOidc ? 'default' : 'outline'}
-                    size="sm"
-                    onClick={() => handleToggleBuiltinOidc(!useBuiltinOidc)}
-                    disabled={builtinOidcLoading}
+        <Tabs
+          defaultActiveKey="grpc"
+          items={[
+            {
+              key: 'grpc',
+              label: t.settings.tabs.headscale,
+              children: (
+                <Space direction="vertical" size={16} style={{ width: '100%' }}>
+                  <SectionCard
+                    title={t.settings.headscaleConnection.title}
+                    description={t.settings.headscaleConnection.description}
+                    actions={
+                      isConnected
+                        ? <Tag icon={<CheckCircleOutlined />} color="success">{t.common.status.online}</Tag>
+                        : <Tag color="error">{t.common.status.offline}</Tag>
+                    }
                   >
-                    {builtinOidcLoading ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <ShieldCheck className="h-4 w-4 mr-1" />}
-                    {useBuiltinOidc ? t.settings.oidcConfig.builtinOidcActive : t.settings.oidcConfig.enableBuiltinBtn}
-                  </Button>
-                </div>
-              )}
-            </SectionCard>
-
-            {oidcForm.enabled && (
-              <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-                {/* Left: OIDC Settings Form */}
-                <Card className="p-6 space-y-4">
-                  <h3 className="text-base font-semibold text-foreground">{t.settings.oidcConfig.settingsTitle}</h3>
-
-                  <FieldRow label={t.settings.oidcConfig.issuerLabel}>
-                    <Input
-                      value={oidcForm.issuer}
-                      onChange={(e) => setOidcForm(prev => ({ ...prev, issuer: e.target.value }))}
-                      placeholder="https://sso.example.com"
-                    />
-                  </FieldRow>
-
-                  <FieldRow label={t.settings.oidcConfig.clientIdLabel}>
-                    <Input
-                      value={oidcForm.client_id}
-                      onChange={(e) => setOidcForm(prev => ({ ...prev, client_id: e.target.value }))}
-                      placeholder="headscale"
-                    />
-                  </FieldRow>
-
-                  <FieldRow label={t.settings.oidcConfig.clientSecretLabel}>
-                    <Input
-                      value={oidcForm.client_secret}
-                      onChange={(e) => setOidcForm(prev => ({ ...prev, client_secret: e.target.value }))}
-                      placeholder="--------"
-                      type="password"
-                    />
-                  </FieldRow>
-
-                  <FieldRow label={t.settings.oidcConfig.clientSecretPathLabel} description={t.settings.oidcConfig.clientSecretPathDesc}>
-                    <Input
-                      value={oidcForm.client_secret_path}
-                      onChange={(e) => setOidcForm(prev => ({ ...prev, client_secret_path: e.target.value }))}
-                      placeholder="/path/to/client_secret"
-                    />
-                  </FieldRow>
-
-                  <FieldRow label={t.settings.oidcConfig.scopeLabel} description={t.settings.oidcConfig.scopeDesc}>
-                    <ArrayEditor
-                      value={oidcForm.scope}
-                      onChange={(v) => setOidcForm(prev => ({ ...prev, scope: v }))}
-                      placeholder="openid"
-                    />
-                  </FieldRow>
-
-                  <FieldRow label={t.settings.oidcConfig.expiryLabel} description={t.settings.oidcConfig.expiryDesc}>
-                    <Input
-                      value={oidcForm.expiry}
-                      onChange={(e) => setOidcForm(prev => ({ ...prev, expiry: e.target.value }))}
-                      placeholder="180d"
-                    />
-                  </FieldRow>
-
-                  <SwitchRow
-                    label={t.settings.oidcConfig.onlyStartIfAvailable}
-                    checked={oidcForm.only_start_if_oidc_is_available}
-                    onCheckedChange={(v) => setOidcForm(prev => ({ ...prev, only_start_if_oidc_is_available: v }))}
-                  />
-
-                  <SwitchRow
-                    label={t.settings.oidcConfig.emailVerifiedRequired}
-                    checked={oidcForm.email_verified_required}
-                    onCheckedChange={(v) => setOidcForm(prev => ({ ...prev, email_verified_required: v }))}
-                  />
-
-                  <SwitchRow
-                    label={t.settings.oidcConfig.stripEmailDomain}
-                    checked={oidcForm.strip_email_domain}
-                    onCheckedChange={(v) => setOidcForm(prev => ({ ...prev, strip_email_domain: v }))}
-                  />
-
-                  <SwitchRow
-                    label={t.settings.oidcConfig.useExpiryFromToken}
-                    checked={oidcForm.use_expiry_from_token}
-                    onCheckedChange={(v) => setOidcForm(prev => ({ ...prev, use_expiry_from_token: v }))}
-                  />
-
-                  <SwitchRow
-                    label={t.settings.oidcConfig.pkceEnabled}
-                    description={t.settings.oidcConfig.pkceDesc}
-                    checked={oidcForm.pkce_enabled}
-                    onCheckedChange={(v) => setOidcForm(prev => ({ ...prev, pkce_enabled: v }))}
-                  />
-
-                  {oidcForm.pkce_enabled && (
-                    <FieldRow label={t.settings.oidcConfig.pkceMethod}>
-                      <Input
-                        value={oidcForm.pkce_method}
-                        onChange={(e) => setOidcForm(prev => ({ ...prev, pkce_method: e.target.value }))}
-                        placeholder="S256"
-                      />
+                    <FieldRow label={t.settings.headscaleConnection.serverUrlLabel} description={t.settings.headscaleConnection.serverUrlDesc}>
+                      <Input value={grpcAddr} onChange={(e) => setGrpcAddr(e.target.value)} placeholder="127.0.0.1:50443" />
                     </FieldRow>
+
+                    <div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                        <Text style={{ fontSize: 13 }}>{t.settings.headscaleConnection.apiKeyLabel}</Text>
+                        <Space size={8}>
+                          {hasApiKey && !showApiKeyInput && (
+                            <Tag icon={<SafetyCertificateOutlined />} color="blue">{t.settings.headscaleConnection.apiKeyConfigured}</Tag>
+                          )}
+                          <Button type="text" size="small" icon={showApiKeyInput ? <EyeInvisibleOutlined /> : <EyeOutlined />} onClick={() => setShowApiKeyInput(!showApiKeyInput)}>
+                            {showApiKeyInput ? t.settings.headscaleConnection.hideApiKey : t.settings.headscaleConnection.changeApiKey}
+                          </Button>
+                        </Space>
+                      </div>
+                      {showApiKeyInput && (
+                        <Input.Password
+                          value={apiKeyInput}
+                          onChange={(e) => setApiKeyInput(e.target.value)}
+                          placeholder={hasApiKey ? t.settings.headscaleConnection.apiKeyKeepPlaceholder : t.settings.headscaleConnection.apiKeyPlaceholder}
+                        />
+                      )}
+                      <Text type="secondary" style={{ fontSize: 12 }}>{t.settings.headscaleConnection.apiKeyDesc}</Text>
+                    </div>
+
+                    <SwitchRow
+                      label={t.settings.headscaleConnection.skipTlsLabel}
+                      description={t.settings.headscaleConnection.skipTlsDesc}
+                      checked={insecure}
+                      onCheckedChange={setInsecure}
+                    />
+
+                    <Space style={{ paddingTop: 8 }}>
+                      <Button onClick={handleTestConnection} loading={testingConnection}>
+                        {t.settings.headscaleConnection.testConnection}
+                      </Button>
+                      <Button type="primary" onClick={handleSaveGrpc} loading={savingGrpc} icon={<SaveOutlined />}>
+                        {t.settings.headscaleConnection.saveSettings}
+                      </Button>
+                    </Space>
+                  </SectionCard>
+
+                  <SectionCard title={t.settings.dataSync.title} description={t.settings.dataSync.description}>
+                    <Button onClick={handleSyncData} loading={syncing} icon={<DatabaseOutlined />}>
+                      {t.settings.dataSync.syncButton}
+                    </Button>
+                  </SectionCard>
+                </Space>
+              ),
+            },
+            {
+              key: 'oidc',
+              label: t.settings.tabs.oidc,
+              children: (
+                <Space direction="vertical" size={16} style={{ width: '100%' }}>
+                  <SectionCard title={t.settings.oidcConfig.title} description={t.settings.oidcConfig.description}>
+                    <SwitchRow
+                      label={t.settings.oidcConfig.enableOidc}
+                      description={t.settings.oidcConfig.enableOidcDesc}
+                      checked={oidcForm.enabled}
+                      onCheckedChange={(v) => setOidcForm(prev => ({ ...prev, enabled: v }))}
+                    />
+                    {oidcForm.enabled && (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: 12, borderTop: `1px solid ${token.colorBorderSecondary}`, marginTop: 8 }}>
+                        <div>
+                          <Text style={{ fontSize: 13 }}>{t.settings.oidcConfig.useBuiltinOidc}</Text>
+                          <div><Text type="secondary" style={{ fontSize: 12 }}>{t.settings.oidcConfig.useBuiltinOidcDesc}</Text></div>
+                        </div>
+                        <Button
+                          type={useBuiltinOidc ? 'primary' : 'default'}
+                          size="small"
+                          onClick={() => handleToggleBuiltinOidc(!useBuiltinOidc)}
+                          loading={builtinOidcLoading}
+                          icon={<SafetyCertificateOutlined />}
+                        >
+                          {useBuiltinOidc ? t.settings.oidcConfig.builtinOidcActive : t.settings.oidcConfig.enableBuiltinBtn}
+                        </Button>
+                      </div>
+                    )}
+                  </SectionCard>
+
+                  {oidcForm.enabled && (
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                      <Card>
+                        <Text strong style={{ fontSize: 15, display: 'block', marginBottom: 16 }}>{t.settings.oidcConfig.settingsTitle}</Text>
+                        <Space direction="vertical" style={{ width: '100%' }} size={16}>
+                          <FieldRow label={t.settings.oidcConfig.issuerLabel}>
+                            <Input value={oidcForm.issuer} onChange={(e) => setOidcForm(prev => ({ ...prev, issuer: e.target.value }))} placeholder="https://sso.example.com" />
+                          </FieldRow>
+                          <FieldRow label={t.settings.oidcConfig.clientIdLabel}>
+                            <Input value={oidcForm.client_id} onChange={(e) => setOidcForm(prev => ({ ...prev, client_id: e.target.value }))} placeholder="headscale" />
+                          </FieldRow>
+                          <FieldRow label={t.settings.oidcConfig.clientSecretLabel}>
+                            <Input.Password value={oidcForm.client_secret} onChange={(e) => setOidcForm(prev => ({ ...prev, client_secret: e.target.value }))} placeholder="--------" />
+                          </FieldRow>
+                          <FieldRow label={t.settings.oidcConfig.clientSecretPathLabel} description={t.settings.oidcConfig.clientSecretPathDesc}>
+                            <Input value={oidcForm.client_secret_path} onChange={(e) => setOidcForm(prev => ({ ...prev, client_secret_path: e.target.value }))} placeholder="/path/to/client_secret" />
+                          </FieldRow>
+                          <FieldRow label={t.settings.oidcConfig.scopeLabel} description={t.settings.oidcConfig.scopeDesc}>
+                            <ArrayEditor value={oidcForm.scope} onChange={(v) => setOidcForm(prev => ({ ...prev, scope: v }))} placeholder="openid" />
+                          </FieldRow>
+                          <FieldRow label={t.settings.oidcConfig.expiryLabel} description={t.settings.oidcConfig.expiryDesc}>
+                            <Input value={oidcForm.expiry} onChange={(e) => setOidcForm(prev => ({ ...prev, expiry: e.target.value }))} placeholder="180d" />
+                          </FieldRow>
+
+                          <SwitchRow label={t.settings.oidcConfig.onlyStartIfAvailable} checked={oidcForm.only_start_if_oidc_is_available} onCheckedChange={(v) => setOidcForm(prev => ({ ...prev, only_start_if_oidc_is_available: v }))} />
+                          <SwitchRow label={t.settings.oidcConfig.emailVerifiedRequired} checked={oidcForm.email_verified_required} onCheckedChange={(v) => setOidcForm(prev => ({ ...prev, email_verified_required: v }))} />
+                          <SwitchRow label={t.settings.oidcConfig.stripEmailDomain} checked={oidcForm.strip_email_domain} onCheckedChange={(v) => setOidcForm(prev => ({ ...prev, strip_email_domain: v }))} />
+                          <SwitchRow label={t.settings.oidcConfig.useExpiryFromToken} checked={oidcForm.use_expiry_from_token} onCheckedChange={(v) => setOidcForm(prev => ({ ...prev, use_expiry_from_token: v }))} />
+                          <SwitchRow label={t.settings.oidcConfig.pkceEnabled} description={t.settings.oidcConfig.pkceDesc} checked={oidcForm.pkce_enabled} onCheckedChange={(v) => setOidcForm(prev => ({ ...prev, pkce_enabled: v }))} />
+
+                          {oidcForm.pkce_enabled && (
+                            <FieldRow label={t.settings.oidcConfig.pkceMethod}>
+                              <Input value={oidcForm.pkce_method} onChange={(e) => setOidcForm(prev => ({ ...prev, pkce_method: e.target.value }))} placeholder="S256" />
+                            </FieldRow>
+                          )}
+
+                          <FieldRow label={t.settings.oidcConfig.allowedDomainsLabel} description={t.settings.oidcConfig.allowedDomainsDesc}>
+                            <ArrayEditor value={oidcForm.allowed_domains} onChange={(v) => setOidcForm(prev => ({ ...prev, allowed_domains: v }))} placeholder="example.com" />
+                          </FieldRow>
+                          <FieldRow label={t.settings.oidcConfig.allowedUsersLabel} description={t.settings.oidcConfig.allowedUsersDesc}>
+                            <ArrayEditor value={oidcForm.allowed_users} onChange={(v) => setOidcForm(prev => ({ ...prev, allowed_users: v }))} placeholder="user@example.com" />
+                          </FieldRow>
+                          <FieldRow label={t.settings.oidcConfig.allowedGroupsLabel} description={t.settings.oidcConfig.allowedGroupsDesc}>
+                            <ArrayEditor value={oidcForm.allowed_groups} onChange={(v) => setOidcForm(prev => ({ ...prev, allowed_groups: v }))} placeholder="group-name" />
+                          </FieldRow>
+
+                          <div style={{ borderTop: `1px solid ${token.colorBorderSecondary}`, paddingTop: 16 }}>
+                            <Button type="primary" block onClick={handleSaveOidc} loading={savingOidc} icon={<SaveOutlined />}>
+                              {t.settings.oidcConfig.saveOidcSettings}
+                            </Button>
+                          </div>
+                        </Space>
+                      </Card>
+
+                      <Card style={{ position: 'sticky', top: 16, alignSelf: 'start' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                          <Text strong style={{ fontSize: 15 }}>{t.settings.oidcConfig.previewTitle}</Text>
+                          <Button type="text" size="small" icon={previewCopied ? <CheckOutlined /> : <CopyOutlined />} onClick={handleCopyPreview}>
+                            {previewCopied ? t.settings.oidcConfig.previewCopied : t.settings.oidcConfig.copyPreview}
+                          </Button>
+                        </div>
+                        <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 12 }}>{t.settings.oidcConfig.previewDesc}</Text>
+                        <pre style={{
+                          background: token.colorBgLayout,
+                          borderRadius: token.borderRadius,
+                          padding: 16,
+                          fontSize: 12,
+                          fontFamily: 'monospace',
+                          maxHeight: 600,
+                          overflow: 'auto',
+                          whiteSpace: 'pre-wrap',
+                          wordBreak: 'break-word',
+                        }}>
+                          {oidcYamlPreview || t.settings.oidcConfig.previewEmpty}
+                        </pre>
+                      </Card>
+                    </div>
                   )}
-
-                  <FieldRow label={t.settings.oidcConfig.allowedDomainsLabel} description={t.settings.oidcConfig.allowedDomainsDesc}>
-                    <ArrayEditor
-                      value={oidcForm.allowed_domains}
-                      onChange={(v) => setOidcForm(prev => ({ ...prev, allowed_domains: v }))}
-                      placeholder="example.com"
-                    />
-                  </FieldRow>
-
-                  <FieldRow label={t.settings.oidcConfig.allowedUsersLabel} description={t.settings.oidcConfig.allowedUsersDesc}>
-                    <ArrayEditor
-                      value={oidcForm.allowed_users}
-                      onChange={(v) => setOidcForm(prev => ({ ...prev, allowed_users: v }))}
-                      placeholder="user@example.com"
-                    />
-                  </FieldRow>
-
-                  <FieldRow label={t.settings.oidcConfig.allowedGroupsLabel} description={t.settings.oidcConfig.allowedGroupsDesc}>
-                    <ArrayEditor
-                      value={oidcForm.allowed_groups}
-                      onChange={(v) => setOidcForm(prev => ({ ...prev, allowed_groups: v }))}
-                      placeholder="group-name"
-                    />
-                  </FieldRow>
-
-                  <div className="pt-4 border-t">
-                    <Button onClick={handleSaveOidc} disabled={savingOidc} className="w-full">
-                      {savingOidc ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
-                      {t.settings.oidcConfig.saveOidcSettings}
-                    </Button>
-                  </div>
-                </Card>
-
-                {/* Right: OIDC YAML Preview */}
-                <Card className="p-6 space-y-4 xl:sticky xl:top-4 xl:self-start">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-base font-semibold text-foreground">{t.settings.oidcConfig.previewTitle}</h3>
-                    <Button variant="ghost" size="sm" onClick={handleCopyPreview}>
-                      {previewCopied ? <Check className="w-4 h-4 mr-1" /> : <Copy className="w-4 h-4 mr-1" />}
-                      {previewCopied ? t.settings.oidcConfig.previewCopied : t.settings.oidcConfig.copyPreview}
-                    </Button>
-                  </div>
-                  <p className="text-xs text-muted-foreground">{t.settings.oidcConfig.previewDesc}</p>
-                  <pre className="bg-muted rounded-lg p-4 text-xs font-mono overflow-auto max-h-[600px] whitespace-pre-wrap break-words">
-                    {oidcYamlPreview || t.settings.oidcConfig.previewEmpty}
-                  </pre>
-                </Card>
-              </div>
-            )}
-          </TabsContent>
-        </Tabs>
+                </Space>
+              ),
+            },
+          ]}
+        />
       </div>
     </DashboardLayout>
   );

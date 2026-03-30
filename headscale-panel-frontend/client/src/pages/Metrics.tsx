@@ -1,14 +1,6 @@
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { Card, Select, Typography, theme } from 'antd';
+import { ClockCircleOutlined, DashboardOutlined, CloudServerOutlined, ExclamationCircleOutlined } from '@ant-design/icons';
 import DashboardLayout from '@/components/DashboardLayout';
-import { cn } from '@/lib/utils';
-import { Activity, Clock, Server, TrendingUp, AlertCircle } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import {
   Bar,
@@ -24,11 +16,14 @@ import {
   YAxis,
 } from 'recharts';
 import { metricsAPI } from '@/lib/api';
-import { toast } from 'sonner';
+import { message } from 'antd';
 import { useTranslation } from '@/i18n/index';
+
+const { Title, Text } = Typography;
 
 export default function Metrics() {
   const t = useTranslation();
+  const { token: themeToken } = theme.useToken();
   const [timeRange, setTimeRange] = useState('7d');
   const [loading, setLoading] = useState(true);
   const [activityData, setActivityData] = useState<any[]>([]);
@@ -40,8 +35,6 @@ export default function Metrics() {
   });
   const [influxConnected, setInfluxConnected] = useState<boolean | null>(null);
 
-  const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042'];
-
   useEffect(() => {
     loadData();
   }, [timeRange]);
@@ -49,7 +42,6 @@ export default function Metrics() {
   const loadData = async () => {
     setLoading(true);
     try {
-      // Check InfluxDB connection status first
       const influxStatus: any = await metricsAPI.getInfluxDBStatus().catch(() => ({ connected: false }));
       setInfluxConnected(!!influxStatus?.connected);
 
@@ -93,145 +85,118 @@ export default function Metrics() {
 
     } catch (error) {
       console.error(error);
-      toast.error(t.metrics.loadFailed);
+      message.error(t.metrics.loadFailed);
     } finally {
       setLoading(false);
     }
   };
 
+  const iconBox = (icon: React.ReactNode, color: string) => (
+    <div style={{ width: 48, height: 48, borderRadius: 8, background: `${color}15`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      {icon}
+    </div>
+  );
+
   return (
     <DashboardLayout>
-      <div className="space-y-6 animate-in fade-in duration-500">
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
         {/* Page Header */}
-        <div className="flex justify-between items-center">
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
           <div>
-            <h1 className="text-2xl font-bold text-foreground">{t.metrics.title}</h1>
-            <p className="text-muted-foreground mt-1">
-              {t.metrics.description}
-            </p>
+            <Title level={4} style={{ margin: 0 }}>{t.metrics.title}</Title>
+            <Text type="secondary">{t.metrics.description}</Text>
           </div>
-          <Select value={timeRange} onValueChange={setTimeRange}>
-            <SelectTrigger className="w-[180px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="7d">{t.metrics.last7Days}</SelectItem>
-              <SelectItem value="30d">{t.metrics.last30Days}</SelectItem>
-              <SelectItem value="90d">{t.metrics.last90Days}</SelectItem>
-            </SelectContent>
-          </Select>
+          <Select value={timeRange} onChange={setTimeRange} style={{ width: 180 }}
+            options={[
+              { value: '7d', label: t.metrics.last7Days },
+              { value: '30d', label: t.metrics.last30Days },
+              { value: '90d', label: t.metrics.last90Days },
+            ]}
+          />
         </div>
 
         {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <Card className="p-5 transition-all duration-200">
-            <div className="flex items-start justify-between">
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 16 }}>
+          <Card>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
               <div>
-                <p className="text-sm font-medium text-muted-foreground">{t.metrics.avgOnlineDuration.replace('{range}', timeRange)}</p>
-                <p className="text-2xl font-bold text-foreground mt-1">{summary.avgDuration}h</p>
+                <Text type="secondary" style={{ fontSize: 13 }}>{t.metrics.avgOnlineDuration.replace('{range}', timeRange)}</Text>
+                <div style={{ fontSize: 24, fontWeight: 700, marginTop: 4 }}>{summary.avgDuration}h</div>
               </div>
-              <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center">
-                <Clock className="w-6 h-6 text-primary" />
-              </div>
+              {iconBox(<ClockCircleOutlined style={{ fontSize: 24, color: themeToken.colorPrimary }} />, themeToken.colorPrimary)}
             </div>
           </Card>
 
-          <Card className="p-5 transition-all duration-200">
-            <div className="flex items-start justify-between">
+          <Card>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
               <div>
-                <p className="text-sm font-medium text-muted-foreground">{t.metrics.onlineDevices}</p>
-                <p className="text-2xl font-bold text-foreground mt-1">{summary.totalOnline}</p>
-                <p className="text-xs text-muted-foreground mt-1">{t.metrics.totalDevicesSuffix.replace('{total}', String(summary.totalDevices))}</p>
+                <Text type="secondary" style={{ fontSize: 13 }}>{t.metrics.onlineDevices}</Text>
+                <div style={{ fontSize: 24, fontWeight: 700, marginTop: 4 }}>{summary.totalOnline}</div>
+                <Text type="secondary" style={{ fontSize: 12 }}>{t.metrics.totalDevicesSuffix.replace('{total}', String(summary.totalDevices))}</Text>
               </div>
-              <div className="w-12 h-12 rounded-lg bg-green-500/10 flex items-center justify-center">
-                <Activity className="w-6 h-6 text-green-500" />
-              </div>
+              {iconBox(<DashboardOutlined style={{ fontSize: 24, color: '#52c41a' }} />, '#52c41a')}
             </div>
           </Card>
-          
-           <Card className="p-5 transition-all duration-200">
-            <div className="flex items-start justify-between">
+
+          <Card>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
               <div>
-                <p className="text-sm font-medium text-muted-foreground">{t.metrics.dataStatus}</p>
-                <p className={cn(
-                  "text-lg font-bold mt-2",
-                  loading ? "text-foreground" :
-                  influxConnected === false ? "text-orange-500" :
-                  "text-foreground"
-                )}>
-                   {loading ? t.metrics.updating : 
-                    influxConnected === false ? t.metrics.notConnected :
-                    t.metrics.updated}
-                </p>
+                <Text type="secondary" style={{ fontSize: 13 }}>{t.metrics.dataStatus}</Text>
+                <div style={{
+                  fontSize: 18, fontWeight: 700, marginTop: 8,
+                  color: loading ? undefined : influxConnected === false ? '#fa8c16' : undefined
+                }}>
+                  {loading ? t.metrics.updating : influxConnected === false ? t.metrics.notConnected : t.metrics.updated}
+                </div>
               </div>
-              <div className="w-12 h-12 rounded-lg bg-blue-500/10 flex items-center justify-center">
-                <Server className="w-6 h-6 text-blue-500" />
-              </div>
+              {iconBox(<CloudServerOutlined style={{ fontSize: 24, color: '#1677ff' }} />, '#1677ff')}
             </div>
           </Card>
         </div>
 
         {/* Charts */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(400px, 1fr))', gap: 16 }}>
           {/* Device Activity Bar Chart */}
-          <Card className="p-6">
-             <CardHeader className="px-0 pt-0">
-              <CardTitle>{t.metrics.activeDevicesRanking}</CardTitle>
-            </CardHeader>
-            <div className="h-[300px] w-full mt-4">
+          <Card title={t.metrics.activeDevicesRanking}>
+            <div style={{ height: 300, width: '100%' }}>
               {activityData.length > 0 ? (
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={activityData} layout="vertical" margin={{ left: 20 }}>
-                    <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} />
+                    <CartesianGrid strokeDasharray="3 3" horizontal vertical={false} />
                     <XAxis type="number" unit="h" />
                     <YAxis dataKey="name" type="category" width={100} />
-                    <Tooltip 
-                       contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
-                       cursor={{ fill: 'rgba(0,0,0,0.05)' }} 
-                    />
-                    <Bar dataKey="hours" name={t.metrics.onlineDuration} fill="hsl(var(--primary))" radius={[0, 4, 4, 0]} />
+                    <Tooltip contentStyle={{ borderRadius: 8, border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} cursor={{ fill: 'rgba(0,0,0,0.05)' }} />
+                    <Bar dataKey="hours" name={t.metrics.onlineDuration} fill={themeToken.colorPrimary} radius={[0, 4, 4, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               ) : (
-                <div className="h-full flex items-center justify-center text-muted-foreground">
-                    <AlertCircle className="w-5 h-5 mr-2" />
-                    {t.metrics.noActiveData}
+                <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: themeToken.colorTextSecondary }}>
+                  <ExclamationCircleOutlined style={{ marginRight: 8 }} />
+                  {t.metrics.noActiveData}
                 </div>
               )}
             </div>
           </Card>
 
-           {/* Device Status Pie Chart */}
-          <Card className="p-6">
-             <CardHeader className="px-0 pt-0">
-              <CardTitle>{t.metrics.deviceStatusDistribution}</CardTitle>
-            </CardHeader>
-            <div className="h-[300px] w-full mt-4">
+          {/* Device Status Pie Chart */}
+          <Card title={t.metrics.deviceStatusDistribution}>
+            <div style={{ height: 300, width: '100%' }}>
               {statusData.length > 0 && summary.totalDevices > 0 ? (
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie
-                        data={statusData}
-                        cx="50%"
-                        cy="50%"
-                        innerRadius={60}
-                        outerRadius={80}
-                        fill="#8884d8"
-                        paddingAngle={5}
-                        dataKey="value"
-                      >
-                        {statusData.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={index === 0 ? '#22c55e' : '#e5e7eb'} />
-                        ))}
-                      </Pie>
-                      <Tooltip />
-                      <Legend verticalAlign="bottom" height={36}/>
-                    </PieChart>
-                  </ResponsiveContainer>
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie data={statusData} cx="50%" cy="50%" innerRadius={60} outerRadius={80} fill="#8884d8" paddingAngle={5} dataKey="value">
+                      {statusData.map((_entry, index) => (
+                        <Cell key={`cell-${index}`} fill={index === 0 ? '#22c55e' : '#e5e7eb'} />
+                      ))}
+                    </Pie>
+                    <Tooltip />
+                    <Legend verticalAlign="bottom" height={36} />
+                  </PieChart>
+                </ResponsiveContainer>
               ) : (
-                 <div className="h-full flex items-center justify-center text-muted-foreground">
-                    <AlertCircle className="w-5 h-5 mr-2" />
-                    {t.metrics.noDeviceData}
+                <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: themeToken.colorTextSecondary }}>
+                  <ExclamationCircleOutlined style={{ marginRight: 8 }} />
+                  {t.metrics.noDeviceData}
                 </div>
               )}
             </div>

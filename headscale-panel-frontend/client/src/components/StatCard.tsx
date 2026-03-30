@@ -1,18 +1,17 @@
-import { Card } from '@/components/ui/card';
-import { cn } from '@/lib/utils';
-import { LucideIcon } from 'lucide-react';
-import { motion } from 'framer-motion';
+import React from 'react';
+import { Card, Statistic, theme, Typography } from 'antd';
+
+const { Text } = Typography;
 
 interface StatCardProps {
   title: string;
   value: string | number;
-  icon: LucideIcon;
+  icon: React.ComponentType<{ style?: React.CSSProperties }>;
   trend?: {
     value: number;
     isPositive: boolean;
   };
   subtitle?: string;
-  className?: string;
 }
 
 export default function StatCard({
@@ -21,46 +20,38 @@ export default function StatCard({
   icon: Icon,
   trend,
   subtitle,
-  className,
 }: StatCardProps) {
+  const { token } = theme.useToken();
+
   return (
-    <motion.div
-      whileHover={{ y: -4 }}
-      transition={{ duration: 0.2 }}
-    >
-      <Card
-        className={cn(
-          'p-6 hover:shadow-lg transition-all duration-200',
-          className
-        )}
-      >
-        <div className="flex items-start justify-between">
-          <div className="flex-1">
-            <p className="text-sm font-medium text-muted-foreground">{title}</p>
-            <p className="text-3xl font-bold text-foreground mt-2">{value}</p>
-            <div className="flex items-center gap-2 mt-2">
-              {trend && (
-                <span
-                  className={cn(
-                    'text-sm font-medium',
-                    trend.isPositive ? 'text-green-600' : 'text-red-600'
-                  )}
-                >
-                  {trend.isPositive ? '↑' : '↓'} {Math.abs(trend.value)}%
-                </span>
-              )}
-              {subtitle && (
-                <span className="text-sm text-muted-foreground">
-                  {subtitle}
-                </span>
-              )}
-            </div>
-          </div>
-          <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center">
-            <Icon className="w-6 h-6 text-primary" />
+    <Card hoverable styles={{ body: { padding: 20 } }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+        <div style={{ flex: 1 }}>
+          <Text type="secondary" style={{ fontSize: 14 }}>{title}</Text>
+          <Statistic value={value} valueStyle={{ fontSize: 28, fontWeight: 700, marginTop: 4 }} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
+            {trend && (
+              <Text style={{ fontSize: 13, color: trend.isPositive ? '#52c41a' : '#ff4d4f' }}>
+                {trend.isPositive ? '↑' : '↓'} {Math.abs(trend.value)}%
+              </Text>
+            )}
+            {subtitle && (
+              <Text type="secondary" style={{ fontSize: 13 }}>{subtitle}</Text>
+            )}
           </div>
         </div>
-      </Card>
-    </motion.div>
+        <div style={{
+          width: 48,
+          height: 48,
+          borderRadius: 10,
+          background: `${token.colorPrimary}15`,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}>
+          <Icon style={{ fontSize: 24, color: token.colorPrimary }} />
+        </div>
+      </div>
+    </Card>
   );
 }

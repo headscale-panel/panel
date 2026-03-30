@@ -78,7 +78,6 @@
 
 import { useEffect, useRef } from "react";
 import { usePersistFn } from "@/hooks/usePersistFn";
-import { cn } from "@/lib/utils";
 
 declare global {
   interface Window {
@@ -110,14 +109,14 @@ function loadMapScript() {
 }
 
 interface MapViewProps {
-  className?: string;
+  style?: React.CSSProperties;
   initialCenter?: google.maps.LatLngLiteral;
   initialZoom?: number;
   onMapReady?: (map: google.maps.Map) => void;
 }
 
 export function MapView({
-  className,
+  style,
   initialCenter = { lat: 37.7749, lng: -122.4194 },
   initialZoom = 12,
   onMapReady,
@@ -150,6 +149,6 @@ export function MapView({
   }, [init]);
 
   return (
-    <div ref={mapContainer} className={cn("w-full h-[500px]", className)} />
+    <div ref={mapContainer} style={{ width: '100%', height: 500, ...style }} />
   );
 }

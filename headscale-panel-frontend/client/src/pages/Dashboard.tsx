@@ -15,12 +15,9 @@ import {
 } from '@/lib/normalizers';
 import { useTranslation } from '@/i18n/index';
 import { useWebSocketConnection, useDeviceStatusUpdates, useMetricsUpdates } from '@/hooks/useWebSocket';
-import { Activity, Users, Wifi, WifiOff, RefreshCw, Globe } from 'lucide-react';
 import { useEffect, useState, useCallback } from 'react';
-import { toast } from 'sonner';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { motion } from 'framer-motion';
+import { Button, Tag, Typography, message } from 'antd';
+import { ReloadOutlined, WifiOutlined, GlobalOutlined, TeamOutlined, DashboardOutlined } from '@ant-design/icons';
 
 export default function Dashboard() {
   const t = useTranslation();
@@ -152,12 +149,12 @@ export default function Dashboard() {
       setTopologyData({ users, devices, acl, policy });
 
       if (showToast) {
-        toast.success(t.dashboard.dataRefreshed);
+        message.success(t.dashboard.dataRefreshed);
       }
     } catch (error: any) {
       console.error('Failed to load dashboard data:', error);
       if (showToast) {
-        toast.error(t.dashboard.loadFailed + (error.message || t.common.errors.unknownError));
+        message.error(t.dashboard.loadFailed + (error.message || t.common.errors.unknownError));
       }
     } finally {
       setLoading(false);
@@ -182,84 +179,55 @@ export default function Dashboard() {
 
   return (
     <DashboardLayout>
-      <div className="space-y-6">
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
         {/* Page Header */}
-        <motion.div 
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="flex justify-between items-start"
-        >
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
           <div>
-            <h1 className="text-2xl font-bold text-foreground">{t.dashboard.title}</h1>
-            <p className="text-muted-foreground mt-1">
-              {t.dashboard.description}
-            </p>
+            <Typography.Title level={4} style={{ margin: 0 }}>{t.dashboard.title}</Typography.Title>
+            <Typography.Text type="secondary">{t.dashboard.description}</Typography.Text>
           </div>
-          <div className="flex items-center gap-3">
-            {/* WebSocket Status - only show when connected */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             {isConnected && (
-              <Badge 
-                variant="default"
-                className="gap-1.5 bg-green-500/10 text-green-600 border-green-200"
-              >
-                <Wifi className="w-3 h-3" />
-                {t.dashboard.realtime}
-              </Badge>
+              <Tag icon={<WifiOutlined />} color="success">{t.dashboard.realtime}</Tag>
             )}
-            <Button 
-              variant="outline" 
-              size="sm" 
-              onClick={handleRefresh}
-              disabled={refreshing}
-              className="gap-2"
-            >
-              <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+            <Button icon={<ReloadOutlined spin={refreshing} />} onClick={handleRefresh} loading={refreshing}>
               {t.dashboard.refresh}
             </Button>
           </div>
-        </motion.div>
+        </div>
 
         {/* Stats Cards */}
-        <motion.div 
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
-          className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"
-        >
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 16 }}>
           <StatCard
             title={t.dashboard.onlineDevices}
             value={stats.onlineDevices}
-            icon={Activity}
+            icon={DashboardOutlined}
             subtitle={t.dashboard.totalDevices.replace('{count}', String(stats.totalDevices))}
           />
-          <StatCard 
-            title={t.dashboard.totalUsers} 
-            value={stats.totalUsers} 
-            icon={Users}
+          <StatCard
+            title={t.dashboard.totalUsers}
+            value={stats.totalUsers}
+            icon={TeamOutlined}
             subtitle={t.dashboard.activeUsers}
           />
           <StatCard
             title={t.dashboard.dnsCount}
             value={stats.dnsRecordCount}
-            icon={Globe}
+            icon={GlobalOutlined}
             subtitle={t.dashboard.dnsSubtitle}
           />
-        </motion.div>
+        </div>
 
         {/* Network Topology */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
-        >
-          <h2 className="text-xl font-semibold text-foreground mb-4">
+        <div>
+          <Typography.Title level={5} style={{ marginBottom: 16 }}>
             {t.dashboard.networkTopology}
-          </h2>
+          </Typography.Title>
           <NetworkTopology
-            data={topologyData} 
+            data={topologyData}
             deviceStatuses={deviceStatuses}
           />
-        </motion.div>
+        </div>
       </div>
     </DashboardLayout>
   );

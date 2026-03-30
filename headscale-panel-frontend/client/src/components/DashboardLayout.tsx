@@ -1,11 +1,15 @@
 import { useState } from 'react';
+import { Layout, Drawer } from 'antd';
 import Header from './Header';
 import Sidebar from './Sidebar';
 import PageTransition from './PageTransition';
 import { useIsMobile } from '@/hooks/useMobile';
 import { useUIStore } from '@/lib/store';
-import { getDashboardLayoutState } from '@/lib/layout';
-import { cn } from '@/lib/utils';
+
+const { Content } = Layout;
+
+const SIDEBAR_WIDTH = 240;
+const SIDEBAR_COLLAPSED_WIDTH = 64;
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
@@ -16,48 +20,41 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const { sidebarCollapsed, setSidebarCollapsed } = useUIStore();
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
-  const layoutState = getDashboardLayoutState({
-    isMobile,
-    isSidebarCollapsed: sidebarCollapsed,
-    isMobileSidebarOpen: mobileSidebarOpen,
-  });
-
   const handleMenuClick = () => {
     if (isMobile) {
       setMobileSidebarOpen((open) => !open);
       return;
     }
-
     setSidebarCollapsed(!sidebarCollapsed);
   };
 
   return (
-    <div className="min-h-screen bg-background">
-      {layoutState.showMobileOverlay && (
-        <button
-          type="button"
-          aria-label="Close navigation"
-          className="fixed inset-0 z-40 bg-black/40 lg:hidden"
-          onClick={() => setMobileSidebarOpen(false)}
-        />
+    <Layout style={{ minHeight: '100vh' }}>
+      {isMobile ? (
+        <Drawer
+          placement="left"
+          open={mobileSidebarOpen}
+          onClose={() => setMobileSidebarOpen(false)}
+          width={SIDEBAR_WIDTH}
+          styles={{ body: { padding: 0 } }}
+          closable={false}
+        >
+          <Sidebar
+            collapsed={false}
+            isMobile
+            onNavigate={() => setMobileSidebarOpen(false)}
+          />
+        </Drawer>
+      ) : (
+        <Sidebar collapsed={sidebarCollapsed} />
       )}
 
-      <Sidebar
-        collapsed={sidebarCollapsed}
-        isMobile={isMobile}
-        open={mobileSidebarOpen}
-        onNavigate={() => setMobileSidebarOpen(false)}
-      />
-
-      <div
-        className={cn('transition-all duration-300', layoutState.contentOffsetClassName)}
-      >
+      <Layout style={{ marginLeft: isMobile ? 0 : (sidebarCollapsed ? SIDEBAR_COLLAPSED_WIDTH : SIDEBAR_WIDTH), transition: 'margin-left 0.2s' }}>
         <Header onMenuClick={handleMenuClick} />
-
-        <main className="p-6">
+        <Content style={{ padding: 24 }}>
           <PageTransition>{children}</PageTransition>
-        </main>
-      </div>
-    </div>
+        </Content>
+      </Layout>
+    </Layout>
   );
 }
