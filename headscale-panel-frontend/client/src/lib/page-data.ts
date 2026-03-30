@@ -59,6 +59,7 @@ export async function loadUsersPageData() {
     aclPolicy: normalizeACLPolicy(policyRes),
     oidcStatus: normalizeOIDCStatus(oidcStatusRes),
     onlineUsers,
+    devices,
   };
 }
 

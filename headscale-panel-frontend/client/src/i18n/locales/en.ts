@@ -64,7 +64,7 @@ const en: Translations = {
   sidebar: {
     dashboard: 'Dashboard',
     devices: 'Devices',
-    users: 'Users',
+    users: 'Org & Devices',
     routes: 'Routes',
     resources: 'Resources',
     acl: 'ACL',
@@ -186,8 +186,8 @@ const en: Translations = {
   },
 
   users: {
-    title: 'Users',
-    description: 'Manage users and groups',
+    title: 'Org & Devices',
+    description: 'Manage users by organization and work with their devices in one place',
     totalUsers: 'Total Users',
     onlineUsers: 'Online Users',
     groups: 'Groups',
@@ -254,6 +254,9 @@ const en: Translations = {
     providerLabel: 'Provider',
     migrateToOidcHint: 'Move devices to an OIDC user before deleting this local user.',
     oidcManagedDeleteBlocked: 'OIDC users are managed by the identity provider and cannot be deleted from the panel.',
+    userDevices: 'User Devices',
+    noDevices: 'No devices found for this user.',
+    neverSeen: 'Never seen',
   },
 
   routes: {

@@ -62,7 +62,7 @@ const zh = {
   sidebar: {
     dashboard: '仪表盘',
     devices: '设备管理',
-    users: '用户管理',
+    users: '组织与设备',
     routes: '路由管理',
     resources: '资源管理',
     acl: 'ACL 管理',
@@ -184,8 +184,8 @@ const zh = {
   },
 
   users: {
-    title: '用户管理',
-    description: '管理用户和用户组',
+    title: '组织与设备',
+    description: '按组织结构管理用户，并直接处理该用户下的设备',
     totalUsers: '总用户数',
     onlineUsers: '在线用户',
     groups: '用户组',
@@ -252,6 +252,9 @@ const zh = {
     providerLabel: '来源',
     migrateToOidcHint: '建议先将设备迁移到 OIDC 用户下，再删除本地用户。',
     oidcManagedDeleteBlocked: 'OIDC 用户由身份提供方管理，暂不支持在面板中删除。',
+    userDevices: '用户设备',
+    noDevices: '该用户暂无设备',
+    neverSeen: '从未在线',
   },
 
   routes: {
