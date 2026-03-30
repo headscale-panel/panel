@@ -26,7 +26,7 @@ import {
 export async function loadDevicesPageData() {
   const [devicesRes, usersRes, configRes] = await Promise.all([
     devicesAPI.list(),
-    usersAPI.list({ pageSize: 100 }),
+    usersAPI.list({ pageSize: 100 }).catch(() => null),
     headscaleConfigAPI.get().catch(() => null),
   ]);
 

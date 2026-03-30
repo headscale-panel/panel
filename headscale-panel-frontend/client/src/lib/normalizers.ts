@@ -21,9 +21,6 @@ export interface NormalizedDeviceUser {
 
 export interface NormalizedDevice {
   id: string;
-  machine_key: string;
-  node_key: string;
-  disco_key: string;
   ip_addresses: string[];
   name: string;
   given_name: string;
@@ -151,6 +148,18 @@ function asString(value: unknown, fallback = ''): string {
   return typeof value === 'string' ? value : fallback;
 }
 
+function asIdentifier(value: unknown, fallback = ''): string {
+  if (typeof value === 'string') {
+    return value;
+  }
+
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return String(value);
+  }
+
+  return fallback;
+}
+
 function asNumber(value: unknown, fallback = 0): number {
   if (typeof value === 'number' && Number.isFinite(value)) {
     return value;
@@ -211,7 +220,7 @@ function normalizeDeviceUser(value: unknown): NormalizedDeviceUser | null {
   }
 
   return {
-    id: asString(user.id) || asString(user.ID) || undefined,
+    id: asIdentifier(user.id) || asIdentifier(user.ID) || undefined,
     name,
     display_name: asString(user.display_name),
     email: asString(user.email),
@@ -222,10 +231,7 @@ export function normalizeDevice(raw: unknown): NormalizedDevice {
   const device = asRecord(raw) ?? {};
 
   return {
-    id: asString(device.id) || asString(device.ID) || asString(device.machineId),
-    machine_key: asString(device.machine_key),
-    node_key: asString(device.node_key),
-    disco_key: asString(device.disco_key),
+    id: asIdentifier(device.id) || asIdentifier(device.ID) || asIdentifier(device.machineId),
     ip_addresses: asStringArray(device.ip_addresses ?? device.ipAddresses),
     name: asString(device.name),
     given_name: asString(device.given_name) || asString(device.givenName) || asString(device.name),
@@ -266,7 +272,7 @@ export function normalizeHeadscaleUserOptions(value: unknown): HeadscaleUserOpti
       }
 
       return {
-        id: asString(user.id) || asString(user.ID) || name,
+        id: asIdentifier(user.id) || asIdentifier(user.ID) || name,
         name,
       };
     })

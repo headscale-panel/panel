@@ -34,9 +34,6 @@ type HeadscaleUser struct {
 // HeadscaleMachine represents a machine/node fetched from Headscale gRPC
 type HeadscaleMachine struct {
 	ID              uint64            `json:"id"`
-	MachineKey      string            `json:"machine_key"`
-	NodeKey         string            `json:"node_key"`
-	DiscoKey        string            `json:"disco_key"`
 	IPAddresses     []string          `json:"ip_addresses"`
 	Name            string            `json:"name"`
 	GivenName       string            `json:"given_name"`
@@ -763,9 +760,6 @@ func (s *headscaleService) SyncACLWithContext(ctx context.Context) error {
 func (s *headscaleService) nodeToMachine(node *v1.Node) HeadscaleMachine {
 	machine := HeadscaleMachine{
 		ID:              node.Id,
-		MachineKey:      node.MachineKey,
-		NodeKey:         node.NodeKey,
-		DiscoKey:        node.DiscoKey,
 		IPAddresses:     node.IpAddresses,
 		Name:            node.Name,
 		GivenName:       node.GivenName,
