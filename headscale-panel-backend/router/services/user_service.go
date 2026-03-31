@@ -56,9 +56,9 @@ func (s *userService) RegisterWithContext(ctx context.Context, req *RegisterRequ
 			return errors.New("admin group not found")
 		}
 	} else {
-		// 其他用户默认也加入管理员组（可由管理员后续调整）
-		if err := model.DB.Where("name = ?", "Admin").First(&group).Error; err != nil {
-			return errors.New("admin group not found")
+		// 其他用户默认加入普通用户组
+		if err := model.DB.Where("name = ?", "User").First(&group).Error; err != nil {
+			return errors.New("default user group not found")
 		}
 	}
 

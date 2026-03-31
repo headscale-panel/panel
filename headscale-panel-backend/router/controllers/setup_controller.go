@@ -433,7 +433,7 @@ func writeHeadscaleConnectionEnv(grpcAddr, apiKey string, insecureMode bool) err
 		content += "\n"
 	}
 
-	return os.WriteFile(path, []byte(content), 0644)
+	return os.WriteFile(path, []byte(content), 0600)
 }
 
 func generateSecurePassword(length int) (string, error) {
@@ -454,6 +454,11 @@ func generateSecurePassword(length int) (string, error) {
 func requireSetupBootstrap(ctx *gin.Context) error {
 	expected := strings.TrimSpace(conf.Conf.System.SetupBootstrapToken)
 	if expected == "" {
+		// When no bootstrap token is configured, only allow localhost access
+		clientIP := ctx.ClientIP()
+		if clientIP != "127.0.0.1" && clientIP != "::1" {
+			return serializer.NewError(serializer.CodeNoPermissionErr, "setup access restricted to localhost when no bootstrap token is configured", nil)
+		}
 		return nil
 	}
 

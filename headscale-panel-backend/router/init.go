@@ -147,7 +147,7 @@ func InitRouter() *gin.Engine {
 			auth.GET("/metrics/device-status", middleware.PermissionMiddleware("metrics:device_status:view"), metricsController.GetDeviceStatus)
 			auth.GET("/metrics/device-status-history", middleware.PermissionMiddleware("metrics:device_status_history:view"), metricsController.GetDeviceStatusHistory)
 			auth.GET("/metrics/traffic", middleware.PermissionMiddleware("metrics:traffic:view"), metricsController.GetTrafficStats)
-			auth.GET("/metrics/influxdb-status", metricsController.GetInfluxDBStatus)
+			auth.GET("/metrics/influxdb-status", middleware.PermissionMiddleware("metrics:influxdb:view"), metricsController.GetInfluxDBStatus)
 
 			topologyController := &controllers.TopologyController{}
 			auth.GET("/topology", middleware.PermissionMiddleware("topology:view"), topologyController.GetTopology)

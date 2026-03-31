@@ -51,6 +51,12 @@ func FrontendMiddleware(staticDir string) gin.HandlerFunc {
 		}
 		filePath := path.Join(staticDir, cleanPath)
 
+		// Prevent path traversal
+		if !strings.HasPrefix(filePath, staticDir) {
+			c.Next()
+			return
+		}
+
 		// Serve static file if it exists
 		if info, err := os.Stat(filePath); err == nil && !info.IsDir() {
 			fileServer.ServeHTTP(c.Writer, c.Request)

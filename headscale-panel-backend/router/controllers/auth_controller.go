@@ -294,12 +294,12 @@ func findOrCreateOIDCUser(config *services.HeadscaleConfigFile, sub, email, name
 		return nil, errors.New("oidc access denied by allowlist")
 	}
 
-	// Try 2: Find by email (link existing account)
+	// Try 2: Find by email (link existing non-local account)
 	if email != "" {
 		err = model.DB.Preload("Group").
 			Where("email = ? AND email != ''", email).
 			First(&user).Error
-		if err == nil {
+		if err == nil && user.Provider != "" && user.Provider != "local" {
 			// Link the OIDC identity to the existing account
 			if err := model.DB.Model(&user).Updates(map[string]interface{}{
 				"provider":        "oidc",
@@ -315,7 +315,7 @@ func findOrCreateOIDCUser(config *services.HeadscaleConfigFile, sub, email, name
 			}
 			return &user, nil
 		}
-		if !errors.Is(err, gorm.ErrRecordNotFound) {
+		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, err
 		}
 	}
@@ -401,7 +401,7 @@ func sanitizeUsername(s string) string {
 // ensureUniqueUsername appends a numeric suffix if the username is already taken.
 func ensureUniqueUsername(base string) (string, error) {
 	candidate := base
-	for i := 1; ; i++ {
+	for i := 1; i <= 100; i++ {
 		var count int64
 		if err := model.DB.Model(&model.User{}).Where("username = ?", candidate).Count(&count).Error; err != nil {
 			return "", fmt.Errorf("failed to check username uniqueness: %w", err)
@@ -411,6 +411,7 @@ func ensureUniqueUsername(base string) (string, error) {
 		}
 		candidate = fmt.Sprintf("%s_%d", base, i)
 	}
+	return "", fmt.Errorf("failed to find unique username after 100 attempts for base %q", base)
 }
 
 func oidcRedirectURI() (string, error) {

@@ -211,7 +211,7 @@ func generateAndPersistSecret(key string, length int) (string, error) {
 		content += "\n"
 	}
 
-	if err := os.WriteFile(envPath, []byte(content), 0644); err != nil {
+	if err := os.WriteFile(envPath, []byte(content), 0600); err != nil {
 		return "", err
 	}
 
