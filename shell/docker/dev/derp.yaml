@@ -1,0 +1,20 @@
+# DERP node map configuration
+# This file is read by Headscale and served to clients to advertise available DERP relay nodes.
+#
+# !! Before use, replace the hostname below with your real DERP server domain !!
+# !! Also ensure DERP_DOMAIN in .env matches the hostname here !!
+#
+# If DERP is not deployed yet, set regions to an empty map ({}) and let Headscale use direct connections or official DERP.
+
+regions:
+  900:
+    regionid: 900
+    regioncode: custom
+    regionname: Custom DERP
+    nodes:
+      - name: 900a
+        regionid: 900
+        hostname: derp.example.com   # Change to your DERP domain (must match .env DERP_DOMAIN)
+        stunport: 3478               # STUN UDP port for NAT traversal
+        stunonly: false
+        derpport: 443                # DERP port used by clients (443 behind reverse proxy; use actual port for direct access)

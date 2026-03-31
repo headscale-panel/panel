@@ -2,12 +2,12 @@
 .git
 .DS_Store
 
-headscale-panel-frontend/node_modules
-headscale-panel-frontend/dist
-headscale-panel-frontend/.prettierrc
-headscale-panel-frontend/.prettierignore
+frontend/node_modules
+frontend/dist
+frontend/.prettierrc
+frontend/.prettierignore
 
-headscale-panel-backend/headscale-panel
-headscale-panel-backend/data.db
-headscale-panel-backend/.env
-headscale-panel-backend/headscale/
+backend/headscale-panel
+backend/data.db
+backend/.env
+backend/headscale/

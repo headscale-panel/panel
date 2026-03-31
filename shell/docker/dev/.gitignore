@@ -1,0 +1,5 @@
+# Real environment variables (copied from .env.example by dev script, may contain sensitive data)
+.env
+
+# Runtime data directory
+data/

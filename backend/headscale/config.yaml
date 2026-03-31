@@ -1,0 +1,52 @@
+server_url: https://vpn.example.com
+listen_addr: 0.0.0.0:8080
+metrics_listen_addr: 0.0.0.0:9090
+grpc_listen_addr: 0.0.0.0:50443
+grpc_allow_insecure: true
+noise:
+    private_key_path: ./noise_private.key
+prefixes:
+    v4: 100.100.0.0/16
+    v6: fd7a:115c:a1e0::/48
+    allocation: sequential
+derp:
+    server:
+        enabled: false
+        region_id: 0
+        region_code: ""
+        region_name: ""
+        stun_listen_addr: ""
+    urls: []
+    paths:
+        - /etc/headscale/derp.yaml
+    auto_update_enabled: true
+    update_frequency: ""
+database:
+    type: sqlite
+    sqlite:
+        path: /var/lib/headscale/db.sqlite
+        write_ahead_log: true
+dns:
+    base_domain: example.net
+    magic_dns: true
+    nameservers:
+        global:
+            - 223.5.5.5
+            - 114.114.114.114
+            - 2400:3200::1
+            - 2400:3200:baba::1
+    extra_records_path: /var/lib/headscale/extra-records.json
+    override_local_dns: true
+policy:
+    mode: database
+oidc:
+    issuer: https://auth.example.com
+    client_id: ""
+    client_secret: ""
+    scope:
+        - openid
+        - profile
+        - email
+    expiry: 180d
+    pkce:
+        method: S256

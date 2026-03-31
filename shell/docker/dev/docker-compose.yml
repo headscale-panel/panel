@@ -1,0 +1,58 @@
+name: panel-dev
+
+services:
+
+  headscale:
+    image: headscale/headscale:latest
+    container_name: panel-dev-headscale
+    restart: unless-stopped
+    command: serve
+    volumes:
+      - ./headscale.yaml:/etc/headscale/config.yaml
+      - ./derp.yaml:/etc/headscale/derp.yaml:ro
+      - ./data/headscale:/var/lib/headscale
+    ports:
+      - "${HEADSCALE_HTTP_PORT:-8080}:8080"   # Headscale HTTP API
+      - "${HEADSCALE_GRPC_PORT:-50443}:50443" # Headscale gRPC for local backend access from host
+    healthcheck:
+      test: ["CMD", "headscale", "health"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    networks:
+      - panel-dev
+
+  headscale-derp:
+    build:
+      context: .
+      dockerfile: derp.Dockerfile
+      args:
+        GOPROXY: ${GOPROXY:-https://proxy.golang.org,direct}
+    container_name: panel-dev-headscale-derp
+    restart: unless-stopped
+    environment:
+      TZ: Asia/Shanghai
+      DERP_DOMAIN: ${DERP_DOMAIN}
+      DERP_CERT_MODE: ${DERP_CERT_MODE}
+      DERP_ADDR: ${DERP_ADDR}
+      DERP_HTTP_PORT: ${DERP_HTTP_PORT}
+      DERP_STUN_PORT: ${DERP_STUN_PORT}
+      DERP_VERIFY_CLIENT_URL: http://headscale:8080/verify
+      DERP_VERIFY_CLIENTS: "false"
+    volumes:
+      - ./data/derp:/root/.cache   # Persist Let's Encrypt certificate cache
+    ports:
+      - "${DERP_STUN_PORT:-3478}:3478/udp"   # STUN (NAT traversal)
+      - "443:443"                            # DERP relay (TLS)
+    depends_on:
+      headscale:
+        condition: service_healthy
+    profiles:
+      - derp
+    networks:
+      - panel-dev
+
+networks:
+  panel-dev:
+    driver: bridge

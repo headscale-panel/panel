@@ -26,6 +26,7 @@ build-image:
 
       docker build \
         --pull \
+        --build-arg ALPINE_MIRROR=mirrors.ustc.edu.cn \
         -t "${FULL_IMAGE}:${TAG}" \
         -t "${FULL_IMAGE}:latest" \
         .

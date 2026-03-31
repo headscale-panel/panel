@@ -1,36 +1,44 @@
-# -- Build frontend assets --
+ARG ALPINE_MIRROR=
+
 FROM node:20-alpine AS frontend-builder
 
 RUN corepack enable && corepack prepare pnpm@latest --activate
 
 WORKDIR /build
 
-COPY headscale-panel-frontend/package.json headscale-panel-frontend/pnpm-lock.yaml ./
+COPY frontend/package.json frontend/pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile
 
-COPY headscale-panel-frontend/ .
+COPY frontend/ .
 RUN pnpm build && \
     find dist -name '*.map' -delete
 
-# -- Build backend binary --
 FROM golang:1.24-alpine AS backend-builder
 
-RUN apk add --no-cache gcc musl-dev
+ARG ALPINE_MIRROR
+
+RUN if [ -n "$ALPINE_MIRROR" ]; then \
+    sed -i "s/dl-cdn.alpinelinux.org/$ALPINE_MIRROR/g" /etc/apk/repositories; \
+    fi && \
+    apk add --no-cache gcc musl-dev
 
 WORKDIR /build
-COPY headscale-panel-backend/go.mod headscale-panel-backend/go.sum ./
+COPY backend/go.mod backend/go.sum ./
 RUN go mod download
 
-COPY headscale-panel-backend/ .
+COPY backend/ .
 RUN CGO_ENABLED=1 GOOS=linux go build \
     -ldflags="-s -w" \
     -trimpath \
     -o headscale-panel .
 
-# -- Minimal runtime image --
 FROM alpine:3.20
 
-RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.ustc.edu.cn/g' /etc/apk/repositories && \
+ARG ALPINE_MIRROR
+
+RUN if [ -n "$ALPINE_MIRROR" ]; then \
+    sed -i "s/dl-cdn.alpinelinux.org/$ALPINE_MIRROR/g" /etc/apk/repositories; \
+    fi && \
     apk update && \
     apk add --no-cache ca-certificates tzdata && \
     addgroup -S appgroup && \
@@ -41,7 +49,6 @@ WORKDIR /app
 COPY --from=backend-builder /build/headscale-panel .
 COPY --from=frontend-builder /build/dist ./frontend/
 
-# Data directory for SQLite database
 RUN mkdir -p /app/data && chown -R appuser:appgroup /app
 
 ENV FRONTEND_DIR=/app/frontend

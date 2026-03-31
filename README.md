@@ -68,6 +68,8 @@
 
 ### 使用 Docker（推荐）
 
+以下方式适用于镜像/部署场景；如果是本地开发，请直接使用`./shell/dev/start.sh`。
+
 ```bash
 # 构建镜像
 docker build -t headscale-panel .
@@ -77,7 +79,7 @@ docker run -d \
   --name headscale-panel \
   -p 8080:8080 \
   -v $(pwd)/data:/app/data \
-  -e SYSTEM_BASE_URL=https://myvpn.example.com \
+  -e SYSTEM_BASE_URL=https://vpn.example.com \
   -e HEADSCALE_GRPC_ADDR=127.0.0.1:50443 \
   -e HEADSCALE_INSECURE=true \
   headscale-panel
@@ -87,39 +89,32 @@ docker run -d \
 
 ### 环境变量
 
-| 变量名 | 说明 | 默认值 |
-|--------|------|--------|
-| `SYSTEM_PORT` | 面板监听端口 | `:8080` |
-| `SYSTEM_BASE_URL` | 面板外部访问地址（用于 OIDC 回调等） | `http://localhost:8080` |
-| `SYSTEM_SETUP_BOOTSTRAP_TOKEN` | 初始化引导令牌（≥32 字符，留空则不启用） | — |
-| `DB_PATH` | SQLite 数据库路径 | `data.db` |
-| `JWT_SECRET` | JWT 签名密钥（≥32 字符，留空自动生成） | 自动生成 |
-| `JWT_EXPIRE` | JWT 过期时间（小时） | `24` |
-| `HEADSCALE_GRPC_ADDR` | Headscale gRPC 地址 | `localhost:50443` |
-| `HEADSCALE_API_KEY` | Headscale API Key | — |
-| `HEADSCALE_INSECURE` | gRPC 是否跳过 TLS 验证 | `false` |
-| `FRONTEND_DIR` | 前端静态文件目录（Docker 中已内置） | `./frontend` |
+| 变量名                         | 说明                                     | 默认值                  |
+| ------------------------------ | ---------------------------------------- | ----------------------- |
+| `SYSTEM_PORT`                  | 面板监听端口                             | `:8080`                 |
+| `SYSTEM_BASE_URL`              | 面板外部访问地址（用于 OIDC 回调等）     | `http://localhost:8080` |
+| `SYSTEM_SETUP_BOOTSTRAP_TOKEN` | 初始化引导令牌（≥32 字符，留空则不启用） | —                       |
+| `DB_PATH`                      | SQLite 数据库路径                        | `data.db`               |
+| `JWT_SECRET`                   | JWT 签名密钥（≥32 字符，留空自动生成）   | 自动生成                |
+| `JWT_EXPIRE`                   | JWT 过期时间（小时）                     | `24`                    |
+| `HEADSCALE_GRPC_ADDR`          | Headscale gRPC 地址                      | `localhost:50443`       |
+| `HEADSCALE_API_KEY`            | Headscale API Key                        | —                       |
+| `HEADSCALE_INSECURE`           | gRPC 是否跳过 TLS 验证                   | `false`                 |
+| `FRONTEND_DIR`                 | 前端静态文件目录（Docker 中已内置）      | `./frontend`            |
 
 ---
 
 ## 🏗️ 架构说明
 
-```
-┌───────────────┐      HTTPS       ┌──────────────────┐
-│  浏览器/客户端  │ ◄──────────────► │  反向代理 (Nginx) │
-└───────────────┘                  └────────┬─────────┘
-                                           │
-                        ┌──────────────────┼──────────────────┐
-                        │                  │                  │
-                        ▼                  ▼                  ▼
-                  ┌───────────┐     ┌────────────┐    ┌──────────────┐
-                  │ Panel     │     │ Headscale  │    │ Headscale    │
-                  │ :8080     │     │ HTTP :8080 │    │ gRPC :50443  │
-                  │ (UI+API)  │     │ (控制平面)  │    │ (API)        │
-                  └───────────┘     └────────────┘    └──────────────┘
-                        │                                     ▲
-                        │           gRPC (内网)                │
-                        └─────────────────────────────────────┘
+```mermaid
+flowchart TB
+    A["浏览器/客户端"] <-->|HTTPS| B["反向代理 (Nginx)"]
+
+    B --> C["Panel :8080 UI+API"]
+    B --> D["Headscale HTTP :8080"]
+    B --> E["Headscale gRPC :50443"]
+
+    C -->|gRPC 内网| E
 ```
 
 - **Headscale Panel**（本项目）：管理面板，提供 Web UI 和 REST API，通过 gRPC 连接 Headscale
@@ -130,29 +125,29 @@ docker run -d \
 
 ## 🌐 反向代理配置
 
-假设域名为 `myvpn.example.com`，需要反代以下服务：
+假设域名为 `vpn.example.com`，需要反代以下服务：
 
-| 路径/流量 | 目标 | 说明 |
-|-----------|------|------|
-| `/web/` | Panel `:8080` | 管理面板 UI + REST API |
-| `/` (默认) | Headscale `:8080` | Headscale 控制平面（Tailscale 客户端连接） |
-| gRPC `:50443` | Headscale gRPC | 面板内网直连，**无需反代** |
+| 路径/流量     | 目标              | 说明                                       |
+| ------------- | ----------------- | ------------------------------------------ |
+| `/panel/`     | Panel `:8080`     | 管理面板 UI + REST API                     |
+| `/` (默认)    | Headscale `:8080` | Headscale 控制平面（Tailscale 客户端连接） |
+| gRPC `:50443` | Headscale gRPC    | 面板内网直连，**无需反代**                 |
 
-> **关键点**：Tailscale 客户端会直接连接 `myvpn.example.com`，所以根路径 `/` 必须指向 Headscale。管理面板放在 `/web/` 子路径下。
+> **关键点**：Tailscale 客户端会直接连接 `vpn.example.com`，所以根路径 `/` 必须指向 Headscale。管理面板放在 `/panel/` 子路径下。
 
 ### Nginx 配置
 
 ```nginx
 server {
     listen 443 ssl http2;
-    server_name myvpn.example.com;
+    server_name vpn.example.com;
 
-    ssl_certificate     /etc/letsencrypt/live/myvpn.example.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/myvpn.example.com/privkey.pem;
+    ssl_certificate     /etc/letsencrypt/live/vpn.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/vpn.example.com/privkey.pem;
 
     # --- 管理面板（UI + API）---
-    # 面板前端和 API 统一挂载在 /web/ 下
-    location /web/ {
+    # 面板前端和 API 统一挂载在 /panel/ 下
+    location /panel/ {
         proxy_pass http://127.0.0.1:8080/;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
@@ -195,7 +190,7 @@ server {
 # HTTP → HTTPS 重定向
 server {
     listen 80;
-    server_name myvpn.example.com;
+    server_name vpn.example.com;
     return 301 https://$host$request_uri;
 }
 ```
@@ -209,9 +204,9 @@ server {
 ### Caddy 配置
 
 ```caddyfile
-myvpn.example.com {
+vpn.example.com {
     # 面板 UI + API
-    handle_path /web/* {
+    handle_path /panel/* {
         reverse_proxy 127.0.0.1:8080
     }
 
@@ -242,7 +237,7 @@ docker run -d \
   --name headscale-panel \
   -p 8090:8080 \
   -e SYSTEM_PORT=:8080 \
-  -e SYSTEM_BASE_URL=https://myvpn.example.com/web \
+  -e SYSTEM_BASE_URL=https://vpn.example.com/panel \
   headscale-panel
 
 # Headscale 使用默认 8080 端口
@@ -250,20 +245,20 @@ docker run -d \
 ```
 
 然后 Nginx 配置中：
-- `location /web/` → `proxy_pass http://127.0.0.1:8090/;`
+- `location /panel/` → `proxy_pass http://127.0.0.1:8090/;`
 - `location /` → `proxy_pass http://127.0.0.1:8080;`（Headscale）
 
 ### 面板内置 OIDC 配置
 
 如果使用面板内置 OIDC 作为 Headscale 认证提供者，需确保：
 
-1. 设置环境变量 `SYSTEM_BASE_URL=https://myvpn.example.com/web`
+1. 设置环境变量 `SYSTEM_BASE_URL=https://vpn.example.com/panel`
 2. 在面板「设置 → OIDC」中启用内置 OIDC，复制生成的配置
 3. 在 Headscale 的 `config.yaml` 中填写：
 
 ```yaml
 oidc:
-  issuer: "https://myvpn.example.com/web"
+  issuer: "https://vpn.example.com/panel"
   client_id: "headscale-builtin"
   client_secret: "<面板生成的密钥>"
   scope: ["openid", "profile", "email"]
@@ -275,14 +270,14 @@ oidc:
 
 如果有多个域名，最简单的方式是：
 
-- `myvpn.example.com` → Headscale（Tailscale 客户端连接）
-- `panel.myvpn.example.com` → Panel（管理面板）
+- `vpn.example.com` → Headscale（Tailscale 客户端连接）
+- `panel.vpn.example.com` → Panel（管理面板）
 
 ```nginx
 # Headscale
 server {
     listen 443 ssl http2;
-    server_name myvpn.example.com;
+    server_name vpn.example.com;
     # ... SSL 配置 ...
 
     location / {
@@ -301,7 +296,7 @@ server {
 # Panel
 server {
     listen 443 ssl http2;
-    server_name panel.myvpn.example.com;
+    server_name panel.vpn.example.com;
     # ... SSL 配置 ...
 
     location / {
@@ -324,7 +319,7 @@ server {
 }
 ```
 
-此时 `SYSTEM_BASE_URL=https://panel.myvpn.example.com`，Headscale OIDC issuer 设为 `https://panel.myvpn.example.com`。
+此时 `SYSTEM_BASE_URL=https://panel.vpn.example.com`，Headscale OIDC issuer 设为 `https://panel.vpn.example.com`。
 
 ---
 
@@ -332,22 +327,72 @@ server {
 
 ### 前置要求
 
+- Docker + Docker Compose
 - Go 1.24+
 - Node.js 20+ / pnpm
-- Headscale 实例（gRPC 可达）
 
 ### 本地开发
 
-```bash
-# 后端
-cd headscale-panel-backend
-cp ../env.example .env  # 编辑 .env 填写配置
-go run main.go
+推荐流程：
 
-# 前端（另一个终端）
-cd headscale-panel-frontend
-pnpm install
-pnpm run dev
+```bash
+# 1) 初始化前后端环境变量
+./shell/dev/init.sh
+
+# 2) 启动外部依赖
+./shell/dev/start.sh
+
+# 3) 生成 Headscale API Key
+docker exec panel-dev-headscale headscale apikeys create
+
+# 4) 启动本地后端
+cd backend && go run main.go
+
+# 5) 启动本地前端
+cd frontend && pnpm install && pnpm run dev
+```
+
+外部依赖脚本速查：
+
+```bash
+# 初始化 backend/frontend 的 .env（不会覆盖已有文件）
+./shell/dev/init.sh
+
+# 启动外部依赖（默认只启动 Headscale）
+./shell/dev/start.sh
+
+# 启动外部依赖并启用 DERP
+WITH_DERP=true ./shell/dev/start.sh
+
+# 查看依赖日志
+./shell/dev/logs.sh
+
+# 重启外部依赖
+./shell/dev/restart.sh
+
+# 停止外部依赖
+./shell/dev/stop.sh
+
+# 清空依赖数据
+./shell/dev/reset.sh
+```
+
+默认访问地址与端口：
+
+- Headscale HTTP: http://localhost:8080
+- Headscale gRPC: localhost:50443
+- DERP relay ports: 443/tcp, 3478/udp（仅 `WITH_DERP=true`）
+
+外部依赖会启动以下服务：
+
+- Headscale
+- DERP 中继服务（仅在 `WITH_DERP=true` 时启动）
+
+然后在 `backend/.env` 中至少配置：
+
+```bash
+HEADSCALE_GRPC_ADDR=localhost:50443
+HEADSCALE_INSECURE=true
 ```
 
 ### 构建 Docker 镜像
