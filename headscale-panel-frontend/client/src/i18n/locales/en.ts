@@ -750,8 +750,13 @@ const en: Translations = {
     toastAdminUserRequired: 'Please enter admin username',
     toastAdminPasswordRequired: 'Please enter admin password',
     toastInitTokenMissing: 'Initialization token missing. Please refresh this page',
+    toastSetupWindowClosed: 'The setup window is closed. Initialization cannot continue',
     toastInitSuccess: 'Initialization completed. Please log in',
     toastInitFailed: 'Initialization failed',
+    windowClosedTitle: 'Setup Window Closed',
+    windowClosedDesc: 'This instance is still uninitialized, but the initialization window has expired and must be reopened before continuing.',
+    windowClosedNoDeadline: 'This instance is still uninitialized, but the initialization window is no longer open.',
+    windowClosedWithDeadline: 'This instance is still uninitialized, and the initialization window closed at {deadline}.',
   },
 };
 

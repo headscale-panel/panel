@@ -3,20 +3,29 @@ import { authAPI } from '@/lib/api';
 import { useLocation } from 'wouter';
 import { useEffect, useRef, ReactNode } from 'react';
 import { redirectToLogin } from '@/lib/auth';
+import { getDefaultRouteForUser, hasAnyPermission } from '@/lib/permissions';
 
 interface ProtectedRouteProps {
   children: ReactNode;
   requireAdmin?: boolean;
+  requiredPermissions?: string[];
 }
 
-export default function ProtectedRoute({ children, requireAdmin = false }: ProtectedRouteProps) {
+export default function ProtectedRoute({
+  children,
+  requireAdmin = false,
+  requiredPermissions,
+}: ProtectedRouteProps) {
   const { isAuthenticated, user, updateUser } = useAuthStore();
   const [, setLocation] = useLocation();
   const fetched = useRef(false);
+  const pendingProfile =
+    isAuthenticated &&
+    (!user || !Array.isArray(user.permissions) || !user.headscale_name);
 
   // Fetch fresh user info only when auth state lacks a persisted user profile.
   useEffect(() => {
-    if (isAuthenticated && !user && !fetched.current) {
+    if (pendingProfile && !fetched.current) {
       fetched.current = true;
       authAPI.getUserInfo().then((data: any) => {
         if (data?.user) {
@@ -27,6 +36,7 @@ export default function ProtectedRoute({ children, requireAdmin = false }: Prote
             username: u.username,
             email: u.email,
             role,
+            headscale_name: u.headscale_name || u.username,
             display_name: u.display_name,
             avatar: u.profile_pic_url,
             permissions: data.permissions,
@@ -36,7 +46,7 @@ export default function ProtectedRoute({ children, requireAdmin = false }: Prote
         // Token invalid - interceptor handles 401 redirect
       });
     }
-  }, [isAuthenticated, user, updateUser]);
+  }, [pendingProfile, updateUser]);
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -44,21 +54,34 @@ export default function ProtectedRoute({ children, requireAdmin = false }: Prote
       return;
     }
 
+    if (pendingProfile) {
+      return;
+    }
+
     // Wait until user profile is loaded before applying admin redirect.
     if (requireAdmin && user && user.role !== 'admin') {
-      setLocation('/');
+      setLocation(getDefaultRouteForUser(user));
+      return;
     }
-  }, [isAuthenticated, user, requireAdmin, setLocation]);
+
+    if (requiredPermissions?.length && user && !hasAnyPermission(user, requiredPermissions)) {
+      setLocation(getDefaultRouteForUser(user));
+    }
+  }, [isAuthenticated, pendingProfile, user, requireAdmin, requiredPermissions, setLocation]);
 
   if (!isAuthenticated) {
     return null;
   }
 
-  if (requireAdmin && !user) {
+  if (pendingProfile || (requireAdmin || requiredPermissions?.length) && !user) {
     return null;
   }
 
   if (requireAdmin && user?.role !== 'admin') {
+    return null;
+  }
+
+  if (requiredPermissions?.length && !hasAnyPermission(user, requiredPermissions)) {
     return null;
   }
 

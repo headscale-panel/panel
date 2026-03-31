@@ -6,6 +6,7 @@ import { ThemeProvider } from "./contexts/ThemeContext";
 import { I18nProvider } from "./i18n/I18nProvider";
 import { useI18n } from "./i18n/index";
 import Dashboard from "./pages/Dashboard";
+import Devices from "./pages/Devices";
 import Login from "./pages/Login";
 import Users from "./pages/Users";
 import Routes from "./pages/Routes";
@@ -19,6 +20,7 @@ import api from "./lib/api";
 import { useState, useEffect, type ReactNode } from "react";
 import { Spin } from "antd";
 import { LoadingOutlined } from "@ant-design/icons";
+import { DASHBOARD_PERMISSIONS, METRICS_PERMISSIONS, SELF_DEVICE_PERMISSIONS } from "./lib/permissions";
 
 const BASE = '/panel';
 
@@ -79,32 +81,22 @@ function SetupGuard({ children }: { children: ReactNode }) {
 }
 
 function AppRoutes() {
-  function RedirectToUsers() {
-    const [, setLocation] = useLocation();
-
-    useEffect(() => {
-      setLocation('/users');
-    }, [setLocation]);
-
-    return null;
-  }
-
   return (
     <Switch>
       <Route path="/login" component={Login} />
       <Route path="/setup" component={SetupWelcome} />
 
       <Route path="/">
-        <ProtectedRoute><Dashboard /></ProtectedRoute>
+        <ProtectedRoute requiredPermissions={[...DASHBOARD_PERMISSIONS]}><Dashboard /></ProtectedRoute>
       </Route>
       <Route path="/devices">
-        <ProtectedRoute requireAdmin><RedirectToUsers /></ProtectedRoute>
+        <ProtectedRoute requiredPermissions={[...SELF_DEVICE_PERMISSIONS]}><Devices /></ProtectedRoute>
       </Route>
       <Route path="/users">
         <ProtectedRoute requireAdmin><Users /></ProtectedRoute>
       </Route>
       <Route path="/routes">
-        <ProtectedRoute><Routes /></ProtectedRoute>
+        <ProtectedRoute requiredPermissions={['headscale:route:list']}><Routes /></ProtectedRoute>
       </Route>
       <Route path="/resources">
         <ProtectedRoute requireAdmin><Resources /></ProtectedRoute>
@@ -113,10 +105,10 @@ function AppRoutes() {
         <ProtectedRoute requireAdmin><ACL /></ProtectedRoute>
       </Route>
       <Route path="/metrics">
-        <ProtectedRoute requireAdmin><Metrics /></ProtectedRoute>
+        <ProtectedRoute requiredPermissions={[...METRICS_PERMISSIONS]}><Metrics /></ProtectedRoute>
       </Route>
       <Route path="/settings">
-        <ProtectedRoute><Settings /></ProtectedRoute>
+        <ProtectedRoute requireAdmin><Settings /></ProtectedRoute>
       </Route>
       <Route path="/dns">
         <ProtectedRoute requireAdmin><DNS /></ProtectedRoute>

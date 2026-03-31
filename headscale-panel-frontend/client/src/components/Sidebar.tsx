@@ -4,6 +4,7 @@ import { clearStoredAuthState } from '@/lib/auth';
 import { Layout, Menu, Avatar, Button, Typography, theme } from 'antd';
 import {
   HomeOutlined,
+  DesktopOutlined,
   TeamOutlined,
   NodeIndexOutlined,
   DatabaseOutlined,
@@ -15,6 +16,7 @@ import {
 } from '@ant-design/icons';
 import { useLocation } from 'wouter';
 import type { MenuProps } from 'antd';
+import { canAccessSection, type AppSectionKey } from '@/lib/permissions';
 
 const { Sider } = Layout;
 const { Text } = Typography;
@@ -27,6 +29,7 @@ interface SidebarProps {
 
 const menuIconMap: Record<string, React.ReactNode> = {
   dashboard: <HomeOutlined />,
+  devices: <DesktopOutlined />,
   users: <TeamOutlined />,
   routes: <NodeIndexOutlined />,
   resources: <DatabaseOutlined />,
@@ -47,8 +50,6 @@ const menuPaths: Record<string, string> = {
   settings: '/settings',
 };
 
-const adminOnlyKeys = new Set(['users', 'resources', 'acl', 'dns', 'metrics']);
-
 export default function Sidebar({
   collapsed = false,
   isMobile = false,
@@ -59,7 +60,6 @@ export default function Sidebar({
   const { user } = useAuthStore();
   const { token: themeToken } = theme.useToken();
 
-  const isAdmin = user?.role === 'admin';
   const displayName = user?.display_name || user?.username || t.sidebar.defaultUser;
   const avatarLetter = (user?.username || 'U')[0].toUpperCase();
 
@@ -70,9 +70,9 @@ export default function Sidebar({
   };
 
   // Build menu items
-  const allKeys = ['dashboard', 'users', 'routes', 'resources', 'acl', 'dns', 'metrics', 'settings'];
+  const allKeys: AppSectionKey[] = ['dashboard', 'devices', 'users', 'routes', 'resources', 'acl', 'dns', 'metrics', 'settings'];
   const menuItems: MenuProps['items'] = allKeys
-    .filter((key) => !adminOnlyKeys.has(key) || isAdmin)
+    .filter((key) => canAccessSection(user, key))
     .map((key) => ({
       key,
       icon: menuIconMap[key],

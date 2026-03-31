@@ -748,8 +748,13 @@ const zh = {
     toastAdminUserRequired: '请填写管理员用户名',
     toastAdminPasswordRequired: '请填写管理员密码',
     toastInitTokenMissing: '初始化令牌缺失，请重新刷新页面',
+    toastSetupWindowClosed: '初始化窗口已关闭，无法继续当前向导',
     toastInitSuccess: '初始化完成，请登录',
     toastInitFailed: '初始化失败',
+    windowClosedTitle: '初始化窗口已关闭',
+    windowClosedDesc: '当前实例尚未完成初始化，但初始化时间窗口已经过期，需要重新开启初始化窗口后才能继续。',
+    windowClosedNoDeadline: '当前实例尚未完成初始化，但初始化时间窗口已经关闭。',
+    windowClosedWithDeadline: '当前实例尚未完成初始化，初始化时间窗口已于 {deadline} 关闭。',
   },
 };
 

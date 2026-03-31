@@ -6,6 +6,7 @@ export interface User {
   username: string;
   email: string;
   role: string;
+  headscale_name?: string;
   display_name?: string;
   avatar?: string;
   permissions?: string[];

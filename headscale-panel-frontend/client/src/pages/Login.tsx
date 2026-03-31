@@ -7,6 +7,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useLocation, useSearch } from 'wouter';
 import { message } from 'antd';
 import { consumeAuthNotice, normalizeLoginReturnUrl } from '@/lib/auth';
+import { getDefaultRouteForUser } from '@/lib/permissions';
 
 const { Title, Text } = Typography;
 
@@ -51,14 +52,17 @@ export default function Login() {
 
   const parseUserAuth = useCallback((data: any) => {
     const u = data.user;
-    setAuth(data.token, {
+    const nextUser = {
       id: u.id,
       username: u.username,
       email: u.email || '',
-      role: u.group?.name?.toLowerCase() === 'admin' ? 'admin' : 'user',
+      role: u.role === 'admin' || u.group?.name?.toLowerCase() === 'admin' ? 'admin' : 'user',
+      headscale_name: u.headscale_name || u.username,
       display_name: u.display_name,
       permissions: data.permissions,
-    });
+    };
+    setAuth(data.token, nextUser);
+    return nextUser;
   }, [setAuth]);
 
   const handleOIDCCallback = useCallback(async (code: string, state: string) => {
@@ -66,9 +70,9 @@ export default function Login() {
     try {
       const data: any = await authAPI.oidcCallback(code, state);
       if (data?.token && data?.user) {
-        parseUserAuth(data);
+        const nextUser = parseUserAuth(data);
         message.success(t.login.oidcLoginSuccess);
-        setLocation('/');
+        setLocation(getDefaultRouteForUser(nextUser));
       } else {
         message.error(t.login.oidcVerifyFailed);
       }
@@ -89,11 +93,11 @@ export default function Login() {
     try {
       const data: any = await authAPI.login(username.trim(), password);
       if (data?.token && data?.user) {
-        parseUserAuth(data);
+        const nextUser = parseUserAuth(data);
         message.success(t.login.loginSuccess);
         const params = new URLSearchParams(search);
         const returnUrl = normalizeLoginReturnUrl(params.get('return_url'));
-        returnUrl ? window.location.assign(returnUrl) : setLocation('/');
+        returnUrl ? window.location.assign(returnUrl) : setLocation(getDefaultRouteForUser(nextUser));
       }
     } catch {
       // handled by interceptor

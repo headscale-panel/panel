@@ -1,4 +1,4 @@
-import { Card, Input, Button, Switch, Steps, Typography, Spin, Space, Descriptions, message, theme } from 'antd';
+import { Alert, Card, Input, Button, Switch, Steps, Typography, Spin, Space, Descriptions, message, theme } from 'antd';
 import { SafetyCertificateOutlined, GlobalOutlined, LoadingOutlined, CheckCircleOutlined, CloseCircleOutlined, ArrowRightOutlined, SmileOutlined } from '@ant-design/icons';
 import { useTranslation, useI18n, availableLocales, locales } from '@/i18n/index';
 import api from '@/lib/api';
@@ -30,6 +30,8 @@ export default function SetupWelcome() {
   const [bootstrapConfigured, setBootstrapConfigured] = useState(false);
   const [bootstrapToken, setBootstrapToken] = useState('');
   const [initToken, setInitToken] = useState('');
+  const [setupWindowOpen, setSetupWindowOpen] = useState(true);
+  const [setupWindowDeadline, setSetupWindowDeadline] = useState('');
 
   const [grpcAddr, setGrpcAddr] = useState('');
   const [apiKey, setApiKey] = useState('');
@@ -62,7 +64,12 @@ export default function SetupWelcome() {
       });
       if (data?.initialized) { setLocation('/login'); return; }
       setBootstrapConfigured(!!data?.bootstrap_configured);
-      if (data?.init_token) setInitToken(data.init_token);
+      setSetupWindowOpen(data?.setup_window_open !== false);
+      setSetupWindowDeadline(data?.setup_window_deadline || '');
+      setInitToken(data?.init_token || '');
+      if (data?.setup_window_open === false) {
+        setConnectPassed(false);
+      }
     } catch {
       message.error(t.setupWelcome.toastStatusLoadFailed);
     } finally {
@@ -71,6 +78,7 @@ export default function SetupWelcome() {
   };
 
   const handleCheckConnection = async () => {
+    if (!setupWindowOpen) { message.error(t.setupWelcome.toastSetupWindowClosed); return; }
     if (bootstrapConfigured && !bootstrapToken.trim()) { message.error(t.setupWelcome.toastBootstrapRequired); return; }
     if (!grpcAddr.trim()) { message.error(t.setupWelcome.toastGrpcRequired); return; }
     if (!apiKey.trim()) { message.error(t.setupWelcome.toastApiKeyRequired); return; }
@@ -98,7 +106,9 @@ export default function SetupWelcome() {
           const status: any = await api.get('/setup/status', {
             headers: bootstrapToken.trim() ? { 'X-Setup-Bootstrap-Token': bootstrapToken.trim() } : {},
           });
-          if (status?.init_token) setInitToken(status.init_token);
+          setSetupWindowOpen(status?.setup_window_open !== false);
+          setSetupWindowDeadline(status?.setup_window_deadline || '');
+          setInitToken(status?.init_token || '');
         } catch {}
       } else {
         message.error(t.setupWelcome.toastConnectivityFailed);
@@ -111,6 +121,7 @@ export default function SetupWelcome() {
   };
 
   const handleInitialize = async () => {
+    if (!setupWindowOpen) { message.error(t.setupWelcome.toastSetupWindowClosed); return; }
     if (!adminUsername.trim()) { message.error(t.setupWelcome.toastAdminUserRequired); return; }
     if (!adminPassword.trim()) { message.error(t.setupWelcome.toastAdminPasswordRequired); return; }
     if (!initToken) { message.error(t.setupWelcome.toastInitTokenMissing); return; }
@@ -181,6 +192,20 @@ export default function SetupWelcome() {
           { title: '✓' },
         ]} />
 
+        {!setupWindowOpen && (
+          <Alert
+            type="warning"
+            showIcon
+            style={{ marginBottom: 24, textAlign: 'left' }}
+            message={t.setupWelcome.windowClosedTitle}
+            description={
+              setupWindowDeadline
+                ? t.setupWelcome.windowClosedWithDeadline.replace('{deadline}', new Date(setupWindowDeadline).toLocaleString())
+                : t.setupWelcome.windowClosedNoDeadline
+            }
+          />
+        )}
+
         {/* Step: Connection */}
         {step === 'connection' && (
           <Card>
@@ -234,10 +259,10 @@ export default function SetupWelcome() {
               )}
 
               <Space>
-                <Button type="primary" onClick={handleCheckConnection} loading={checking} style={{ flex: 1 }}>
+                <Button type="primary" onClick={handleCheckConnection} loading={checking} style={{ flex: 1 }} disabled={!setupWindowOpen}>
                   {checking ? t.setupWelcome.checkingConnection : t.setupWelcome.checkConnection}
                 </Button>
-                {connectPassed && (
+                {connectPassed && setupWindowOpen && (
                   <Button icon={<ArrowRightOutlined />} onClick={() => setStep('admin')} />
                 )}
               </Space>
@@ -269,9 +294,18 @@ export default function SetupWelcome() {
                 <Input type="email" value={adminEmail} onChange={(e) => setAdminEmail(e.target.value)} placeholder={t.setupWelcome.adminEmailPlaceholder} />
               </div>
 
+              {!setupWindowOpen && (
+                <Alert
+                  type="warning"
+                  showIcon
+                  message={t.setupWelcome.windowClosedTitle}
+                  description={t.setupWelcome.windowClosedDesc}
+                />
+              )}
+
               <Space>
                 <Button onClick={() => setStep('connection')}>{t.setup.back}</Button>
-                <Button type="primary" onClick={handleInitialize} loading={initializing} style={{ flex: 1 }}>
+                <Button type="primary" onClick={handleInitialize} loading={initializing} style={{ flex: 1 }} disabled={!setupWindowOpen}>
                   {initializing ? t.setupWelcome.initializing : t.setupWelcome.initialize}
                 </Button>
               </Space>
