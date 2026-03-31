@@ -587,7 +587,15 @@ func (s *headscaleService) GetPreAuthKeysWithContext(ctx context.Context, actorU
 	if err != nil {
 		return nil, fmt.Errorf("failed to list pre-auth keys: %w", err)
 	}
-	return resp.PreAuthKeys, nil
+
+	// Filter by user — some headscale versions ignore the User field in ListPreAuthKeysRequest
+	var filtered []*v1.PreAuthKey
+	for _, k := range resp.PreAuthKeys {
+		if k.GetUser() != nil && k.GetUser().GetId() == userID {
+			filtered = append(filtered, k)
+		}
+	}
+	return filtered, nil
 }
 
 // CreatePreAuthKey creates a pre-auth key for a user
@@ -625,6 +633,7 @@ func (s *headscaleService) CreatePreAuthKeyWithContext(ctx context.Context, acto
 	if err != nil {
 		return nil, fmt.Errorf("failed to create pre-auth key: %w", err)
 	}
+
 	return resp.PreAuthKey, nil
 }
 

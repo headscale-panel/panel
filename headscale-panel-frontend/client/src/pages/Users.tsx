@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useCallback } from 'react';
 import { useLocation } from 'wouter';
 import {
   ClockCircleOutlined,
@@ -15,19 +15,23 @@ import {
   ReloadOutlined,
   RightOutlined,
   SearchOutlined,
+  StopOutlined,
   TeamOutlined,
   UserAddOutlined,
   UserOutlined,
   UsergroupAddOutlined,
   WifiOutlined,
+  CodeOutlined,
 } from '@ant-design/icons';
 import {
   Avatar,
   Button,
   Card,
+  Collapse,
   Dropdown,
   Input,
   Modal,
+  Popconfirm,
   Select,
   Space,
   Spin,
@@ -97,12 +101,34 @@ export default function UsersPage() {
   const [newDeviceName, setNewDeviceName] = useState('');
   const [deviceNameError, setDeviceNameError] = useState('');
   const [addDeviceDialogOpen, setAddDeviceDialogOpen] = useState(false);
-  const [addDeviceTab, setAddDeviceTab] = useState('preauth');
+  const [addDeviceTab, setAddDeviceTab] = useState('machinekey');
   const [addDeviceReusable, setAddDeviceReusable] = useState(false);
   const [addDeviceEphemeral, setAddDeviceEphemeral] = useState(false);
   const [generatedKey, setGeneratedKey] = useState('');
   const [machineKey, setMachineKey] = useState('');
   const [registeringNode, setRegisteringNode] = useState(false);
+  const [addDeviceUser, setAddDeviceUser] = useState('');
+  const [preAuthKeysList, setPreAuthKeysList] = useState<any[]>([]);
+  const [loadingPreAuthKeys, setLoadingPreAuthKeys] = useState(false);
+  const [deployParams, setDeployParams] = useState({
+    hostname: '',
+    acceptDns: true,
+    acceptRoutes: false,
+    advertiseExitNode: false,
+    ssh: false,
+    shieldsUp: false,
+    advertiseConnector: false,
+    advertiseRoutes: '',
+    advertiseTags: '',
+    exitNode: '',
+    exitNodeAllowLan: false,
+    forceReauth: false,
+    reset: false,
+    snatSubnetRoutes: true,
+    statefulFiltering: false,
+    operator: '',
+    netfilterMode: 'on',
+  });
 
   const [newUser, setNewUser] = useState({
     username: '',
@@ -542,32 +568,86 @@ export default function UsersPage() {
     });
   };
 
-  const openAddDeviceDialog = (user?: UserData | null) => {
-    const headscaleName = user?.headscale_name || user?.username || '';
-    setAddDeviceTab('preauth');
+  const openAddDeviceDialog = () => {
+    setAddDeviceTab('machinekey');
     setAddDeviceReusable(false);
     setAddDeviceEphemeral(false);
     setGeneratedKey('');
     setMachineKey('');
     setRegisteringNode(false);
-    setSelectedUser(user || null);
-    if (!headscaleName) {
-      message.error(t.devices.selectUserFirst);
-      return;
-    }
+    setAddDeviceUser('');
+    setPreAuthKeysList([]);
+    setDeployParams({
+      hostname: '', acceptDns: true, acceptRoutes: false, advertiseExitNode: false,
+      ssh: false, shieldsUp: false, advertiseConnector: false, advertiseRoutes: '',
+      advertiseTags: '', exitNode: '', exitNodeAllowLan: false, forceReauth: false,
+      reset: false, snatSubnetRoutes: true, statefulFiltering: false, operator: '', netfilterMode: 'on',
+    });
     setAddDeviceDialogOpen(true);
   };
 
+  // Parse protobuf Timestamp ({seconds, nanos} or ISO string) to Date
+  const parseTimestamp = (ts: any): Date | null => {
+    if (!ts) return null;
+    if (typeof ts === 'string') { const d = new Date(ts); return isNaN(d.getTime()) ? null : d; }
+    if (ts.seconds != null) return new Date(Number(ts.seconds) * 1000 + (ts.nanos || 0) / 1e6);
+    return null;
+  };
+
+  const serverBaseURL = useMemo(() => {
+    return window.location.origin;
+  }, []);
+
+  const buildTailscaleCommand = useMemo(() => {
+    const parts = ['tailscale up'];
+    parts.push(`--login-server=${serverBaseURL}`);
+    if (generatedKey) {
+      parts.push(`--authkey=${generatedKey}`);
+    }
+    if (deployParams.hostname) parts.push(`--hostname=${deployParams.hostname}`);
+    if (deployParams.acceptDns) parts.push('--accept-dns=true');
+    if (deployParams.acceptRoutes) parts.push('--accept-routes');
+    if (deployParams.advertiseExitNode) parts.push('--advertise-exit-node');
+    if (deployParams.ssh) parts.push('--ssh');
+    if (deployParams.shieldsUp) parts.push('--shields-up');
+    if (deployParams.advertiseConnector) parts.push('--advertise-connector');
+    if (deployParams.advertiseRoutes) parts.push(`--advertise-routes=${deployParams.advertiseRoutes}`);
+    if (deployParams.advertiseTags) parts.push(`--advertise-tags=${deployParams.advertiseTags}`);
+    if (deployParams.exitNode) parts.push(`--exit-node=${deployParams.exitNode}`);
+    if (deployParams.exitNodeAllowLan) parts.push('--exit-node-allow-lan-access');
+    if (deployParams.forceReauth) parts.push('--force-reauth');
+    if (deployParams.reset) parts.push('--reset');
+    if (!deployParams.snatSubnetRoutes) parts.push('--snat-subnet-routes=false');
+    if (deployParams.statefulFiltering) parts.push('--stateful-filtering');
+    if (deployParams.operator) parts.push(`--operator=${deployParams.operator}`);
+    if (deployParams.netfilterMode && deployParams.netfilterMode !== 'on') parts.push(`--netfilter-mode=${deployParams.netfilterMode}`);
+    return parts.join(' \\\n  ');
+  }, [serverBaseURL, generatedKey, deployParams]);
+
+  const loadPreAuthKeys = useCallback(async (user: string) => {
+    if (!user) { setPreAuthKeysList([]); return; }
+    setLoadingPreAuthKeys(true);
+    try {
+      const res: any = await usersAPI.getPreAuthKeys(user);
+      // res is already unwrapped by axios interceptor — could be array directly or wrapped
+      const keys = Array.isArray(res) ? res : (res?.preAuthKeys || res?.preAuthKey || res?.preauthkeys || res?.pre_auth_keys || []);
+      setPreAuthKeysList(Array.isArray(keys) ? keys : []);
+    } catch {
+      setPreAuthKeysList([]);
+    } finally {
+      setLoadingPreAuthKeys(false);
+    }
+  }, []);
+
   const handleGenerateDeviceKey = async () => {
-    const owner = selectedTreeUser?.headscale_name || selectedTreeUser?.username;
-    if (!owner) {
+    if (!addDeviceUser) {
       message.error(t.devices.selectUserFirst);
       return;
     }
 
     try {
       const expiration = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
-      const res: any = await usersAPI.createPreAuthKey(owner, addDeviceReusable, addDeviceEphemeral, expiration);
+      const res: any = await usersAPI.createPreAuthKey(addDeviceUser, addDeviceReusable, addDeviceEphemeral, expiration);
       const key = res?.preAuthKey?.key || res?.key || res?.preauthkey?.key || '';
       if (!key) {
         message.error(t.devices.keyGenerateFailed);
@@ -575,21 +655,33 @@ export default function UsersPage() {
       }
       setGeneratedKey(key);
       message.success(t.devices.keyGenerated);
+      loadPreAuthKeys(addDeviceUser);
     } catch (error: any) {
       message.error(t.devices.keyGenerateFailed + (error.message ? `: ${error.message}` : ''));
     }
   };
 
+  const handleExpirePreAuthKey = async (key: string) => {
+    if (!addDeviceUser) return;
+    try {
+      await usersAPI.expirePreAuthKey(addDeviceUser, key);
+      message.success(t.devices.expireKeySuccess);
+      if (generatedKey === key) setGeneratedKey('');
+      loadPreAuthKeys(addDeviceUser);
+    } catch {
+      message.error(t.devices.expireKeyFailed);
+    }
+  };
+
   const handleRegisterDevice = async () => {
-    const owner = selectedTreeUser?.headscale_name || selectedTreeUser?.username;
-    if (!owner || !machineKey.trim()) {
+    if (!addDeviceUser || !machineKey.trim()) {
       message.error(t.devices.machineKeyRequired);
       return;
     }
 
     setRegisteringNode(true);
     try {
-      await devicesAPI.registerNode(owner, machineKey.trim());
+      await devicesAPI.registerNode(addDeviceUser, machineKey.trim());
       message.success(t.devices.registerNodeSuccess);
       setAddDeviceDialogOpen(false);
       loadData();
@@ -699,9 +791,6 @@ export default function UsersPage() {
           </div>
 
           <Space size={4}>
-            <Tooltip title={t.devices.addDevice}>
-              <Button type="text" size="small" icon={<PlusOutlined />} onClick={() => openAddDeviceDialog(user)} />
-            </Tooltip>
             <Tooltip title={t.users.viewRoutes}>
               <Button type="text" size="small" icon={<NodeIndexOutlined />} onClick={() => handleViewRoutes(user)} />
             </Tooltip>
@@ -851,6 +940,7 @@ export default function UsersPage() {
             <Tooltip title={t.common.actions.refresh}>
               <Button icon={<ReloadOutlined spin={loading} />} onClick={loadData} disabled={loading} />
             </Tooltip>
+            <Button icon={<DesktopOutlined />} onClick={openAddDeviceDialog}>{t.devices.addDevice}</Button>
             <Dropdown
               menu={{
                 items: [
@@ -1188,58 +1278,31 @@ export default function UsersPage() {
           title={t.devices.addDeviceTitle}
           onCancel={() => setAddDeviceDialogOpen(false)}
           footer={<Button onClick={() => setAddDeviceDialogOpen(false)}>{t.common.actions.close}</Button>}
-          width={720}
+          width={780}
         >
           <Text type="secondary" style={{ display: 'block', marginBottom: 12 }}>{t.devices.addDeviceDesc}</Text>
-          <div style={{ background: token.colorBgLayout, borderRadius: token.borderRadius, padding: '12px 16px', marginBottom: 16, fontSize: 13 }}>
-            <Space wrap>
-              <Text type="secondary">{t.devices.selectUser}</Text>
-              <Text strong>{selectedTreeUser?.display_name || selectedTreeUser?.username}</Text>
-              <Text code style={{ fontSize: 12 }}>{selectedTreeUser?.headscale_name || selectedTreeUser?.username}</Text>
-            </Space>
+
+          {/* User Selector */}
+          <div style={{ marginBottom: 16 }}>
+            <Text style={{ fontSize: 13, display: 'block', marginBottom: 4 }}>{t.devices.selectUser}</Text>
+            <Select
+              style={{ width: '100%' }}
+              value={addDeviceUser || undefined}
+              onChange={(val) => { setAddDeviceUser(val); setGeneratedKey(''); loadPreAuthKeys(val); }}
+              placeholder={t.devices.selectUserFirst}
+              showSearch
+              optionFilterProp="label"
+              options={users.map((u) => ({
+                value: u.headscale_name || u.username,
+                label: `${u.display_name || u.username} (${u.headscale_name || u.username})`,
+              }))}
+            />
           </div>
 
           <Tabs
             activeKey={addDeviceTab}
-            onChange={(key) => { setAddDeviceTab(key); setGeneratedKey(''); setMachineKey(''); }}
+            onChange={(key) => { setAddDeviceTab(key); }}
             items={[
-              {
-                key: 'preauth',
-                label: <span><KeyOutlined style={{ marginRight: 8 }} />{t.devices.tabPreAuth}</span>,
-                children: (
-                  <Space direction="vertical" style={{ width: '100%' }} size={16}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', border: `1px solid ${token.colorBorderSecondary}`, borderRadius: token.borderRadius, padding: '12px 16px' }}>
-                      <div>
-                        <Text style={{ fontSize: 13 }}>{t.devices.reusableKey}</Text>
-                        <div><Text type="secondary" style={{ fontSize: 12 }}>{t.devices.reusableKeyDesc}</Text></div>
-                      </div>
-                      <Switch checked={addDeviceReusable} onChange={setAddDeviceReusable} />
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', border: `1px solid ${token.colorBorderSecondary}`, borderRadius: token.borderRadius, padding: '12px 16px' }}>
-                      <div>
-                        <Text style={{ fontSize: 13 }}>{t.devices.ephemeralKey}</Text>
-                        <div><Text type="secondary" style={{ fontSize: 12 }}>{t.devices.ephemeralKeyDesc}</Text></div>
-                      </div>
-                      <Switch checked={addDeviceEphemeral} onChange={setAddDeviceEphemeral} />
-                    </div>
-
-                    {!generatedKey ? (
-                      <Button block icon={<KeyOutlined />} onClick={handleGenerateDeviceKey}>{t.devices.generateKey}</Button>
-                    ) : (
-                      <div style={{ border: `1px solid ${token.colorBorderSecondary}`, borderRadius: token.borderRadius, padding: 16 }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                          <Text style={{ fontSize: 13 }}>{t.devices.preAuthKey}</Text>
-                          <Button type="text" size="small" icon={<CopyOutlined />} onClick={() => { navigator.clipboard.writeText(generatedKey); message.success(t.devices.keyCopied); }}>
-                            {t.devices.copyCommand}
-                          </Button>
-                        </div>
-                        <Input readOnly value={generatedKey} style={{ fontFamily: 'monospace', fontSize: 12 }} />
-                        <Text type="secondary" style={{ fontSize: 12, marginTop: 8, display: 'block' }}>{t.devices.keyExpireHint}</Text>
-                      </div>
-                    )}
-                  </Space>
-                ),
-              },
               {
                 key: 'machinekey',
                 label: <span><DesktopOutlined style={{ marginRight: 8 }} />{t.devices.tabMachineKey}</span>,
@@ -1255,9 +1318,293 @@ export default function UsersPage() {
                       />
                       <Text type="secondary" style={{ fontSize: 12, marginTop: 4, display: 'block' }}>{t.devices.machineKeyHint}</Text>
                     </div>
-                    <Button block type="primary" onClick={handleRegisterDevice} disabled={!machineKey.trim()} loading={registeringNode} icon={<DesktopOutlined />}>
+                    <Button block type="primary" onClick={handleRegisterDevice} disabled={!machineKey.trim() || !addDeviceUser} loading={registeringNode} icon={<DesktopOutlined />}>
                       {t.devices.registerNode}
                     </Button>
+                  </Space>
+                ),
+              },
+              {
+                key: 'preauth',
+                label: <span><KeyOutlined style={{ marginRight: 8 }} />{t.devices.tabPreAuth}</span>,
+                children: (
+                  <Space direction="vertical" style={{ width: '100%' }} size={16}>
+                    {/* Generate new key section */}
+                    <div style={{ border: `1px solid ${token.colorBorderSecondary}`, borderRadius: token.borderRadius, padding: 16 }}>
+                      <Text strong style={{ fontSize: 13, display: 'block', marginBottom: 12 }}>{t.devices.generateKey}</Text>
+                      <div style={{ display: 'flex', gap: 12, marginBottom: 12 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, border: `1px solid ${token.colorBorderSecondary}`, borderRadius: token.borderRadius, padding: '8px 12px' }}>
+                          <Text style={{ fontSize: 12 }}>{t.devices.reusableKey}</Text>
+                          <Switch size="small" checked={addDeviceReusable} onChange={setAddDeviceReusable} />
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, border: `1px solid ${token.colorBorderSecondary}`, borderRadius: token.borderRadius, padding: '8px 12px' }}>
+                          <Text style={{ fontSize: 12 }}>{t.devices.ephemeralKey}</Text>
+                          <Switch size="small" checked={addDeviceEphemeral} onChange={setAddDeviceEphemeral} />
+                        </div>
+                      </div>
+                      <Button block icon={<KeyOutlined />} onClick={handleGenerateDeviceKey} disabled={!addDeviceUser}>{t.devices.generateKey}</Button>
+                      {generatedKey && (
+                        <div style={{ marginTop: 12, background: token.colorBgLayout, borderRadius: token.borderRadius, padding: '8px 12px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <Input readOnly value={generatedKey} size="small" style={{ fontFamily: 'monospace', fontSize: 11, flex: 1, marginRight: 8 }} />
+                            <Button type="text" size="small" icon={<CopyOutlined />} onClick={() => { navigator.clipboard.writeText(generatedKey); message.success(t.devices.keyCopied); }} />
+                          </div>
+                          <Text type="secondary" style={{ fontSize: 11, marginTop: 4, display: 'block' }}>{t.devices.keyExpireHint}</Text>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Existing keys list */}
+                    <div>
+                      <Text strong style={{ fontSize: 13, display: 'block', marginBottom: 8 }}>{t.devices.existingKeys}</Text>
+                      {loadingPreAuthKeys ? (
+                        <div style={{ textAlign: 'center', padding: 24 }}><Spin size="small" /></div>
+                      ) : !addDeviceUser ? (
+                        <Text type="secondary" style={{ fontSize: 12 }}>{t.devices.selectUserFirst}</Text>
+                      ) : preAuthKeysList.length === 0 ? (
+                        <Text type="secondary" style={{ fontSize: 12 }}>{t.devices.noExistingKeys}</Text>
+                      ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                          {preAuthKeysList.map((k: any) => {
+                            const expDate = parseTimestamp(k.expiration);
+                            const isExpired = expDate && expDate < new Date();
+                            const isUsedUp = k.used && !k.reusable;
+                            return (
+                              <div
+                                key={k.id || k.key}
+                                style={{
+                                  border: `1px solid ${token.colorBorderSecondary}`,
+                                  borderRadius: token.borderRadius,
+                                  padding: '10px 12px',
+                                  opacity: isExpired || isUsedUp ? 0.55 : 1,
+                                }}
+                              >
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                                  <Text copyable={{ text: k.key }} style={{ fontFamily: 'monospace', fontSize: 11, wordBreak: 'break-all' }}>
+                                    {k.key?.length > 30 ? k.key.slice(0, 30) + '...' : k.key}
+                                  </Text>
+                                  {!isExpired && (
+                                    <Popconfirm
+                                      title={t.devices.expireKeyConfirm}
+                                      onConfirm={() => handleExpirePreAuthKey(k.key)}
+                                      okText={t.common.actions.confirm}
+                                      cancelText={t.common.actions.cancel}
+                                    >
+                                      <Button type="text" size="small" danger icon={<StopOutlined />} />
+                                    </Popconfirm>
+                                  )}
+                                </div>
+                                <Space size={4} wrap>
+                                  {k.reusable && <Tag color="blue" style={{ fontSize: 10, margin: 0 }}>{t.devices.preAuthKeyReusable}</Tag>}
+                                  {k.ephemeral && <Tag color="orange" style={{ fontSize: 10, margin: 0 }}>{t.devices.preAuthKeyEphemeral}</Tag>}
+                                  {k.used && <Tag color={k.reusable ? 'default' : 'red'} style={{ fontSize: 10, margin: 0 }}>{t.devices.preAuthKeyUsed}</Tag>}
+                                  {isExpired && <Tag color="default" style={{ fontSize: 10, margin: 0 }}>{t.devices.preAuthKeyExpired}</Tag>}
+                                  {k.acl_tags?.length > 0 && k.acl_tags.map((tag: string) => (
+                                    <Tag key={tag} style={{ fontSize: 10, margin: 0 }}>{tag}</Tag>
+                                  ))}
+                                </Space>
+                                <div style={{ marginTop: 4 }}>
+                                  {parseTimestamp(k.created_at) && <Text type="secondary" style={{ fontSize: 10, marginRight: 12 }}>{t.devices.keyCreatedAt}: {parseTimestamp(k.created_at)!.toLocaleString()}</Text>}
+                                  {expDate && <Text type="secondary" style={{ fontSize: 10 }}>{t.devices.keyExpiration}: {expDate.toLocaleString()}</Text>}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  </Space>
+                ),
+              },
+              {
+                key: 'deploy',
+                label: <span><CodeOutlined style={{ marginRight: 8 }} />{t.devices.tabDeploy}</span>,
+                children: (
+                  <Space direction="vertical" style={{ width: '100%' }} size={12}>
+                    {/* Pre-Auth Key selector */}
+                    <div>
+                      <Text style={{ fontSize: 13, display: 'block', marginBottom: 4 }}>{t.devices.usePreAuthKeyInCommand}</Text>
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <Select
+                          style={{ flex: 1, minWidth: 0 }}
+                          value={generatedKey || undefined}
+                          onChange={(val) => setGeneratedKey(val || '')}
+                          placeholder={t.devices.selectPreAuthKey}
+                          allowClear
+                          loading={loadingPreAuthKeys}
+                          disabled={!addDeviceUser}
+                          notFoundContent={loadingPreAuthKeys ? t.devices.loadingKeys : t.devices.noPreAuthKeys}
+                          options={[
+                            ...preAuthKeysList
+                              .filter((k: any) => {
+                                const exp = parseTimestamp(k.expiration);
+                                const expired = exp && exp < new Date();
+                                const used = k.used && !k.reusable;
+                                return !expired && !used;
+                              })
+                              .map((k: any) => ({
+                                value: k.key,
+                                label: `${k.key?.length > 16 ? k.key.slice(0, 16) + '...' : k.key} ${k.reusable ? '[R]' : ''}${k.ephemeral ? '[E]' : ''}`,
+                              })),
+                            ...preAuthKeysList
+                              .filter((k: any) => {
+                                const exp = parseTimestamp(k.expiration);
+                                const expired = exp && exp < new Date();
+                                const used = k.used && !k.reusable;
+                                return expired || used;
+                              })
+                              .map((k: any) => ({
+                                value: k.key,
+                                disabled: true,
+                                label: `${k.key?.length > 16 ? k.key.slice(0, 16) + '...' : k.key} ${(() => { const exp = parseTimestamp(k.expiration); return exp && exp < new Date() ? `(${t.devices.preAuthKeyExpired})` : ''; })()}${k.used && !k.reusable ? `(${t.devices.preAuthKeyUsed})` : ''}`,
+                              })),
+                          ]}
+                        />
+                        <Button icon={<PlusOutlined />} onClick={handleGenerateDeviceKey} disabled={!addDeviceUser} style={{ flexShrink: 0 }}>
+                          {t.devices.generateNewKey}
+                        </Button>
+                      </div>
+                    </div>
+
+                    {/* Hostname */}
+                    <div>
+                      <Text style={{ fontSize: 13, display: 'block', marginBottom: 4 }}>{t.devices.paramHostname}</Text>
+                      <Input
+                        value={deployParams.hostname}
+                        onChange={(e) => setDeployParams(p => ({ ...p, hostname: e.target.value }))}
+                        placeholder={t.devices.paramHostnamePlaceholder}
+                        style={{ fontSize: 12 }}
+                      />
+                      <Text type="secondary" style={{ fontSize: 12, marginTop: 2, display: 'block' }}>{t.devices.paramHostnameDesc}</Text>
+                    </div>
+
+                    {/* Boolean switches - basic */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                      {([
+                        ['acceptDns', t.devices.paramAcceptDns],
+                        ['acceptRoutes', t.devices.paramAcceptRoutes],
+                        ['advertiseExitNode', t.devices.paramAdvertiseExitNode],
+                        ['ssh', t.devices.paramSsh],
+                        ['shieldsUp', t.devices.paramShieldsUp],
+                        ['advertiseConnector', t.devices.paramAdvertiseConnector],
+                      ] as [keyof typeof deployParams, string][]).map(([key, label]) => (
+                        <div key={key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', border: `1px solid ${token.colorBorderSecondary}`, borderRadius: token.borderRadius, padding: '8px 12px' }}>
+                          <Text style={{ fontSize: 12 }}>{label}</Text>
+                          <Switch size="small" checked={!!deployParams[key]} onChange={(v) => setDeployParams(p => ({ ...p, [key]: v }))} />
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Text inputs */}
+                    <div>
+                      <Text style={{ fontSize: 13, display: 'block', marginBottom: 4 }}>{t.devices.paramAdvertiseRoutes}</Text>
+                      <Input
+                        value={deployParams.advertiseRoutes}
+                        onChange={(e) => setDeployParams(p => ({ ...p, advertiseRoutes: e.target.value }))}
+                        placeholder="192.168.1.0/24, 10.0.0.0/8"
+                        style={{ fontSize: 12 }}
+                      />
+                    </div>
+                    <div>
+                      <Text style={{ fontSize: 13, display: 'block', marginBottom: 4 }}>{t.devices.paramAdvertiseTags}</Text>
+                      <Input
+                        value={deployParams.advertiseTags}
+                        onChange={(e) => setDeployParams(p => ({ ...p, advertiseTags: e.target.value }))}
+                        placeholder="tag:server, tag:prod"
+                        style={{ fontSize: 12 }}
+                      />
+                    </div>
+                    <div>
+                      <Text style={{ fontSize: 13, display: 'block', marginBottom: 4 }}>{t.devices.paramExitNode}</Text>
+                      <Input
+                        value={deployParams.exitNode}
+                        onChange={(e) => setDeployParams(p => ({ ...p, exitNode: e.target.value }))}
+                        placeholder={t.devices.paramExitNodePlaceholder}
+                        style={{ fontSize: 12 }}
+                      />
+                    </div>
+
+                    {/* Advanced Linux options */}
+                    <Collapse
+                      ghost
+                      size="small"
+                      items={[{
+                        key: 'advanced',
+                        label: <Text type="secondary" style={{ fontSize: 12 }}>{t.devices.advancedOptions}</Text>,
+                        children: (
+                          <Space direction="vertical" style={{ width: '100%' }} size={8}>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                              {([
+                                ['exitNodeAllowLan', t.devices.paramExitNodeAllowLan],
+                                ['forceReauth', t.devices.paramForceReauth],
+                                ['reset', t.devices.paramReset],
+                                ['snatSubnetRoutes', t.devices.paramSnat],
+                                ['statefulFiltering', t.devices.paramStatefulFiltering],
+                              ] as [keyof typeof deployParams, string][]).map(([key, label]) => (
+                                <div key={key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', border: `1px solid ${token.colorBorderSecondary}`, borderRadius: token.borderRadius, padding: '8px 12px' }}>
+                                  <Text style={{ fontSize: 12 }}>{label}</Text>
+                                  <Switch size="small" checked={!!deployParams[key]} onChange={(v) => setDeployParams(p => ({ ...p, [key]: v }))} />
+                                </div>
+                              ))}
+                            </div>
+                            <div>
+                              <Text style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>Operator</Text>
+                              <Input
+                                value={deployParams.operator}
+                                onChange={(e) => setDeployParams(p => ({ ...p, operator: e.target.value }))}
+                                placeholder={t.devices.paramOperatorPlaceholder}
+                                size="small"
+                                style={{ fontSize: 12 }}
+                              />
+                            </div>
+                            <div>
+                              <Text style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>Netfilter Mode</Text>
+                              <Select
+                                size="small"
+                                style={{ width: '100%' }}
+                                value={deployParams.netfilterMode}
+                                onChange={(v) => setDeployParams(p => ({ ...p, netfilterMode: v }))}
+                                options={[
+                                  { value: 'on', label: t.devices.paramNetfilterOn },
+                                  { value: 'nodivert', label: t.devices.paramNetfilterNodivert },
+                                  { value: 'off', label: t.devices.paramNetfilterOff },
+                                ]}
+                              />
+                            </div>
+                          </Space>
+                        ),
+                      }]}
+                    />
+
+                    {/* Generated Command */}
+                    <div style={{ marginTop: 4 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                        <Text strong style={{ fontSize: 13 }}>{t.devices.generatedCommand}</Text>
+                        <Button
+                          type="text"
+                          size="small"
+                          icon={<CopyOutlined />}
+                          onClick={() => { navigator.clipboard.writeText(buildTailscaleCommand); message.success(t.devices.commandCopied); }}
+                        >
+                          {t.devices.copyCommand}
+                        </Button>
+                      </div>
+                      <pre style={{
+                        background: token.colorBgLayout,
+                        border: `1px solid ${token.colorBorderSecondary}`,
+                        borderRadius: token.borderRadius,
+                        padding: 12,
+                        fontSize: 12,
+                        fontFamily: 'monospace',
+                        whiteSpace: 'pre-wrap',
+                        wordBreak: 'break-all',
+                        margin: 0,
+                        maxHeight: 200,
+                        overflow: 'auto',
+                      }}>
+                        {buildTailscaleCommand}
+                      </pre>
+                    </div>
                   </Space>
                 ),
               },
