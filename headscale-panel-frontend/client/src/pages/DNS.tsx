@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from '@/i18n/index';
 import { dnsAPI, DNSRecord } from '@/lib/api';
 import DashboardLayout from '@/components/DashboardLayout';
-import { Button, Card, Input, Modal, Select, Space, Statistic, Table, Tag, Typography, message } from 'antd';
+import { Button, Card, Input, Modal, Select, Space, Table, Tag, Typography, message, theme } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined, DownloadOutlined, UploadOutlined, SaveOutlined, ReloadOutlined, SearchOutlined, GlobalOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 
@@ -10,6 +10,7 @@ const { Title, Text } = Typography;
 
 export default function DNS() {
   const t = useTranslation();
+  const { token } = theme.useToken();
   const [records, setRecords] = useState<DNSRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [total, setTotal] = useState(0);
@@ -202,10 +203,23 @@ export default function DNS() {
         </div>
 
         {/* Stats */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 16 }}>
-          <Card><Statistic title={t.dns.totalRecords} value={total} /></Card>
-          <Card><Statistic title={t.dns.aRecords} value={records.filter(r => r.type === 'A').length} /></Card>
-          <Card><Statistic title={t.dns.aaaaRecords} value={records.filter(r => r.type === 'AAAA').length} /></Card>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 12 }}>
+          {[
+            { label: t.dns.totalRecords, value: total, icon: <GlobalOutlined style={{ fontSize: 28, color: '#1677ff' }} />, watermark: 'DNS' },
+            { label: t.dns.aRecords, value: records.filter(r => r.type === 'A').length, icon: <GlobalOutlined style={{ fontSize: 28, color: '#52c41a' }} />, watermark: 'A' },
+            { label: t.dns.aaaaRecords, value: records.filter(r => r.type === 'AAAA').length, icon: <GlobalOutlined style={{ fontSize: 28, color: '#722ed1' }} />, watermark: 'AAAA' },
+          ].map((stat, i) => (
+            <Card key={i} size="small" style={{ padding: 4, position: 'relative', overflow: 'hidden' }}>
+              <div style={{ position: 'absolute', right: 8, bottom: -4, fontSize: 48, fontWeight: 900, opacity: 0.04, letterSpacing: -2, lineHeight: 1, pointerEvents: 'none', userSelect: 'none' }}>{stat.watermark}</div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'relative' }}>
+                <div>
+                  <Text type="secondary" style={{ fontSize: 13 }}>{stat.label}</Text>
+                  <div style={{ fontSize: 24, fontWeight: 700, marginTop: 4 }}>{stat.value}</div>
+                </div>
+                {stat.icon}
+              </div>
+            </Card>
+          ))}
         </div>
 
         {/* Records Table */}

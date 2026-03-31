@@ -619,7 +619,7 @@ export default function ACL() {
         </div>
 
         {/* Stats Grid */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 16 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 12 }}>
           {[
             { label: t.acl.totalRules, value: stats.total, icon: <CodeOutlined style={{ fontSize: 28, color: '#1677ff' }} /> },
             { label: t.acl.allowRules, value: stats.allow, icon: <CheckCircleFilled style={{ fontSize: 28, color: '#52c41a' }} /> },

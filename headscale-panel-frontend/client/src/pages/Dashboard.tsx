@@ -1,6 +1,5 @@
 import DashboardLayout from '@/components/DashboardLayout';
 import NetworkTopology from '@/components/NetworkTopology';
-import StatCard from '@/components/StatCard';
 import { dashboardAPI, devicesAPI, usersAPI } from '@/lib/api';
 import {
   applyRealtimeDeviceStatus,
@@ -16,11 +15,14 @@ import {
 import { useTranslation } from '@/i18n/index';
 import { useWebSocketConnection, useDeviceStatusUpdates, useMetricsUpdates } from '@/hooks/useWebSocket';
 import { useEffect, useState, useCallback } from 'react';
-import { Button, Tag, Typography, message } from 'antd';
-import { ReloadOutlined, WifiOutlined, GlobalOutlined, TeamOutlined, DashboardOutlined } from '@ant-design/icons';
+import { Button, Card, Tag, Typography, message, theme } from 'antd';
+import { ReloadOutlined, WifiOutlined, GlobalOutlined, TeamOutlined, DashboardOutlined, PercentageOutlined, CloudServerOutlined } from '@ant-design/icons';
+
+const { Text } = Typography;
 
 export default function Dashboard() {
   const t = useTranslation();
+  const { token } = theme.useToken();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [stats, setStats] = useState<DashboardStats>({
@@ -197,25 +199,25 @@ export default function Dashboard() {
         </div>
 
         {/* Stats Cards */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 16 }}>
-          <StatCard
-            title={t.dashboard.onlineDevices}
-            value={stats.onlineDevices}
-            icon={DashboardOutlined}
-            subtitle={t.dashboard.totalDevices.replace('{count}', String(stats.totalDevices))}
-          />
-          <StatCard
-            title={t.dashboard.totalUsers}
-            value={stats.totalUsers}
-            icon={TeamOutlined}
-            subtitle={t.dashboard.activeUsers}
-          />
-          <StatCard
-            title={t.dashboard.dnsCount}
-            value={stats.dnsRecordCount}
-            icon={GlobalOutlined}
-            subtitle={t.dashboard.dnsSubtitle}
-          />
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 12 }}>
+          {[
+            { label: t.dashboard.onlineDevices, value: stats.onlineDevices, sub: t.dashboard.totalDevices.replace('{count}', String(stats.totalDevices)), icon: <DashboardOutlined style={{ fontSize: 28, color: '#1677ff' }} /> },
+            { label: t.dashboard.totalDevicesLabel || '总设备', value: stats.totalDevices, sub: `${stats.onlineDevices} ${t.common.status.online}`, icon: <CloudServerOutlined style={{ fontSize: 28, color: '#722ed1' }} /> },
+            { label: t.dashboard.totalUsers, value: stats.totalUsers, sub: t.dashboard.activeUsers, icon: <TeamOutlined style={{ fontSize: 28, color: '#52c41a' }} /> },
+            { label: t.dashboard.onlineRate || '在线率', value: stats.totalDevices > 0 ? `${Math.round((stats.onlineDevices / stats.totalDevices) * 100)}%` : '0%', sub: `${stats.onlineDevices}/${stats.totalDevices}`, icon: <PercentageOutlined style={{ fontSize: 28, color: '#fa8c16' }} /> },
+            { label: t.dashboard.dnsCount, value: stats.dnsRecordCount, sub: t.dashboard.dnsSubtitle, icon: <GlobalOutlined style={{ fontSize: 28, color: '#13c2c2' }} /> },
+          ].map((stat, i) => (
+            <Card key={i} size="small" style={{ padding: 4 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <Text type="secondary" style={{ fontSize: 13 }}>{stat.label}</Text>
+                  <div style={{ fontSize: 24, fontWeight: 700, marginTop: 4 }}>{stat.value}</div>
+                  {stat.sub && <Text type="secondary" style={{ fontSize: 12 }}>{stat.sub}</Text>}
+                </div>
+                {stat.icon}
+              </div>
+            </Card>
+          ))}
         </div>
 
         {/* Network Topology */}

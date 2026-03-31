@@ -23,7 +23,7 @@ import {
   DisconnectOutlined,
   CloudServerOutlined,
 } from '@ant-design/icons';
-import { Button, Card, Input, Modal, Select, Space, Statistic, Switch, Table, Tabs, Tag, Tooltip, Typography, Dropdown, message, theme } from 'antd';
+import { Button, Card, Input, Modal, Select, Space, Switch, Table, Tabs, Tag, Tooltip, Typography, Dropdown, message, theme } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import DashboardLayout from '@/components/DashboardLayout';
 import { devicesAPI, usersAPI } from '@/lib/api';
@@ -396,10 +396,22 @@ export default function Devices() {
         </div>
 
         {/* Stats */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
-          <Card><Statistic title={t.devices.totalDevices} value={stats.total} prefix={<CloudServerOutlined style={{ color: token.colorPrimary }} />} /></Card>
-          <Card><Statistic title={t.devices.onlineDevices} value={stats.online} prefix={<WifiOutlined style={{ color: token.colorSuccess }} />} /></Card>
-          <Card><Statistic title={t.devices.offlineDevices} value={stats.offline} prefix={<DisconnectOutlined style={{ color: token.colorTextQuaternary }} />} /></Card>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 12 }}>
+          {[
+            { label: t.devices.totalDevices, value: stats.total, icon: <CloudServerOutlined style={{ fontSize: 28, color: '#1677ff' }} /> },
+            { label: t.devices.onlineDevices, value: stats.online, icon: <WifiOutlined style={{ fontSize: 28, color: '#52c41a' }} /> },
+            { label: t.devices.offlineDevices, value: stats.offline, icon: <DisconnectOutlined style={{ fontSize: 28, color: token.colorTextQuaternary }} /> },
+          ].map((stat, i) => (
+            <Card key={i} size="small" style={{ padding: 4 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <Text type="secondary" style={{ fontSize: 13 }}>{stat.label}</Text>
+                  <div style={{ fontSize: 24, fontWeight: 700, marginTop: 4 }}>{stat.value}</div>
+                </div>
+                {stat.icon}
+              </div>
+            </Card>
+          ))}
         </div>
 
         {/* Filters */}
