@@ -6,7 +6,7 @@ import { useAuthStore } from '@/lib/store';
 import { useState, useEffect, useCallback } from 'react';
 import { useLocation, useSearch } from 'wouter';
 import { message } from 'antd';
-import { consumeAuthNotice } from '@/lib/auth';
+import { consumeAuthNotice, normalizeLoginReturnUrl } from '@/lib/auth';
 
 const { Title, Text } = Typography;
 
@@ -92,8 +92,8 @@ export default function Login() {
         parseUserAuth(data);
         message.success(t.login.loginSuccess);
         const params = new URLSearchParams(search);
-        const returnUrl = params.get('return_url');
-        returnUrl ? (window.location.href = returnUrl) : setLocation('/');
+        const returnUrl = normalizeLoginReturnUrl(params.get('return_url'));
+        returnUrl ? window.location.assign(returnUrl) : setLocation('/');
       }
     } catch {
       // handled by interceptor

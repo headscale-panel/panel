@@ -23,32 +23,16 @@ import {
   type OIDCFormValues,
 } from './normalizers';
 
-export async function loadDevicesPageData() {
-  const [devicesRes, usersRes, configRes] = await Promise.all([
-    devicesAPI.list(),
-    usersAPI.list({ pageSize: 100 }).catch(() => null),
-    headscaleConfigAPI.get().catch(() => null),
-  ]);
-
-  const { list } = normalizeDeviceListResponse(devicesRes);
-
-  return {
-    devices: list,
-    headscaleUsers: normalizeHeadscaleUserOptions(usersRes),
-    serverUrl: normalizeHeadscaleServerUrl(configRes),
-  };
-}
-
 export async function loadUsersPageData() {
-  const [usersRes, groupsRes, policyRes, oidcStatusRes, devicesRes] = await Promise.all([
+  const [usersRes, groupsRes, policyRes, oidcStatusRes, onlineDevicesRes] = await Promise.all([
     systemUsersAPI.list({ pageSize: 1000 }),
     groupsAPI.list({ pageSize: 100 }),
     aclAPI.getPolicy().catch(() => null),
     panelSettingsAPI.getOIDCStatus().catch(() => null),
-    devicesAPI.list({ pageSize: 1000 }).catch(() => null),
+    devicesAPI.list({ pageSize: 5000, status: 'online' }).catch(() => null),
   ]);
 
-  const devices = normalizeDeviceListResponse(devicesRes).list;
+  const devices = normalizeDeviceListResponse(onlineDevicesRes).list;
   const onlineUsers = new Set(
     devices.filter((device) => device.online && device.user?.name).map((device) => device.user!.name)
   );
@@ -59,7 +43,6 @@ export async function loadUsersPageData() {
     aclPolicy: normalizeACLPolicy(policyRes),
     oidcStatus: normalizeOIDCStatus(oidcStatusRes),
     onlineUsers,
-    devices,
   };
 }
 

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { AUTH_STORAGE_KEY, getAuthToken, parsePersistedAuthValue } from './auth';
+import { AUTH_STORAGE_KEY, getAuthToken, normalizeLoginReturnUrl, parsePersistedAuthValue } from './auth';
 import { useAuthStore } from './store';
 
 class MemoryStorage {
@@ -32,6 +32,9 @@ describe('auth helpers', () => {
       configurable: true,
       value: {
         localStorage: storage,
+        location: {
+          origin: 'https://panel.example.com',
+        },
       },
     });
   });
@@ -69,5 +72,13 @@ describe('auth helpers', () => {
     );
 
     expect(getAuthToken()).toBe('persisted-token');
+  });
+
+  it('only accepts same-origin return urls inside the panel base path', () => {
+    expect(normalizeLoginReturnUrl('/users')).toBe('/panel/users');
+    expect(normalizeLoginReturnUrl('/panel/routes?user=alice')).toBe('/panel/routes?user=alice');
+    expect(normalizeLoginReturnUrl('https://panel.example.com/panel/settings')).toBe('/panel/settings');
+    expect(normalizeLoginReturnUrl('https://evil.example.com/panel/users')).toBeNull();
+    expect(normalizeLoginReturnUrl('//evil.example.com')).toBeNull();
   });
 });

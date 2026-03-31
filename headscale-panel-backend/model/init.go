@@ -131,6 +131,7 @@ func initDefaultData() {
 		{Name: "查看设备状态", Code: "metrics:device_status:view", Type: "button"},
 		{Name: "查看设备状态历史", Code: "metrics:device_status_history:view", Type: "button"},
 		{Name: "查看流量统计", Code: "metrics:traffic:view", Type: "button"},
+		{Name: "查看 InfluxDB 状态", Code: "metrics:influxdb:view", Type: "button"},
 
 		{Name: "查看拓扑", Code: "topology:view", Type: "button"},
 		{Name: "查看拓扑 ACL", Code: "topology:with_acl:view", Type: "button"},
@@ -154,6 +155,19 @@ func initDefaultData() {
 			}
 		} else {
 			log.Fatalf("failed to load Admin group: %v", err)
+		}
+	}
+
+	// 普通用户组
+	var userGroup Group
+	if err := DB.Where("name = ?", "User").First(&userGroup).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			userGroup = Group{Name: "User"}
+			if err := DB.Create(&userGroup).Error; err != nil {
+				log.Fatalf("failed to bootstrap User group: %v", err)
+			}
+		} else {
+			log.Fatalf("failed to load User group: %v", err)
 		}
 	}
 

@@ -6,6 +6,7 @@ import (
 	"headscale-panel/pkg/utils/jwt"
 	"headscale-panel/router/services"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -75,14 +76,14 @@ func (oc *OIDCController) Authorize(c *gin.Context) {
 	var userID uint
 	if err != nil || token == "" {
 		returnURL := conf.Conf.System.BaseURL + c.Request.RequestURI
-		c.Redirect(http.StatusFound, "/login?return_url="+returnURL)
+		c.Redirect(http.StatusFound, "/login?return_url="+url.QueryEscape(returnURL))
 		return
 	}
 
 	claims, err := jwt.ParseToken(token)
 	if err != nil {
 		returnURL := conf.Conf.System.BaseURL + c.Request.RequestURI
-		c.Redirect(http.StatusFound, "/login?return_url="+returnURL)
+		c.Redirect(http.StatusFound, "/login?return_url="+url.QueryEscape(returnURL))
 		return
 	}
 	userID = claims.UserID

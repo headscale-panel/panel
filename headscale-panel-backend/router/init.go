@@ -166,7 +166,7 @@ func InitRouter() *gin.Engine {
 			auth.POST("/panel/builtin-oidc", middleware.PermissionMiddleware("headscale:config:update"), panelSettingsController.EnableBuiltinOIDC)
 			auth.GET("/panel/oidc-settings", middleware.PermissionMiddleware("headscale:config:view"), panelSettingsController.GetOIDCSettings)
 			auth.PUT("/panel/oidc-settings", middleware.PermissionMiddleware("headscale:config:update"), panelSettingsController.SaveOIDCSettings)
-			auth.GET("/panel/oidc-status", panelSettingsController.GetOIDCStatus)
+			auth.GET("/panel/oidc-status", middleware.PermissionMiddleware("headscale:config:view"), panelSettingsController.GetOIDCStatus)
 
 			headscaleConfigController := controllers.NewHeadscaleConfigController()
 			auth.GET("/headscale/config", middleware.PermissionMiddleware("headscale:config:view"), headscaleConfigController.Get)

@@ -94,7 +94,7 @@ func (s *derpService) saveDERPMap(derpMap *DERPMapFile) error {
 		return fmt.Errorf("DERP map YAML 序列化失败: %w", err)
 	}
 
-	if err := os.WriteFile(filePath, data, 0644); err != nil {
+	if err := os.WriteFile(filePath, data, 0600); err != nil {
 		return fmt.Errorf("写入 DERP map 文件失败: %w", err)
 	}
 

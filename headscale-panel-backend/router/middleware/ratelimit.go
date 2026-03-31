@@ -24,10 +24,28 @@ type RateLimiter struct {
 
 // NewRateLimiter creates a rate limiter that allows limit requests per window duration per IP.
 func NewRateLimiter(limit int, window time.Duration) *RateLimiter {
-	return &RateLimiter{
+	rl := &RateLimiter{
 		records: make(map[string]*ipRecord),
 		limit:   limit,
 		window:  window,
+	}
+	go rl.periodicCleanup()
+	return rl
+}
+
+// periodicCleanup removes expired entries every minute to prevent unbounded memory growth.
+func (rl *RateLimiter) periodicCleanup() {
+	ticker := time.NewTicker(1 * time.Minute)
+	defer ticker.Stop()
+	for range ticker.C {
+		rl.mu.Lock()
+		now := time.Now()
+		for k, v := range rl.records {
+			if now.After(v.windowEnd) {
+				delete(rl.records, k)
+			}
+		}
+		rl.mu.Unlock()
 	}
 }
 

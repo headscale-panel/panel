@@ -48,6 +48,7 @@ import type {
   NormalizedSystemUser,
   OIDCStatusData,
 } from '@/lib/normalizers';
+import { normalizeDeviceListResponse } from '@/lib/normalizers';
 import { useTranslation } from '@/i18n/index';
 
 const { Text, Title } = Typography;
@@ -74,14 +75,15 @@ export default function UsersPage() {
   const { token } = theme.useToken();
 
   const [users, setUsers] = useState<UserData[]>([]);
-  const [devices, setDevices] = useState<DeviceData[]>([]);
+  const [userDevicesByOwner, setUserDevicesByOwner] = useState<Record<string, DeviceData[]>>({});
+  const [loadingDeviceOwners, setLoadingDeviceOwners] = useState<Set<string>>(new Set());
   const [groups, setGroups] = useState<Group[]>([]);
   const [aclGroups, setAclGroups] = useState<ACLGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedNode, setSelectedNode] = useState<TreeSelection>({ type: 'all' });
   const [expandedGroups, setExpandedGroups] = useState<Set<number>>(new Set());
-  const [ungroupedExpanded, setUngroupedExpanded] = useState(true);
+  const [ungroupedExpanded, setUngroupedExpanded] = useState(false);
 
   const [createUserDialogOpen, setCreateUserDialogOpen] = useState(false);
   const [createGroupDialogOpen, setCreateGroupDialogOpen] = useState(false);
@@ -133,12 +135,13 @@ export default function UsersPage() {
   const loadData = async () => {
     try {
       setLoading(true);
-      const { users, groups, aclPolicy, oidcStatus, onlineUsers, devices } = await loadUsersPageData();
+      const { users, groups, aclPolicy, oidcStatus, onlineUsers } = await loadUsersPageData();
 
       setUsers(users);
-      setDevices(devices);
       setGroups(groups);
       setOidcStatus(oidcStatus);
+      setUserDevicesByOwner({});
+      setLoadingDeviceOwners(new Set());
       setAclGroups(
         Object.entries(aclPolicy?.groups || {}).map(([key, members]) => ({
           name: key.replace(/^group:/, ''),
@@ -146,11 +149,6 @@ export default function UsersPage() {
         }))
       );
       setOnlineUsers(onlineUsers);
-      setExpandedGroups((current) => {
-        const next = new Set(current);
-        groups.forEach((group) => next.add(group.ID));
-        return next;
-      });
     } catch (error: any) {
       message.error(t.users.loadFailed + (error.message || t.common.errors.unknownError));
     } finally {
@@ -211,44 +209,56 @@ export default function UsersPage() {
     [selectedNode, users]
   );
 
-  const selectedTreeUserDevices = useMemo(() => {
-    if (!selectedTreeUser) {
-      return [];
-    }
+  const getUserOwnerKey = (user: UserData | null | undefined) =>
+    (user?.headscale_name || user?.username || '').trim().toLowerCase();
 
-    const ownerNames = new Set(
-      [selectedTreeUser.headscale_name, selectedTreeUser.username]
-        .map((value) => value?.trim())
-        .filter(Boolean)
-        .map((value) => value!.toLowerCase())
-    );
-
-    return devices.filter((device) => {
-      const owner = device.user?.name?.trim().toLowerCase();
-      return owner ? ownerNames.has(owner) : false;
-    });
-  }, [devices, selectedTreeUser]);
-
-  const getDevicesForUser = (user: UserData): DeviceData[] => {
-    const ownerNames = new Set(
-      [user.headscale_name, user.username]
-        .map((v) => v?.trim())
-        .filter(Boolean)
-        .map((v) => v!.toLowerCase())
-    );
-    return devices.filter((d) => {
-      const owner = d.user?.name?.trim().toLowerCase();
-      return owner ? ownerNames.has(owner) : false;
-    });
+  const getDevicesForUser = (user: UserData | null | undefined): DeviceData[] => {
+    const ownerKey = getUserOwnerKey(user);
+    return ownerKey ? userDevicesByOwner[ownerKey] || [] : [];
   };
 
-  const toggleUserDevices = (userId: number) => {
+  const ensureUserDevicesLoaded = async (user: UserData, force = false) => {
+    const owner = (user.headscale_name || user.username || '').trim();
+    const ownerKey = owner.toLowerCase();
+    if (!owner || (!force && (ownerKey in userDevicesByOwner || loadingDeviceOwners.has(ownerKey)))) {
+      return;
+    }
+
+    setLoadingDeviceOwners((current) => {
+      const next = new Set(current);
+      next.add(ownerKey);
+      return next;
+    });
+
+    try {
+      const devicesRes = await devicesAPI.list({ page: 1, pageSize: 1000, userId: owner });
+      const { list } = normalizeDeviceListResponse(devicesRes);
+      setUserDevicesByOwner((current) => ({ ...current, [ownerKey]: list }));
+    } catch (error: any) {
+      message.error(t.devices.loadFailed + (error.message ? `: ${error.message}` : ''));
+    } finally {
+      setLoadingDeviceOwners((current) => {
+        const next = new Set(current);
+        next.delete(ownerKey);
+        return next;
+      });
+    }
+  };
+
+  const selectedTreeUserDevices = useMemo(
+    () => getDevicesForUser(selectedTreeUser),
+    [selectedTreeUser, userDevicesByOwner]
+  );
+
+  const toggleUserDevices = (user: UserData) => {
+    const userId = user.ID;
     setExpandedUserDevices((current) => {
       const next = new Set(current);
       if (next.has(userId)) {
         next.delete(userId);
       } else {
         next.add(userId);
+        void ensureUserDevicesLoaded(user);
       }
       return next;
     });
@@ -264,6 +274,12 @@ export default function UsersPage() {
       });
     }
   };
+
+  useEffect(() => {
+    if (selectedTreeUser) {
+      void ensureUserDevicesLoaded(selectedTreeUser);
+    }
+  }, [selectedTreeUser]);
 
   const filteredUsers = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
@@ -468,7 +484,7 @@ export default function UsersPage() {
   };
 
   const handleViewDevices = (user: UserData) => {
-    setLocation(`/devices?user=${user.headscale_name || user.username}`);
+    selectNode({ type: 'user', userId: user.ID });
   };
 
   const handleViewRoutes = (user: UserData) => {
@@ -638,6 +654,7 @@ export default function UsersPage() {
     const userDevices = getDevicesForUser(user);
     const isDevicesExpanded = expandedUserDevices.has(user.ID);
     const isOnline = onlineUsers.has(user.headscale_name || user.username);
+    const isUserDevicesLoading = loadingDeviceOwners.has(getUserOwnerKey(user));
 
     return (
       <div key={user.ID}>
@@ -647,7 +664,7 @@ export default function UsersPage() {
             size="small"
             style={{ width: 20, height: 20, padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
             icon={isDevicesExpanded ? <DownOutlined style={{ fontSize: 10 }} /> : <RightOutlined style={{ fontSize: 10 }} />}
-            onClick={() => toggleUserDevices(user.ID)}
+            onClick={() => toggleUserDevices(user)}
           />
 
           <div style={{ position: 'relative', flexShrink: 0 }}>
@@ -675,7 +692,7 @@ export default function UsersPage() {
               </Tag>
               <Text type="secondary" style={{ fontSize: 11 }}>
                 <LaptopOutlined style={{ marginRight: 2 }} />
-                {userDevices.length}
+                {isUserDevicesLoading && userDevices.length === 0 ? '...' : userDevices.length}
               </Text>
             </div>
             <Text type="secondary" style={{ fontSize: 12 }}>{user.email || user.username}</Text>
@@ -701,7 +718,11 @@ export default function UsersPage() {
           <div style={{ padding: '0 16px 12px' }}>
             <div style={{ marginLeft: 52 }}>
               <Space direction="vertical" style={{ width: '100%' }} size={6}>
-                {userDevices.length === 0 ? (
+                {isUserDevicesLoading && userDevices.length === 0 ? (
+                  <div style={{ border: `1px dashed ${token.colorBorderSecondary}`, borderRadius: token.borderRadius, padding: '12px 16px', textAlign: 'center' }}>
+                    <Spin size="small" />
+                  </div>
+                ) : userDevices.length === 0 ? (
                   <div style={{ border: `1px dashed ${token.colorBorderSecondary}`, borderRadius: token.borderRadius, padding: '12px 16px', textAlign: 'center' }}>
                     <Text type="secondary" style={{ fontSize: 12 }}>{t.users.noDevices}</Text>
                   </div>
@@ -807,7 +828,16 @@ export default function UsersPage() {
           ? getGroupById(selectedNode.groupId)?.name || t.users.groups
           : selectedTreeUser?.display_name || selectedTreeUser?.username || t.users.userDevices;
 
-  const rightPaneCount = selectedNode.type === 'user' ? 1 : filteredUsers.length;
+  const selectedUserDevicesLoading =
+    selectedNode.type === 'user' && selectedTreeUser
+      ? loadingDeviceOwners.has(getUserOwnerKey(selectedTreeUser)) && filteredDevices.length === 0
+      : false;
+
+  const rightPaneCount = selectedNode.type === 'user'
+    ? selectedUserDevicesLoading
+      ? '...'
+      : filteredDevices.length
+    : filteredUsers.length;
 
   return (
     <DashboardLayout>
@@ -957,7 +987,7 @@ export default function UsersPage() {
               </Space>
               <Input
                 prefix={<SearchOutlined style={{ color: token.colorTextSecondary }} />}
-                placeholder={t.users.searchPlaceholder}
+                placeholder={selectedNode.type === 'user' ? t.devices.searchPlaceholder : t.users.searchPlaceholder}
                 style={{ width: 256 }}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}

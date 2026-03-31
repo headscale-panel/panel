@@ -2,6 +2,8 @@ import { useAuthStore, type AuthSnapshot, type User } from './store';
 
 export const AUTH_STORAGE_KEY = 'auth-storage';
 export const AUTH_NOTICE_STORAGE_KEY = 'auth-notice';
+export const PANEL_BASE_PATH = '/panel';
+export const PANEL_LOGIN_PATH = `${PANEL_BASE_PATH}/login`;
 
 export type AuthNoticeKey = 'sessionExpired';
 
@@ -78,17 +80,61 @@ export function consumeAuthNotice(): AuthNoticeKey | null {
   return notice as AuthNoticeKey;
 }
 
-export function redirectToLoginWithNotice(notice: AuthNoticeKey = 'sessionExpired') {
+export function normalizeLoginReturnUrl(raw: string | null): string | null {
+  if (!raw) {
+    return null;
+  }
+
+  const value = raw.trim();
+  if (!value || value.startsWith('//')) {
+    return null;
+  }
+
+  if (value.startsWith('/panel/')) {
+    return value;
+  }
+
+  if (value.startsWith('/')) {
+    return `${PANEL_BASE_PATH}${value}`;
+  }
+
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
+  try {
+    const url = new URL(value, window.location.origin);
+    if (url.origin !== window.location.origin) {
+      return null;
+    }
+
+    if (url.pathname.startsWith(PANEL_BASE_PATH + '/')) {
+      return `${url.pathname}${url.search}${url.hash}`;
+    }
+
+    if (url.pathname.startsWith('/')) {
+      return `${PANEL_BASE_PATH}${url.pathname}${url.search}${url.hash}`;
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
+}
+
+export function redirectToLogin() {
   clearStoredAuthState();
 
   if (typeof window === 'undefined') {
     return;
   }
 
-  setAuthNotice(notice);
-
-  const loginPath = '/panel/login';
-  if (window.location.pathname !== loginPath) {
-    window.location.assign(loginPath);
+  if (window.location.pathname !== PANEL_LOGIN_PATH) {
+    window.location.assign(PANEL_LOGIN_PATH);
   }
+}
+
+export function redirectToLoginWithNotice(notice: AuthNoticeKey = 'sessionExpired') {
+  setAuthNotice(notice);
+  redirectToLogin();
 }

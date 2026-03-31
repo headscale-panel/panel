@@ -10,11 +10,16 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
+	"time"
 
 	"gorm.io/gorm"
 )
 
-type dnsService struct{}
+type dnsService struct {
+	lastSyncMtime time.Time
+	mtimeMu       sync.Mutex
+}
 
 var DNSService = new(dnsService)
 
@@ -87,10 +92,11 @@ func (s *dnsService) List(actorUserID uint, req *ListDNSRecordRequest) ([]model.
 		req.PageSize = 200
 	}
 
-	// Reflect manual edits in extra-records.json even when the database
-	// already contains some DNS records.
-	if _, err := s.syncFileRecordsToDB(); err != nil {
-		return nil, 0, err
+	// Reflect manual edits in extra-records.json only when the file has changed.
+	if s.shouldSyncFromFile() {
+		if _, err := s.syncFileRecordsToDB(); err != nil {
+			return nil, 0, err
+		}
 	}
 
 	var records []model.DNSRecord
@@ -221,7 +227,7 @@ func (s *dnsService) SyncToFile(actorUserID uint) error {
 		return fmt.Errorf("JSON 序列化失败: %w", err)
 	}
 
-	if err := os.WriteFile(filePath, data, 0644); err != nil {
+	if err := os.WriteFile(filePath, data, 0600); err != nil {
 		return fmt.Errorf("写入文件失败: %w", err)
 	}
 
@@ -252,6 +258,33 @@ func (s *dnsService) ImportFromFile(actorUserID uint) (int, error) {
 	}
 
 	return s.syncFileRecordsToDB()
+}
+
+// shouldSyncFromFile checks if the extra-records.json file has been modified
+// since the last sync, avoiding unnecessary I/O on every List call.
+func (s *dnsService) shouldSyncFromFile() bool {
+	filePath := s.getExtraRecordsPath()
+	info, err := os.Stat(filePath)
+	if err != nil {
+		return false
+	}
+	s.mtimeMu.Lock()
+	defer s.mtimeMu.Unlock()
+	if info.ModTime().After(s.lastSyncMtime) {
+		return true
+	}
+	return false
+}
+
+func (s *dnsService) markSynced() {
+	filePath := s.getExtraRecordsPath()
+	info, err := os.Stat(filePath)
+	if err != nil {
+		return
+	}
+	s.mtimeMu.Lock()
+	defer s.mtimeMu.Unlock()
+	s.lastSyncMtime = info.ModTime()
 }
 
 func (s *dnsService) readExtraRecordsFromFile() ([]ExtraRecord, error) {
@@ -323,5 +356,6 @@ func (s *dnsService) syncFileRecordsToDB() (int, error) {
 		}
 	}
 
+	s.markSynced()
 	return imported, nil
 }

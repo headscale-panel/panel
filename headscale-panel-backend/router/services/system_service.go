@@ -8,6 +8,8 @@ import (
 	v1 "headscale-panel/pkg/proto/headscale/v1"
 	"headscale-panel/pkg/utils/serializer"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/sirupsen/logrus"
 	"google.golang.org/grpc/codes"
@@ -15,7 +17,10 @@ import (
 	"gorm.io/gorm"
 )
 
-type systemService struct{}
+type systemService struct {
+	lastSyncTime time.Time
+	syncMu       sync.Mutex
+}
 
 var SystemService = new(systemService)
 
@@ -29,7 +34,16 @@ func isOIDCManagedPanelUser(provider string) bool {
 
 // syncHeadscaleUsers fetches users from Headscale gRPC and upserts them into the panel DB.
 // This is best-effort: errors are logged but do not block the caller.
+// Throttled to at most once per 30 seconds to avoid excessive gRPC calls.
 func (s *systemService) syncHeadscaleUsers() {
+	s.syncMu.Lock()
+	if time.Since(s.lastSyncTime) < 30*time.Second {
+		s.syncMu.Unlock()
+		return
+	}
+	s.lastSyncTime = time.Now()
+	s.syncMu.Unlock()
+
 	client, err := headscaleServiceClient()
 	if err != nil {
 		logrus.WithError(err).Debug("syncHeadscaleUsers: cannot connect to Headscale, skipping sync")

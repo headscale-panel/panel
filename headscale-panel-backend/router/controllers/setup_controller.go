@@ -477,7 +477,9 @@ func requireSetupBootstrap(ctx *gin.Context) error {
 func isSetupBootstrapAuthorized(ctx *gin.Context) bool {
 	expected := strings.TrimSpace(conf.Conf.System.SetupBootstrapToken)
 	if expected == "" {
-		return true
+		// Consistent with requireSetupBootstrap: only allow localhost when no token configured
+		clientIP := ctx.ClientIP()
+		return clientIP == "127.0.0.1" || clientIP == "::1"
 	}
 
 	provided := strings.TrimSpace(readSetupBootstrapCredential(ctx))

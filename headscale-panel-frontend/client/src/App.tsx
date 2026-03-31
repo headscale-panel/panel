@@ -7,7 +7,6 @@ import { I18nProvider } from "./i18n/I18nProvider";
 import { useI18n } from "./i18n/index";
 import Dashboard from "./pages/Dashboard";
 import Login from "./pages/Login";
-import Devices from "./pages/Devices";
 import Users from "./pages/Users";
 import Routes from "./pages/Routes";
 import Resources from "./pages/Resources";
@@ -80,6 +79,16 @@ function SetupGuard({ children }: { children: ReactNode }) {
 }
 
 function AppRoutes() {
+  function RedirectToUsers() {
+    const [, setLocation] = useLocation();
+
+    useEffect(() => {
+      setLocation('/users');
+    }, [setLocation]);
+
+    return null;
+  }
+
   return (
     <Switch>
       <Route path="/login" component={Login} />
@@ -89,7 +98,7 @@ function AppRoutes() {
         <ProtectedRoute><Dashboard /></ProtectedRoute>
       </Route>
       <Route path="/devices">
-        <ProtectedRoute><Devices /></ProtectedRoute>
+        <ProtectedRoute requireAdmin><RedirectToUsers /></ProtectedRoute>
       </Route>
       <Route path="/users">
         <ProtectedRoute requireAdmin><Users /></ProtectedRoute>

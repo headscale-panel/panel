@@ -4,7 +4,6 @@ import { clearStoredAuthState } from '@/lib/auth';
 import { Layout, Menu, Avatar, Button, Typography, theme } from 'antd';
 import {
   HomeOutlined,
-  DesktopOutlined,
   TeamOutlined,
   NodeIndexOutlined,
   DatabaseOutlined,
@@ -28,7 +27,6 @@ interface SidebarProps {
 
 const menuIconMap: Record<string, React.ReactNode> = {
   dashboard: <HomeOutlined />,
-  devices: <DesktopOutlined />,
   users: <TeamOutlined />,
   routes: <NodeIndexOutlined />,
   resources: <DatabaseOutlined />,
@@ -40,7 +38,6 @@ const menuIconMap: Record<string, React.ReactNode> = {
 
 const menuPaths: Record<string, string> = {
   dashboard: '/',
-  devices: '/devices',
   users: '/users',
   routes: '/routes',
   resources: '/resources',
@@ -73,7 +70,7 @@ export default function Sidebar({
   };
 
   // Build menu items
-  const allKeys = ['dashboard', 'devices', 'users', 'routes', 'resources', 'acl', 'dns', 'metrics', 'settings'];
+  const allKeys = ['dashboard', 'users', 'routes', 'resources', 'acl', 'dns', 'metrics', 'settings'];
   const menuItems: MenuProps['items'] = allKeys
     .filter((key) => !adminOnlyKeys.has(key) || isAdmin)
     .map((key) => ({

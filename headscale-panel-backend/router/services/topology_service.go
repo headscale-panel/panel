@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"headscale-panel/pkg/headscale"
 	v1 "headscale-panel/pkg/proto/headscale/v1"
 	"strings"
 	"time"
@@ -67,14 +66,19 @@ func (s *topologyService) GetTopologyWithContext(ctx context.Context, actorUserI
 	queryCtx, cancel := withServiceTimeout(ctx)
 	defer cancel()
 
+	client, err := headscaleServiceClient()
+	if err != nil {
+		return nil, err
+	}
+
 	// Get all users from Headscale
-	usersResp, err := headscale.GlobalClient.Service.ListUsers(queryCtx, &v1.ListUsersRequest{})
+	usersResp, err := client.ListUsers(queryCtx, &v1.ListUsersRequest{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to list users: %w", err)
 	}
 
 	// Get all nodes from Headscale
-	nodesResp, err := headscale.GlobalClient.Service.ListNodes(queryCtx, &v1.ListNodesRequest{})
+	nodesResp, err := client.ListNodes(queryCtx, &v1.ListNodesRequest{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to list nodes: %w", err)
 	}
@@ -149,8 +153,13 @@ func (s *topologyService) GetACLMatrixWithContext(ctx context.Context, actorUser
 	queryCtx, cancel := withServiceTimeout(ctx)
 	defer cancel()
 
+	client, err := headscaleServiceClient()
+	if err != nil {
+		return nil, err
+	}
+
 	// Get all nodes
-	nodesResp, err := headscale.GlobalClient.Service.ListNodes(queryCtx, &v1.ListNodesRequest{})
+	nodesResp, err := client.ListNodes(queryCtx, &v1.ListNodesRequest{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to list nodes: %w", err)
 	}
@@ -194,7 +203,11 @@ func (s *topologyService) GetTopologyWithACLContext(ctx context.Context, actorUs
 	// Get ACL policy from Headscale
 	queryCtx, cancel := withServiceTimeout(ctx)
 	defer cancel()
-	policyResp, err := headscale.GlobalClient.Service.GetPolicy(queryCtx, &v1.GetPolicyRequest{})
+	aclClient, err := headscaleServiceClient()
+	if err != nil {
+		return topology, nil
+	}
+	policyResp, err := aclClient.GetPolicy(queryCtx, &v1.GetPolicyRequest{})
 	if err != nil {
 		// If ACL fails, return topology without ACL
 		return topology, nil

@@ -2,7 +2,7 @@ import { useAuthStore } from '@/lib/store';
 import { authAPI } from '@/lib/api';
 import { useLocation } from 'wouter';
 import { useEffect, useRef, ReactNode } from 'react';
-import { redirectToLoginWithNotice } from '@/lib/auth';
+import { redirectToLogin } from '@/lib/auth';
 
 interface ProtectedRouteProps {
   children: ReactNode;
@@ -14,9 +14,9 @@ export default function ProtectedRoute({ children, requireAdmin = false }: Prote
   const [, setLocation] = useLocation();
   const fetched = useRef(false);
 
-  // Fetch fresh user info on mount (once per session)
+  // Fetch fresh user info only when auth state lacks a persisted user profile.
   useEffect(() => {
-    if (isAuthenticated && !fetched.current) {
+    if (isAuthenticated && !user && !fetched.current) {
       fetched.current = true;
       authAPI.getUserInfo().then((data: any) => {
         if (data?.user) {
@@ -36,11 +36,11 @@ export default function ProtectedRoute({ children, requireAdmin = false }: Prote
         // Token invalid - interceptor handles 401 redirect
       });
     }
-  }, [isAuthenticated, updateUser]);
+  }, [isAuthenticated, user, updateUser]);
 
   useEffect(() => {
     if (!isAuthenticated) {
-      redirectToLoginWithNotice('sessionExpired');
+      redirectToLogin();
       return;
     }
 
