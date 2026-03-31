@@ -14,23 +14,16 @@ func NewSystemController() *SystemController {
 }
 
 func (s *SystemController) ListUsers(c *gin.Context) {
-	var req services.ListResourceRequest
-	if err := c.ShouldBindQuery(&req); err != nil {
-		serializer.Fail(c, serializer.ErrBind)
-		return
-	}
+	page, pageSize := serializer.ParsePaginationQuery(c)
 
 	userID := c.GetUint("userID")
-	users, total, err := services.SystemService.ListUsers(userID, req.Page, req.PageSize)
+	users, total, err := services.SystemService.ListUsers(userID, page, pageSize)
 	if err != nil {
 		serializer.Fail(c, err)
 		return
 	}
 
-	serializer.Success(c, gin.H{
-		"list":  users,
-		"total": total,
-	})
+	serializer.SuccessPage(c, users, total, page, pageSize)
 }
 
 type CreateUserRequest struct {
@@ -106,22 +99,15 @@ func (s *SystemController) DeleteUser(c *gin.Context) {
 }
 
 func (s *SystemController) ListGroups(c *gin.Context) {
-	var req services.ListResourceRequest
-	if err := c.ShouldBindQuery(&req); err != nil {
-		serializer.Fail(c, serializer.ErrBind)
-		return
-	}
+	page, pageSize := serializer.ParsePaginationQuery(c)
 
 	userID := c.GetUint("userID")
-	groups, total, err := services.GroupService.List(userID, req.Page, req.PageSize)
+	groups, total, err := services.GroupService.List(userID, page, pageSize)
 	if err != nil {
 		serializer.Fail(c, err)
 		return
 	}
-	serializer.Success(c, gin.H{
-		"list":  groups,
-		"total": total,
-	})
+	serializer.SuccessPage(c, groups, total, page, pageSize)
 }
 
 type CreateGroupRequest struct {

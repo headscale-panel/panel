@@ -112,14 +112,7 @@ func (h *HeadscaleController) DeleteUser(c *gin.Context) {
 }
 
 func (h *HeadscaleController) ListMachines(c *gin.Context) {
-	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
-	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
-	if page < 1 {
-		page = 1
-	}
-	if pageSize < 1 {
-		pageSize = 20
-	}
+	page, pageSize := serializer.ParsePaginationQuery(c)
 	userFilter := c.Query("user_id")
 	statusFilter := c.Query("status")
 
@@ -130,10 +123,7 @@ func (h *HeadscaleController) ListMachines(c *gin.Context) {
 		return
 	}
 
-	serializer.Success(c, gin.H{
-		"list":  machines,
-		"total": total,
-	})
+	serializer.SuccessPage(c, machines, total, page, pageSize)
 }
 
 func (h *HeadscaleController) GetMachine(c *gin.Context) {

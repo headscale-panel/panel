@@ -2,6 +2,7 @@ package router
 
 import (
 	"headscale-panel/pkg/conf"
+	"headscale-panel/pkg/constants"
 	"headscale-panel/router/controllers"
 	"headscale-panel/router/middleware"
 	"headscale-panel/router/services"
@@ -9,7 +10,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
@@ -40,7 +40,7 @@ func InitRouter() *gin.Engine {
 
 	api := r.Group("/panel/api/v1")
 	{
-		authLimiter := middleware.NewRateLimiter(20, 1*time.Minute)
+		authLimiter := middleware.NewRateLimiter(constants.AuthRateLimitCount, constants.AuthRateLimitWindow)
 		userController := controllers.NewUserController()
 		api.POST("/register", middleware.RateLimitMiddleware(authLimiter), userController.Register)
 		api.POST("/login", middleware.RateLimitMiddleware(authLimiter), userController.Login)

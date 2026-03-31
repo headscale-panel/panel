@@ -63,5 +63,3 @@ export const useUIStore = create<UIState>()(
     }
   )
 );
-
-export const useAppStore = useUIStore;

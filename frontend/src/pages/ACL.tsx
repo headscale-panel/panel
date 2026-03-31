@@ -29,6 +29,7 @@ import { buildACLDeviceOptions } from '@/lib/acl';
 import { loadACLPageData } from '@/lib/page-data';
 import type { ACLPolicy, HeadscaleUserOption, NormalizedResource } from '@/lib/normalizers';
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useRequest } from 'ahooks';
 
 import { aclAPI, devicesAPI, resourcesAPI, usersAPI } from '@/lib/api';
 
@@ -194,7 +195,6 @@ function SortableRuleCard({ id, children }: SortableRuleCardProps) {
 export default function ACL() {
   const t = useTranslation();
   const { token } = theme.useToken();
-  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [rules, setRules] = useState<ACLRule[]>([]);
   const [policy, setPolicy] = useState<ACLPolicy | null>(null);
@@ -239,51 +239,50 @@ export default function ACL() {
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
   );
 
-  useEffect(() => {
-    loadData();
-  }, []);
+  const { loading, refreshAsync } = useRequest(
+    async () => loadACLPageData(),
+    {
+      onSuccess: ({ policy, devices, resources, headscaleUsers }) => {
+        if (policy) {
+          setPolicy(policy);
+          setAclGroups(policy.groups || {});
 
-  const loadData = async () => {
-    setLoading(true);
-    try {
-      const { policy, devices, resources, headscaleUsers } = await loadACLPageData();
+          const parsedRules: ACLRule[] = (policy.acls || []).map((acl, index) => ({
+            id: index + 1,
+            name: acl['#ha-meta']?.name || t.acl.defaultRuleName.replace('{index}', String(index + 1)),
+            sources: acl.src || [],
+            destinations: acl.dst || [],
+            action: acl.action as 'accept' | 'deny',
+          }));
+          setRules(parsedRules);
+        } else {
+          setPolicy(null);
+          setAclGroups({});
+          setRules([]);
+        }
 
-      if (policy) {
-        setPolicy(policy);
-        setAclGroups(policy.groups || {});
+        setDevices(
+          devices.map((device) => ({
+            id: device.id,
+            givenName: device.given_name || device.name,
+            name: device.name,
+            ipAddresses: device.ip_addresses,
+            user: device.user ? { name: device.user.name } : undefined,
+          }))
+        );
+        setResources(resources);
+        setHeadscaleUsers(headscaleUsers);
+      },
+      onError: (error) => {
+        console.error('Failed to load ACL data:', error);
+        message.error(t.acl.loadFailed);
+      },
+    },
+  );
 
-        const parsedRules: ACLRule[] = (policy.acls || []).map((acl, index) => ({
-          id: index + 1,
-          name: acl['#ha-meta']?.name || t.acl.defaultRuleName.replace('{index}', String(index + 1)),
-          sources: acl.src || [],
-          destinations: acl.dst || [],
-          action: acl.action as 'accept' | 'deny',
-        }));
-        setRules(parsedRules);
-      } else {
-        setPolicy(null);
-        setAclGroups({});
-        setRules([]);
-      }
-
-      setDevices(
-        devices.map((device) => ({
-          id: device.id,
-          givenName: device.given_name || device.name,
-          name: device.name,
-          ipAddresses: device.ip_addresses,
-          user: device.user ? { name: device.user.name } : undefined,
-        }))
-      );
-      setResources(resources);
-      setHeadscaleUsers(headscaleUsers);
-    } catch (error) {
-      console.error('Failed to load ACL data:', error);
-      message.error(t.acl.loadFailed);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const loadData = useCallback(async () => {
+    await refreshAsync();
+  }, [refreshAsync]);
 
   const aclDeviceOptions = buildACLDeviceOptions(devices);
 

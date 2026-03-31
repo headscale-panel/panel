@@ -3,16 +3,11 @@ package services
 import (
 	"context"
 	"headscale-panel/model"
+	"headscale-panel/pkg/constants"
 	"headscale-panel/pkg/headscale"
 	v1 "headscale-panel/pkg/proto/headscale/v1"
 	"headscale-panel/pkg/utils/serializer"
 	"strings"
-)
-
-const (
-	defaultPage     = 1
-	defaultPageSize = 20
-	maxPageSize     = 200
 )
 
 type actorScope struct {
@@ -29,13 +24,13 @@ func headscaleServiceClient() (v1.HeadscaleServiceClient, error) {
 
 func normalizePagination(page, pageSize int) (int, int) {
 	if page < 1 {
-		page = defaultPage
+		page = constants.DefaultPage
 	}
 	if pageSize < 1 {
-		pageSize = defaultPageSize
+		pageSize = constants.DefaultPageSize
 	}
-	if pageSize > maxPageSize {
-		pageSize = maxPageSize
+	if pageSize > constants.MaxPageSize {
+		pageSize = constants.MaxPageSize
 	}
 	return page, pageSize
 }

@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
+import { useRequest } from 'ahooks';
 import { useTranslation } from '@/i18n/index';
 import { Button, Card, Input, Modal, Table, Tooltip, Statistic, Space, Typography, message, theme } from 'antd';
 import { EditOutlined, PlusOutlined, ReloadOutlined, SearchOutlined, DeleteOutlined, CloudServerOutlined, GlobalOutlined, ApiOutlined } from '@ant-design/icons';
@@ -21,8 +22,6 @@ interface Resource {
 export default function Resources() {
   const t = useTranslation();
   const { token: themeToken } = theme.useToken();
-  const [resources, setResources] = useState<Resource[]>([]);
-  const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
 
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -30,20 +29,16 @@ export default function Resources() {
 
   const [formData, setFormData] = useState({ name: '', ip_address: '', port: '', description: '' });
 
-  useEffect(() => { loadResources(); }, []);
+  const { data: listData, loading, refresh } = useRequest(
+    async () => resourcesAPI.list(),
+    {
+      onError: (error: any) => {
+        message.error(t.resources.loadFailed);
+      },
+    },
+  );
 
-  const loadResources = async () => {
-    try {
-      setLoading(true);
-      const res = await resourcesAPI.list();
-      setResources((res as any).list || []);
-    } catch (error: any) {
-      console.error(error);
-      message.error(t.resources.loadFailed);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const resources: Resource[] = (listData?.list || []) as any;
 
   const handleSave = async () => {
     if (!formData.name || !formData.ip_address) {
@@ -60,7 +55,7 @@ export default function Resources() {
       }
       setDialogOpen(false);
       resetForm();
-      loadResources();
+      refresh();
     } catch (error: any) {
       message.error((editingResource ? t.resources.updateFailed : t.resources.createFailed) + (error.message || ''));
     }
@@ -81,7 +76,7 @@ export default function Resources() {
         try {
           await resourcesAPI.delete(resource.ID);
           message.success(t.resources.deleteSuccess);
-          loadResources();
+          refresh();
         } catch (error: any) {
           message.error(t.resources.deleteFailed + (error.message || ''));
         }
@@ -151,7 +146,7 @@ export default function Resources() {
             <Text type="secondary">{t.resources.description}</Text>
           </div>
           <Space>
-            <Button icon={<ReloadOutlined spin={loading} />} onClick={loadResources} loading={loading}>{t.common.actions.refresh}</Button>
+            <Button icon={<ReloadOutlined spin={loading} />} onClick={refresh} loading={loading}>{t.common.actions.refresh}</Button>
             <Button type="primary" icon={<PlusOutlined />} onClick={openCreateDialog}>{t.resources.addResource}</Button>
           </Space>
         </div>

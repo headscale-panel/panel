@@ -3,7 +3,6 @@ package controllers
 import (
 	"headscale-panel/pkg/utils/serializer"
 	"headscale-panel/router/services"
-	"strconv"
 
 	"github.com/gin-gonic/gin"
 )
@@ -13,14 +12,7 @@ type RouteController struct{}
 // ListRoutes lists all routes from Headscale via gRPC
 // GET /api/routes?page=1&page_size=10&user_id=xxx&machine_id=xxx
 func (c *RouteController) ListRoutes(ctx *gin.Context) {
-	page, _ := strconv.Atoi(ctx.DefaultQuery("page", "1"))
-	pageSize, _ := strconv.Atoi(ctx.DefaultQuery("page_size", "20"))
-	if page < 1 {
-		page = 1
-	}
-	if pageSize < 1 {
-		pageSize = 20
-	}
+	page, pageSize := serializer.ParsePaginationQuery(ctx)
 	userFilter := ctx.Query("user_id")
 	machineID := ctx.Query("machine_id")
 
@@ -31,12 +23,7 @@ func (c *RouteController) ListRoutes(ctx *gin.Context) {
 		return
 	}
 
-	serializer.Success(ctx, gin.H{
-		"list":      routes,
-		"total":     total,
-		"page":      page,
-		"page_size": pageSize,
-	})
+	serializer.SuccessPage(ctx, routes, total, page, pageSize)
 }
 
 // EnableRoute enables (approves) a route on a node

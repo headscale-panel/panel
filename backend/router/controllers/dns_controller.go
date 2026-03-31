@@ -21,6 +21,9 @@ func (c *DNSController) List(ctx *gin.Context) {
 		serializer.Fail(ctx, serializer.ErrBind)
 		return
 	}
+	page, pageSize := serializer.ParsePaginationQuery(ctx)
+	req.Page = page
+	req.PageSize = pageSize
 
 	userID := ctx.GetUint("userID")
 	records, total, err := services.DNSService.List(userID, &req)
@@ -29,10 +32,7 @@ func (c *DNSController) List(ctx *gin.Context) {
 		return
 	}
 
-	serializer.Success(ctx, gin.H{
-		"list":  records,
-		"total": total,
-	})
+	serializer.SuccessPage(ctx, records, total, page, pageSize)
 }
 
 // Create 创建 DNS 记录

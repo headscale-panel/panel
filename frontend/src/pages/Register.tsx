@@ -3,12 +3,12 @@ import { UserOutlined, MailOutlined, LockOutlined, CheckCircleOutlined, LoadingO
 import { useState } from 'react';
 import { Link, useLocation } from 'wouter';
 import { authAPI } from '@/lib/api';
+import { useRequest } from 'ahooks';
 
 const { Title, Text } = Typography;
 
 export default function Register() {
   const [, setLocation] = useLocation();
-  const [loading, setLoading] = useState(false);
   const { token: themeToken } = theme.useToken();
   const [formData, setFormData] = useState({
     username: '',
@@ -44,6 +44,21 @@ export default function Register() {
     });
   };
 
+  const { runAsync: submitRegister, loading } = useRequest(
+    async (payload: { username: string; password: string; email: string }) =>
+      authAPI.register(payload.username, payload.password, payload.email),
+    {
+      manual: true,
+      onSuccess: () => {
+        message.success('Registration successful! Redirecting to login...');
+        setTimeout(() => setLocation('/login'), 1500);
+      },
+      onError: (error: any) => {
+        message.error('Registration failed: ' + (error?.message || 'Unknown error'));
+      },
+    },
+  );
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (formData.password !== formData.confirmPassword) {
@@ -54,16 +69,11 @@ export default function Register() {
       message.error('Password does not meet all requirements');
       return;
     }
-    setLoading(true);
-    try {
-      await authAPI.register(formData.username, formData.password, formData.email);
-      message.success('Registration successful! Redirecting to login...');
-      setTimeout(() => setLocation('/login'), 1500);
-    } catch (error: any) {
-      message.error('Registration failed: ' + (error.message || 'Unknown error'));
-    } finally {
-      setLoading(false);
-    }
+    await submitRegister({
+      username: formData.username,
+      password: formData.password,
+      email: formData.email,
+    });
   };
 
   const requirements = [

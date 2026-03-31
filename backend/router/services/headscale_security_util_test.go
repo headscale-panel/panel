@@ -1,6 +1,7 @@
 package services
 
 import (
+	"headscale-panel/pkg/constants"
 	v1 "headscale-panel/pkg/proto/headscale/v1"
 	"testing"
 )
@@ -17,22 +18,22 @@ func TestNormalizePagination(t *testing.T) {
 			name:         "negative values fall back to defaults",
 			page:         -1,
 			pageSize:     -10,
-			wantPage:     defaultPage,
-			wantPageSize: defaultPageSize,
+			wantPage:     constants.DefaultPage,
+			wantPageSize: constants.DefaultPageSize,
 		},
 		{
 			name:         "zero values fall back to defaults",
 			page:         0,
 			pageSize:     0,
-			wantPage:     defaultPage,
-			wantPageSize: defaultPageSize,
+			wantPage:     constants.DefaultPage,
+			wantPageSize: constants.DefaultPageSize,
 		},
 		{
 			name:         "page size is capped",
 			page:         3,
-			pageSize:     maxPageSize + 100,
+			pageSize:     constants.MaxPageSize + 100,
 			wantPage:     3,
-			wantPageSize: maxPageSize,
+			wantPageSize: constants.MaxPageSize,
 		},
 	}
 

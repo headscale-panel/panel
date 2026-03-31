@@ -3,7 +3,6 @@ package controllers
 import (
 	"headscale-panel/pkg/conf"
 	"net/http/httptest"
-	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -99,31 +98,5 @@ func TestNormalizeSSLCertMode(t *testing.T) {
 		if got != tc.want {
 			t.Fatalf("%s: expected %q, got %q", tc.name, tc.want, got)
 		}
-	}
-}
-
-func TestRenderSetupConfigTemplates(t *testing.T) {
-	hsConfig := renderSetupHeadscaleConfig("", "", "")
-	if !strings.Contains(hsConfig, "grpc_allow_insecure: true") {
-		t.Fatal("renderSetupHeadscaleConfig() should include grpc_allow_insecure")
-	}
-	if !strings.Contains(hsConfig, "server_url: https://vpn.example.com") {
-		t.Fatal("renderSetupHeadscaleConfig() should include default server_url")
-	}
-
-	hsConfigCustom := renderSetupHeadscaleConfig("https://custom.example.com", "example.net", "https://auth.example.com")
-	if !strings.Contains(hsConfigCustom, "server_url: https://custom.example.com") {
-		t.Fatal("renderSetupHeadscaleConfig() should use custom server_url")
-	}
-	if !strings.Contains(hsConfigCustom, "base_domain: example.net") {
-		t.Fatal("renderSetupHeadscaleConfig() should use custom base_domain")
-	}
-	if !strings.Contains(hsConfigCustom, "issuer: \"https://auth.example.com\"") {
-		t.Fatal("renderSetupHeadscaleConfig() should use custom oidc issuer")
-	}
-
-	derpConfig := renderSetupDERPConfig("derp.example.com")
-	if !strings.Contains(derpConfig, "hostname: derp.example.com") {
-		t.Fatal("renderSetupDERPConfig() should use provided hostname")
 	}
 }

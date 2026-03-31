@@ -8,12 +8,10 @@ import {
   systemUsersAPI,
   usersAPI,
 } from './api';
-import type { ACLPolicy } from './normalizers';
 import {
   normalizeACLPolicy,
   normalizeDeviceListResponse,
   normalizeGroups,
-  normalizeHeadscaleServerUrl,
   normalizeHeadscaleUserOptions,
   normalizeOIDCForm,
   normalizeOIDCStatus,
@@ -81,8 +79,4 @@ export async function loadOIDCSettingsData(): Promise<{
         ? (headscaleConfig as unknown as Record<string, unknown>)
         : null,
   };
-}
-
-export function extractAclGroups(policy: ACLPolicy | null): Record<string, string[]> {
-  return policy?.groups || {};
 }

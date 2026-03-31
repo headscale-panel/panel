@@ -1,21 +1,19 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { useTranslation } from '@/i18n/index';
 import { dnsAPI, DNSRecord } from '@/lib/api';
 import DashboardLayout from '@/components/DashboardLayout';
 import { Button, Card, Input, Modal, Select, Space, Table, Tag, Typography, message, theme } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined, DownloadOutlined, UploadOutlined, SaveOutlined, ReloadOutlined, SearchOutlined, GlobalOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
+import { useRequest } from 'ahooks';
 
 const { Title, Text } = Typography;
 
 export default function DNS() {
   const t = useTranslation();
-  const { token } = theme.useToken();
-  const [records, setRecords] = useState<DNSRecord[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [total, setTotal] = useState(0);
+  theme.useToken();
   const [page, setPage] = useState(1);
-  const [pageSize] = useState(50);
+  const pageSize = 50;
   const [keyword, setKeyword] = useState('');
   const [typeFilter, setTypeFilter] = useState<string>('');
 
@@ -31,23 +29,19 @@ export default function DNS() {
   const [importing, setImporting] = useState(false);
   const [hasTriedAutoImport, setHasTriedAutoImport] = useState(false);
 
-  const loadRecords = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res: any = await dnsAPI.list({ page, pageSize, keyword, type: typeFilter });
-      if (res) {
-        setRecords(res.list || []);
-        setTotal(res.total || 0);
-      }
-    } catch (error) {
-      console.error('Failed to load DNS records:', error);
-      message.error(t.dns.loadFailed);
-    } finally {
-      setLoading(false);
-    }
-  }, [page, pageSize, keyword, typeFilter]);
+  const { data: listData, loading, refresh } = useRequest(
+    async () => dnsAPI.list({ page, pageSize, keyword, type: typeFilter }),
+    {
+      refreshDeps: [page, pageSize, keyword, typeFilter],
+      onError: (error) => {
+        console.error('Failed to load DNS records:', error);
+        message.error(t.dns.loadFailed);
+      },
+    },
+  );
 
-  useEffect(() => { loadRecords(); }, [loadRecords]);
+  const records: DNSRecord[] = listData?.list || [];
+  const total = listData?.total || 0;
 
   useEffect(() => {
     if (!loading && !hasTriedAutoImport && records.length === 0 && total === 0) {
@@ -66,7 +60,7 @@ export default function DNS() {
       } else if (!silent) {
         message.info(t.dns.importNoNewRecords);
       }
-      loadRecords();
+      refresh();
     } catch (error: any) {
       if (!silent) {
         message.error(t.dns.importFailed + (error.message ? ': ' + error.message : ''));
@@ -98,7 +92,7 @@ export default function DNS() {
         message.success(t.dns.recordCreated);
       }
       setShowDialog(false);
-      loadRecords();
+      refresh();
     } catch (error: any) {
       message.error(error.message || t.common.errors.operationFailed);
     }
@@ -115,7 +109,7 @@ export default function DNS() {
         try {
           await dnsAPI.delete(record.id);
           message.success(t.dns.recordDeleted);
-          loadRecords();
+          refresh();
         } catch (error: any) {
           message.error(error.message || t.dns.deleteFailed);
         }
@@ -229,7 +223,7 @@ export default function DNS() {
             <Select value={typeFilter || 'all'} onChange={(v) => setTypeFilter(v === 'all' ? '' : v)} style={{ width: 130 }}
               options={[{ value: 'all', label: t.dns.allTypes }, { value: 'A', label: 'A' }, { value: 'AAAA', label: 'AAAA' }]}
             />
-            <Button icon={<ReloadOutlined />} onClick={loadRecords} />
+            <Button icon={<ReloadOutlined />} onClick={refresh} />
           </div>
 
           <Table

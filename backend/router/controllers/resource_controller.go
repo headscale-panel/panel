@@ -36,6 +36,9 @@ func (r *ResourceController) List(c *gin.Context) {
 		serializer.Fail(c, serializer.ErrBind)
 		return
 	}
+	page, pageSize := serializer.ParsePaginationQuery(c)
+	req.Page = page
+	req.PageSize = pageSize
 
 	userID := c.GetUint("userID")
 	list, total, err := services.ResourceService.List(userID, &req)
@@ -44,10 +47,7 @@ func (r *ResourceController) List(c *gin.Context) {
 		return
 	}
 
-	serializer.Success(c, gin.H{
-		"list":  list,
-		"total": total,
-	})
+	serializer.SuccessPage(c, list, total, page, pageSize)
 }
 
 func (r *ResourceController) Update(c *gin.Context) {

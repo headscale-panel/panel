@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"headscale-panel/model"
 	"headscale-panel/pkg/conf"
+	"headscale-panel/pkg/constants"
 	"headscale-panel/pkg/utils/serializer"
 	"os"
 	"path/filepath"
@@ -83,13 +84,13 @@ func (s *dnsService) List(actorUserID uint, req *ListDNSRecordRequest) ([]model.
 
 	// Normalize pagination parameters
 	if req.Page <= 0 {
-		req.Page = 1
+		req.Page = constants.DefaultPage
 	}
 	if req.PageSize <= 0 {
-		req.PageSize = 10
+		req.PageSize = constants.DefaultPageSize
 	}
-	if req.PageSize > 200 {
-		req.PageSize = 200
+	if req.PageSize > constants.MaxPageSize {
+		req.PageSize = constants.MaxPageSize
 	}
 
 	// Reflect manual edits in extra-records.json only when the file has changed.

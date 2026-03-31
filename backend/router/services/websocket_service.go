@@ -418,33 +418,6 @@ func BroadcastDeviceStatus(machineID string, online bool, lastSeen string, ipAdd
 	})
 }
 
-// BroadcastNotification broadcasts a notification to all clients
-func BroadcastNotification(notifType, title, message string) {
-	if wsHub == nil {
-		return
-	}
-
-	wsHub.Broadcast("notification", Notification{
-		ID:        generateClientID(),
-		Type:      notifType,
-		Title:     title,
-		Message:   message,
-		Timestamp: time.Now().Format(time.RFC3339),
-	})
-}
-
-// BroadcastACLUpdate broadcasts an ACL update
-func BroadcastACLUpdate(updateType string, data interface{}) {
-	if wsHub == nil {
-		return
-	}
-
-	wsHub.Broadcast("acl_update", map[string]interface{}{
-		"type": updateType,
-		"data": data,
-	})
-}
-
 func isOriginAllowed(r *http.Request) bool {
 	origin := strings.TrimSpace(r.Header.Get("Origin"))
 	if origin == "" {

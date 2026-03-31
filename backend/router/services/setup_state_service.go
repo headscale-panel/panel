@@ -3,10 +3,8 @@ package services
 import (
 	"errors"
 	"headscale-panel/model"
+	"headscale-panel/pkg/constants"
 	"headscale-panel/pkg/utils/serializer"
-	"os"
-	"strconv"
-	"strings"
 	"sync"
 	"time"
 
@@ -21,15 +19,8 @@ type setupStateService struct {
 var SetupStateService = newSetupStateService()
 
 func newSetupStateService() *setupStateService {
-	windowMinutes := 30
-	if raw := strings.TrimSpace(os.Getenv("SETUP_WINDOW_MINUTES")); raw != "" {
-		if v, err := strconv.Atoi(raw); err == nil && v > 0 && v <= 240 {
-			windowMinutes = v
-		}
-	}
-
 	return &setupStateService{
-		setupWindow: time.Duration(windowMinutes) * time.Minute,
+		setupWindow: constants.SetupWindow,
 	}
 }
 

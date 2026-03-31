@@ -17,11 +17,12 @@ import { useTranslation } from '@/i18n/index';
 import { panelSettingsAPI } from '@/lib/api';
 import api from '@/lib/api';
 import { loadConnectionSettingsData, loadOIDCSettingsData } from '@/lib/page-data';
+import { useRequest } from 'ahooks';
 import {
   defaultOIDCFormValues,
   type OIDCFormValues,
 } from '@/lib/normalizers';
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 
 const { Title, Text } = Typography;
 
@@ -128,8 +129,6 @@ export default function Settings() {
   const [useBuiltinOidc, setUseBuiltinOidc] = useState(false);
   const [builtinOidcLoading, setBuiltinOidcLoading] = useState(false);
 
-  const [loadingConnection, setLoadingConnection] = useState(true);
-  const [loadingConfig, setLoadingConfig] = useState(true);
   const [savingGrpc, setSavingGrpc] = useState(false);
   const [savingOidc, setSavingOidc] = useState(false);
   const [testingConnection, setTestingConnection] = useState(false);
@@ -137,39 +136,34 @@ export default function Settings() {
 
   const [previewCopied, setPreviewCopied] = useState(false);
 
-  const loadConnectionSettings = useCallback(async () => {
-    setLoadingConnection(true);
-    try {
-      const data = await loadConnectionSettingsData();
-      setGrpcAddr(data.grpc_addr);
-      setInsecure(data.insecure);
-      setHasApiKey(data.has_api_key);
-      setIsConnected(data.is_connected);
-      setApiKeyInput('');
-      setShowApiKeyInput(false);
-    } catch {
-      message.error(t.common.errors.requestFailed);
-    } finally {
-      setLoadingConnection(false);
-    }
-  }, [t]);
+  const { loading: loadingConnection, refresh: refreshConnectionSettings } = useRequest(
+    async () => loadConnectionSettingsData(),
+    {
+      onSuccess: (data) => {
+        setGrpcAddr(data.grpc_addr);
+        setInsecure(data.insecure);
+        setHasApiKey(data.has_api_key);
+        setIsConnected(data.is_connected);
+        setApiKeyInput('');
+        setShowApiKeyInput(false);
+      },
+      onError: () => {
+        message.error(t.common.errors.requestFailed);
+      },
+    },
+  );
 
-  const loadHeadscaleConfig = useCallback(async () => {
-    setLoadingConfig(true);
-    try {
-      const { oidcForm } = await loadOIDCSettingsData();
-      setOidcForm(oidcForm);
-    } catch {
-      // Config may not exist yet
-    } finally {
-      setLoadingConfig(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    loadConnectionSettings();
-    loadHeadscaleConfig();
-  }, [loadConnectionSettings, loadHeadscaleConfig]);
+  const { loading: loadingConfig } = useRequest(
+    async () => loadOIDCSettingsData(),
+    {
+      onSuccess: (data) => {
+        setOidcForm(data.oidcForm);
+      },
+      onError: () => {
+        // Config may not exist yet
+      },
+    },
+  );
 
   const oidcYamlPreview = useMemo(() => {
     if (!oidcForm.enabled) return '';
@@ -249,7 +243,7 @@ export default function Settings() {
       message.success(t.settings.toast.connectionSaved);
       setApiKeyInput('');
       setShowApiKeyInput(false);
-      loadConnectionSettings();
+      refreshConnectionSettings();
     } catch {
       message.error(t.common.errors.requestFailed);
     } finally {

@@ -160,8 +160,7 @@ func (c *ACLController) Generate(ctx *gin.Context) {
 }
 
 func (c *ACLController) ListPolicies(ctx *gin.Context) {
-	page, _ := strconv.Atoi(ctx.DefaultQuery("page", "1"))
-	pageSize, _ := strconv.Atoi(ctx.DefaultQuery("page_size", "10"))
+	page, pageSize := serializer.ParsePaginationQuery(ctx)
 
 	userID := ctx.GetUint("userID")
 	policies, total, err := services.ACLService.ListPolicies(userID, page, pageSize)
@@ -169,10 +168,7 @@ func (c *ACLController) ListPolicies(ctx *gin.Context) {
 		serializer.Fail(ctx, err)
 		return
 	}
-	serializer.Success(ctx, gin.H{
-		"list":  policies,
-		"total": total,
-	})
+	serializer.SuccessPage(ctx, policies, total, page, pageSize)
 }
 
 type ApplyPolicyRequest struct {

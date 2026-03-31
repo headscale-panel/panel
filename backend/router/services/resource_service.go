@@ -2,6 +2,7 @@ package services
 
 import (
 	"headscale-panel/model"
+	"headscale-panel/pkg/constants"
 	"headscale-panel/pkg/utils/serializer"
 	"net/netip"
 	"strconv"
@@ -81,13 +82,13 @@ func (s *resourceService) List(userID uint, req *ListResourceRequest) ([]model.R
 	}
 
 	if req.Page <= 0 {
-		req.Page = 1
+		req.Page = constants.DefaultPage
 	}
 	if req.PageSize <= 0 {
-		req.PageSize = 10
+		req.PageSize = constants.DefaultPageSize
 	}
-	if req.PageSize > 200 {
-		req.PageSize = 200
+	if req.PageSize > constants.MaxPageSize {
+		req.PageSize = constants.MaxPageSize
 	}
 
 	var resources []model.Resource

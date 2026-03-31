@@ -15,8 +15,7 @@ func NewOauthClientController() *OauthClientController {
 }
 
 func (c *OauthClientController) List(ctx *gin.Context) {
-	page, _ := strconv.Atoi(ctx.DefaultQuery("page", "1"))
-	pageSize, _ := strconv.Atoi(ctx.DefaultQuery("page_size", "10"))
+	page, pageSize := serializer.ParsePaginationQuery(ctx)
 
 	userID := ctx.GetUint("userID")
 	clients, total, err := services.OauthClientService.List(userID, page, pageSize)
@@ -25,10 +24,7 @@ func (c *OauthClientController) List(ctx *gin.Context) {
 		return
 	}
 
-	serializer.Success(ctx, gin.H{
-		"list":  clients,
-		"total": total,
-	})
+	serializer.SuccessPage(ctx, clients, total, page, pageSize)
 }
 
 type CreateOauthClientRequest struct {

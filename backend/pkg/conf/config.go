@@ -105,6 +105,8 @@ func Init(path string) {
 	viper.BindEnv("headscale.grpc_addr", "HEADSCALE_GRPC_ADDR")
 	viper.BindEnv("headscale.api_key", "HEADSCALE_API_KEY")
 	viper.BindEnv("headscale.insecure", "HEADSCALE_INSECURE")
+	viper.BindEnv("headscale.config_path", "HEADSCALE_CONFIG_PATH")
+	viper.BindEnv("headscale.extra_records_path", "HEADSCALE_EXTRA_RECORDS_PATH")
 	viper.BindEnv("influxdb.url", "INFLUXDB_URL")
 	viper.BindEnv("influxdb.token", "INFLUXDB_TOKEN")
 	viper.BindEnv("influxdb.org", "INFLUXDB_ORG")

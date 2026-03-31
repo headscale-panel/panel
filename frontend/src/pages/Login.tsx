@@ -6,6 +6,7 @@ import { useAuthStore } from '@/lib/store';
 import { useState, useEffect, useCallback } from 'react';
 import { useLocation, useSearch } from 'wouter';
 import { message } from 'antd';
+import { useRequest } from 'ahooks';
 import { consumeAuthNotice, normalizeLoginReturnUrl } from '@/lib/auth';
 import { getDefaultRouteForUser } from '@/lib/permissions';
 
@@ -21,7 +22,6 @@ export default function Login() {
 
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [loading, setLoading] = useState(false);
   const [oidcLoading, setOidcLoading] = useState(false);
   const [oidcStatus, setOidcStatus] = useState<{ enabled: boolean; provider_name: string } | null>(null);
 
@@ -37,11 +37,23 @@ export default function Login() {
     }
   }, [t]);
 
-  useEffect(() => {
-    publicAuthAPI.oidcStatus().then((data: any) => {
-      if (data?.enabled) setOidcStatus(data);
-    }).catch(() => {});
-  }, []);
+  useRequest(
+    async () => publicAuthAPI.oidcStatus(),
+    {
+      onSuccess: (data: any) => {
+        if (data?.enabled) setOidcStatus(data);
+      },
+      onError: () => {
+        // Ignore status load failure on login page to avoid noisy UX.
+      },
+    },
+  );
+
+  const { runAsync: submitLogin, loading } = useRequest(
+    async (payload: { username: string; password: string }) =>
+      authAPI.login(payload.username, payload.password),
+    { manual: true },
+  );
 
   useEffect(() => {
     const params = new URLSearchParams(search);
@@ -89,9 +101,8 @@ export default function Login() {
       message.error(t.login.requiredFields);
       return;
     }
-    setLoading(true);
     try {
-      const data: any = await authAPI.login(username.trim(), password);
+      const data: any = await submitLogin({ username: username.trim(), password });
       if (data?.token && data?.user) {
         const nextUser = parseUserAuth(data);
         message.success(t.login.loginSuccess);
@@ -101,8 +112,6 @@ export default function Login() {
       }
     } catch {
       // handled by interceptor
-    } finally {
-      setLoading(false);
     }
   };
 

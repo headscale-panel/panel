@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"headscale-panel/model"
 	"headscale-panel/pkg/conf"
+	"headscale-panel/pkg/constants"
 	"math/big"
 	"net/url"
 	"os"
@@ -83,7 +84,7 @@ func (s *oidcService) GenerateAuthCode(userID uint, clientID, redirectURI, nonce
 		RedirectURI: redirectURI,
 		Nonce:       nonce,
 		Scope:       scope,
-		ExpiresAt:   time.Now().Add(10 * time.Minute),
+		ExpiresAt:   time.Now().Add(constants.OIDCAuthCodeTTL),
 	}
 	return codeStr, nil
 }
@@ -254,7 +255,7 @@ func (s *oidcService) generateIDToken(user model.User, clientID, nonce string) (
 		"iss":                conf.Conf.System.BaseURL,
 		"sub":                fmt.Sprintf("%d", user.ID),
 		"aud":                clientID,
-		"exp":                now.Add(1 * time.Hour).Unix(),
+		"exp":                now.Add(constants.OIDCTokenTTL).Unix(),
 		"iat":                now.Unix(),
 		"name":               displayName,
 		"preferred_username": user.Username,
@@ -279,7 +280,7 @@ func (s *oidcService) generateAccessToken(user model.User, clientID, scope strin
 		"iss":   conf.Conf.System.BaseURL,
 		"sub":   fmt.Sprintf("%d", user.ID),
 		"aud":   clientID,
-		"exp":   now.Add(1 * time.Hour).Unix(),
+		"exp":   now.Add(constants.OIDCTokenTTL).Unix(),
 		"iat":   now.Unix(),
 		"type":  "access",
 		"scope": scope,
@@ -296,7 +297,7 @@ func (s *oidcService) generateRefreshToken(user model.User, clientID string) (st
 		"iss":  conf.Conf.System.BaseURL,
 		"sub":  fmt.Sprintf("%d", user.ID),
 		"aud":  clientID,
-		"exp":  now.Add(30 * 24 * time.Hour).Unix(),
+		"exp":  now.Add(constants.OIDCRefreshTokenTTL).Unix(),
 		"iat":  now.Unix(),
 		"type": "refresh",
 	}

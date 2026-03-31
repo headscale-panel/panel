@@ -1,4 +1,5 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useState } from 'react';
+import { useRequest } from 'ahooks';
 import { useSearch } from 'wouter';
 import { Button, Card, Input, Select, Switch, Table, Tag, Typography, Statistic, Tooltip, message, theme } from 'antd';
 import { ReloadOutlined, SearchOutlined, LaptopOutlined, CheckCircleOutlined, CloseCircleOutlined, GlobalOutlined, NodeIndexOutlined, UserOutlined } from '@ant-design/icons';
@@ -28,8 +29,6 @@ export default function Routes() {
   const t = useTranslation();
   const search = useSearch();
   const { token: themeToken } = theme.useToken();
-  const [routes, setRoutes] = useState<Route[]>([]);
-  const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState(() => {
     const params = new URLSearchParams(search);
     return params.get('user') || '';
@@ -37,26 +36,16 @@ export default function Routes() {
   const [filterDevice, setFilterDevice] = useState<string>('all');
   const [filterStatus, setFilterStatus] = useState<string>('all');
 
-  const loadData = useCallback(async () => {
-    setLoading(true);
-    try {
-      const routeListRes: any = await routesAPI.list({ page: 1, pageSize: 1000 });
-      if (routeListRes?.list) {
-        setRoutes(routeListRes.list);
-      } else if (Array.isArray(routeListRes)) {
-        setRoutes(routeListRes);
-      }
-    } catch (error) {
-      console.error('Failed to load routes:', error);
-      message.error(t.routes.loadFailed);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const { data: listData, loading, refresh } = useRequest(
+    async () => routesAPI.list({ page: 1, pageSize: 1000 }),
+    {
+      onError: (error: any) => {
+        message.error(t.routes.loadFailed);
+      },
+    },
+  );
 
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
+  const routes: Route[] = (Array.isArray(listData) ? listData : listData?.list || []) as any;
 
   const handleToggle = async (route: Route) => {
     try {
@@ -67,7 +56,7 @@ export default function Routes() {
       }
       const isExit = isExitNode(route.destination);
       message.success(isExit ? (route.enabled ? t.routes.exitNodeDisabled : t.routes.exitNodeEnabled) : (route.enabled ? t.routes.routeDisabled : t.routes.routeEnabled));
-      loadData();
+      refresh();
     } catch (error: any) {
       message.error(error.message || t.common.errors.operationFailed);
     }
@@ -150,7 +139,7 @@ export default function Routes() {
             <Title level={4} style={{ margin: 0 }}>{t.routes.title}</Title>
             <Text type="secondary">{t.routes.description}</Text>
           </div>
-          <Button icon={<ReloadOutlined spin={loading} />} onClick={loadData} loading={loading}>
+          <Button icon={<ReloadOutlined spin={loading} />} onClick={refresh} loading={loading}>
             {t.common.actions.refresh}
           </Button>
         </div>

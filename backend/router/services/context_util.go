@@ -2,10 +2,8 @@ package services
 
 import (
 	"context"
-	"time"
+	"headscale-panel/pkg/constants"
 )
-
-const serviceRequestTimeout = 30 * time.Second
 
 func withServiceTimeout(ctx context.Context) (context.Context, context.CancelFunc) {
 	if ctx == nil {
@@ -14,5 +12,5 @@ func withServiceTimeout(ctx context.Context) (context.Context, context.CancelFun
 	if _, hasDeadline := ctx.Deadline(); hasDeadline {
 		return context.WithCancel(ctx)
 	}
-	return context.WithTimeout(ctx, serviceRequestTimeout)
+	return context.WithTimeout(ctx, constants.ServiceRequestTimeout)
 }

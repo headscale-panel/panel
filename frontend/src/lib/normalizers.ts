@@ -485,11 +485,6 @@ export function normalizeOIDCForm(
   return { ...defaultOIDCFormValues };
 }
 
-export function normalizeHeadscaleServerUrl(value: unknown): string {
-  const data = asRecord(value);
-  return asString(data?.server_url);
-}
-
 export function normalizeOverview(value: unknown): { dns_record_count: number } {
   const data = asRecord(value) ?? {};
   return {

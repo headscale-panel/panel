@@ -54,6 +54,7 @@ import type {
 } from '@/lib/normalizers';
 import { normalizeDeviceListResponse } from '@/lib/normalizers';
 import { useTranslation } from '@/i18n/index';
+import { useRequest } from 'ahooks';
 
 const { Text, Title } = Typography;
 
@@ -83,7 +84,6 @@ export default function UsersPage() {
   const [loadingDeviceOwners, setLoadingDeviceOwners] = useState<Set<string>>(new Set());
   const [groups, setGroups] = useState<Group[]>([]);
   const [aclGroups, setAclGroups] = useState<ACLGroup[]>([]);
-  const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedNode, setSelectedNode] = useState<TreeSelection>({ type: 'all' });
   const [expandedGroups, setExpandedGroups] = useState<Set<number>>(new Set());
@@ -154,33 +154,32 @@ export default function UsersPage() {
     mode: 'direct',
   });
 
-  useEffect(() => {
-    loadData();
-  }, []);
+  const { loading, refreshAsync } = useRequest(
+    async () => loadUsersPageData(),
+    {
+      onSuccess: ({ users, groups, aclPolicy, oidcStatus, onlineUsers }) => {
+        setUsers(users);
+        setGroups(groups);
+        setOidcStatus(oidcStatus);
+        setUserDevicesByOwner({});
+        setLoadingDeviceOwners(new Set());
+        setAclGroups(
+          Object.entries(aclPolicy?.groups || {}).map(([key, members]) => ({
+            name: key.replace(/^group:/, ''),
+            members,
+          }))
+        );
+        setOnlineUsers(onlineUsers);
+      },
+      onError: (error: any) => {
+        message.error(t.users.loadFailed + (error.message || t.common.errors.unknownError));
+      },
+    },
+  );
 
-  const loadData = async () => {
-    try {
-      setLoading(true);
-      const { users, groups, aclPolicy, oidcStatus, onlineUsers } = await loadUsersPageData();
-
-      setUsers(users);
-      setGroups(groups);
-      setOidcStatus(oidcStatus);
-      setUserDevicesByOwner({});
-      setLoadingDeviceOwners(new Set());
-      setAclGroups(
-        Object.entries(aclPolicy?.groups || {}).map(([key, members]) => ({
-          name: key.replace(/^group:/, ''),
-          members,
-        }))
-      );
-      setOnlineUsers(onlineUsers);
-    } catch (error: any) {
-      message.error(t.users.loadFailed + (error.message || t.common.errors.unknownError));
-    } finally {
-      setLoading(false);
-    }
-  };
+  const loadData = useCallback(async () => {
+    await refreshAsync();
+  }, [refreshAsync]);
 
   const userMatchesAclGroup = (user: UserData, groupName: string): boolean => {
     const group = aclGroups.find((candidate) => candidate.name.toLowerCase() === groupName.toLowerCase());

@@ -1,135 +1,67 @@
-import axios from 'axios';
-import { message } from 'antd';
+import api, { setUnauthorizedHandler } from './request';
 import { getAuthToken, redirectToLoginWithNotice } from './auth';
-import { getTranslations } from '@/i18n/index';
-
-const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || '/panel/api/v1',
-  timeout: 30000,
-  headers: { 'Content-Type': 'application/json' },
-});
-
-const AUTH_ERROR_CODES = new Set([401, 40011, 40012]);
-
-api.interceptors.request.use((config) => {
-  const token = getAuthToken();
-  if (token) config.headers.Authorization = `Bearer ${token}`;
-  return config;
-});
-
-function handleUnauthorized() {
-  wsManager.disconnect();
-  redirectToLoginWithNotice('sessionExpired');
-}
-
-api.interceptors.response.use(
-  (response) => {
-    const { code, msg, data, error: rawError } = response.data;
-    if (code === 0) return data;
-
-    const t = getTranslations();
-    let detail = msg || t.common.errors.requestFailed;
-    if (rawError) detail = `${detail}\n\n${rawError}`;
-
-    const isSetupRequest = response.config?.url?.includes('/setup/');
-    if (AUTH_ERROR_CODES.has(code) && !isSetupRequest) {
-      handleUnauthorized();
-    } else if (code === 403 && !isSetupRequest) {
-      message.error(t.common.errors.forbidden);
-    } else if (!isSetupRequest) {
-      message.error(detail, code === 50000 ? 6 : undefined);
-    }
-    return Promise.reject(new Error(detail));
-  },
-  (error) => {
-    const t = getTranslations();
-    const isSetupRequest = error.config?.url?.includes('/setup/');
-    if (error.response) {
-      const { status } = error.response;
-      if (status === 401 && !isSetupRequest) {
-        handleUnauthorized();
-      } else if (status === 403 && !isSetupRequest) {
-        message.error(t.common.errors.forbidden);
-      } else if (status >= 500 && !isSetupRequest) {
-        message.error(t.common.errors.serverError);
-      } else if (!isSetupRequest) {
-        message.error(error.response.data?.msg || t.common.errors.requestFailed);
-      }
-    } else if (error.request && !isSetupRequest) {
-      message.error(t.common.errors.networkError);
-    }
-    return Promise.reject(error);
-  }
-);
+import {
+  aclApi,
+  authApi,
+  dashboardApi,
+  deviceApi,
+  dnsApi,
+  groupApi,
+  headscaleConfigApi,
+  headscaleUserApi,
+  metricsApi,
+  panelSettingsApi,
+  publicAuthApi,
+  resourceApi,
+  routeApi,
+  systemUserApi,
+} from '@/api';
+export type { DNSRecord } from '@/api/dns.types';
 
 export default api;
 
 export const authAPI = {
-  login: (username: string, password: string) =>
-    api.post('/login', { username, password }),
-  register: (username: string, password: string, email: string) =>
-    api.post('/register', { username, password, email }),
-  getUserInfo: () => api.get('/user/info'),
-  oidcLogin: () => api.get('/auth/oidc/login'),
-  oidcCallback: (code: string, state: string) =>
-    api.get('/auth/oidc/callback', { params: { code, state } }),
+  login: (username: string, password: string) => authApi.login({ username, password }),
+  register: (username: string, password: string, email: string) => authApi.register({ username, password, email }),
+  getUserInfo: () => authApi.getUserInfo(),
+  oidcLogin: () => authApi.oidcLogin(),
+  oidcCallback: (code: string, state: string) => authApi.oidcCallback({ code, state }),
 };
 
 export const publicAuthAPI = {
-  oidcStatus: () => api.get('/auth/oidc-status'),
+  oidcStatus: () => publicAuthApi.oidcStatus(),
 };
 
 export const dashboardAPI = {
-  getOverview: () => api.get('/dashboard/overview'),
-  getTopology: () => api.get('/topology'),
-  getTopologyWithACL: () => api.get('/topology/with-acl'),
-  getStats: () => api.get('/dashboard/stats'),
+  getOverview: () => dashboardApi.getOverview(),
+  getTopology: () => dashboardApi.getTopology(),
+  getTopologyWithACL: () => dashboardApi.getTopologyWithACL(),
 };
 
 export const devicesAPI = {
-  list: (params?: { page?: number; pageSize?: number; userId?: string; status?: string }) =>
-    api.get('/headscale/machines', {
-      params: {
-        page: params?.page || 1,
-        page_size: params?.pageSize || 20,
-        user_id: params?.userId,
-        status: params?.status,
-      },
-    }),
-  get: (id: string) => api.get(`/headscale/machines/${id}`),
-  rename: (id: string, name: string) =>
-    api.put(`/headscale/machines/${id}/rename`, { name }),
-  delete: (id: string) => api.delete(`/headscale/machines/${id}`),
-  expire: (id: string) => api.post(`/headscale/machines/${id}/expire`),
-  setTags: (id: string, tags: string[]) =>
-    api.put(`/headscale/machines/${id}/tags`, { tags }),
-  getRoutes: (id: string) => api.get(`/headscale/machines/${id}/routes`),
-  registerNode: (user: string, key: string) =>
-    api.post('/headscale/machines/register', { user, key }),
+  list: (params?: { page?: number; pageSize?: number; userId?: string; status?: string }) => deviceApi.list(params),
+  get: (id: string) => deviceApi.get({ id }),
+  rename: (id: string, name: string) => deviceApi.rename({ id, name }),
+  delete: (id: string) => deviceApi.delete({ id }),
+  expire: (id: string) => deviceApi.expire({ id }),
+  setTags: (id: string, tags: string[]) => deviceApi.setTags({ id, tags }),
+  getRoutes: (id: string) => deviceApi.getRoutes({ id }),
+  registerNode: (user: string, key: string) => deviceApi.registerNode({ user, key }),
 };
 
 export const usersAPI = {
-  list: (params?: { page?: number; pageSize?: number }) =>
-    api.get('/headscale/users', {
-      params: { page: params?.page || 1, page_size: params?.pageSize || 20 },
-    }),
-  create: (name: string) => api.post('/headscale/users', { name }),
-  rename: (oldName: string, newName: string) =>
-    api.put('/headscale/users/rename', { old_name: oldName, new_name: newName }),
-  delete: (name: string) => api.delete('/headscale/users', { params: { name } }),
-  getPreAuthKeys: (user: string) =>
-    api.get('/headscale/preauthkeys', { params: { user } }),
+  list: (params?: { page?: number; pageSize?: number }) => headscaleUserApi.list(params),
+  create: (name: string) => headscaleUserApi.create({ name }),
+  rename: (oldName: string, newName: string) => headscaleUserApi.rename({ oldName, newName }),
+  delete: (name: string) => headscaleUserApi.delete({ name }),
+  getPreAuthKeys: (user: string) => headscaleUserApi.getPreAuthKeys({ user }),
   createPreAuthKey: (user: string, reusable: boolean, ephemeral: boolean, expiration?: string) =>
-    api.post('/headscale/preauthkeys', { user, reusable, ephemeral, expiration }),
-  expirePreAuthKey: (user: string, key: string) =>
-    api.post('/headscale/preauthkeys/expire', { user, key }),
+    headscaleUserApi.createPreAuthKey({ user, reusable, ephemeral, expiration }),
+  expirePreAuthKey: (user: string, key: string) => headscaleUserApi.expirePreAuthKey({ user, key }),
 };
 
 export const systemUsersAPI = {
-  list: (params?: { page?: number; pageSize?: number }) =>
-    api.get('/system/users', {
-      params: { page: params?.page || 1, page_size: params?.pageSize || 20 },
-    }),
+  list: (params?: { page?: number; pageSize?: number }) => systemUserApi.list(params),
   create: (data: {
     username: string;
     password?: string;
@@ -137,7 +69,7 @@ export const systemUsersAPI = {
     group_id?: number;
     headscale_name?: string;
     display_name?: string;
-  }) => api.post('/system/users', data),
+  }) => systemUserApi.create(data),
   update: (data: {
     id: number;
     email?: string;
@@ -145,78 +77,40 @@ export const systemUsersAPI = {
     is_active?: boolean;
     password?: string;
     display_name?: string;
-  }) => api.put('/system/users', data),
-  delete: (id: number) => api.delete('/system/users', { data: { id } }),
+  }) => systemUserApi.update(data),
+  delete: (id: number) => systemUserApi.delete({ id }),
 };
 
 export const groupsAPI = {
-  list: (params?: { page?: number; pageSize?: number }) =>
-    api.get('/system/groups', {
-      params: { page: params?.page || 1, page_size: params?.pageSize || 100 },
-    }),
-  create: (data: { name: string; permission_ids?: number[] }) =>
-    api.post('/system/groups', data),
-  update: (data: { id: number; name: string; permission_ids?: number[] }) =>
-    api.put('/system/groups', data),
-  delete: (id: number) => api.delete('/system/groups', { data: { id } }),
-  getPermissions: () => api.get('/system/permissions'),
-  updatePermissions: (id: number, permissionIds: number[]) =>
-    api.put('/system/groups/permissions', { id, permission_ids: permissionIds }),
+  list: (params?: { page?: number; pageSize?: number }) => groupApi.list(params),
+  create: (data: { name: string; permission_ids?: number[] }) => groupApi.create(data),
+  update: (data: { id: number; name: string; permission_ids?: number[] }) => groupApi.update(data),
+  delete: (id: number) => groupApi.delete({ id }),
+  getPermissions: () => groupApi.getPermissions(),
+  updatePermissions: (id: number, permissionIds: number[]) => groupApi.updatePermissions({ id, permissionIds }),
 };
 
 export const routesAPI = {
-  list: (params?: { page?: number; pageSize?: number; userId?: string; machineId?: string }) =>
-    api.get('/routes', {
-      params: {
-        page: params?.page || 1,
-        page_size: params?.pageSize || 20,
-        user_id: params?.userId,
-        machine_id: params?.machineId,
-      },
-    }),
-  enable: (machineId: number, destination: string) =>
-    api.post('/routes/enable', { machine_id: machineId, destination }),
-  disable: (machineId: number, destination: string) =>
-    api.post('/routes/disable', { machine_id: machineId, destination }),
+  list: (params?: { page?: number; pageSize?: number; userId?: string; machineId?: string }) => routeApi.list(params),
+  enable: (machineId: number, destination: string) => routeApi.enable({ machineId, destination }),
+  disable: (machineId: number, destination: string) => routeApi.disable({ machineId, destination }),
 };
 
 export const metricsAPI = {
   getOnlineDuration: (params?: { userId?: string; machineId?: string; start?: string; end?: string }) =>
-    api.get('/metrics/online-duration', {
-      params: {
-        user_id: params?.userId,
-        machine_id: params?.machineId,
-        start: params?.start,
-        end: params?.end,
-      },
-    }),
+    metricsApi.getOnlineDuration(params),
   getOnlineDurationStats: (params?: { start?: string; end?: string; groupBy?: string }) =>
-    api.get('/metrics/online-duration-stats', {
-      params: { start: params?.start, end: params?.end, group_by: params?.groupBy },
-    }),
-  getDeviceStatus: () => api.get('/metrics/device-status'),
+    metricsApi.getOnlineDurationStats(params),
+  getDeviceStatus: () => metricsApi.getDeviceStatus(),
   getDeviceStatusHistory: (machineId: string, params?: { start?: string; end?: string }) =>
-    api.get('/metrics/device-status-history', {
-      params: { machine_id: machineId, start: params?.start, end: params?.end },
-    }),
+    metricsApi.getDeviceStatusHistory({ machineId, ...params }),
   getTrafficStats: (params?: { machineId?: string; start?: string; end?: string }) =>
-    api.get('/metrics/traffic', {
-      params: { machine_id: params?.machineId, start: params?.start, end: params?.end },
-    }),
-  getInfluxDBStatus: () => api.get('/metrics/influxdb-status'),
-};
-
-export const connectionAPI = {
-  generateCommands: (machineIds: string[], platform: string) =>
-    api.post('/connection/generate', { machine_ids: machineIds, platform }),
-  generatePreAuthKey: (userId: string, reusable: boolean, ephemeral: boolean, expiration?: string) =>
-    api.post('/connection/pre-auth-key', { user_id: userId, reusable, ephemeral, expiration }),
-  generateSSHCommand: (machineId: string, user?: string) =>
-    api.post('/connection/ssh-command', { machine_id: machineId, user }),
+    metricsApi.getTrafficStats(params),
+  getInfluxDBStatus: () => metricsApi.getInfluxDBStatus(),
 };
 
 export const aclAPI = {
-  getPolicy: () => api.get('/headscale/acl/policy'),
+  getPolicy: () => aclApi.getPolicy(),
   updatePolicy: (policy: {
     groups?: Record<string, string[]>;
     hosts?: Record<string, string>;
@@ -227,88 +121,54 @@ export const aclAPI = {
       src: string[];
       dst: string[];
     }>;
-  }) => api.put('/headscale/acl/policy', policy),
-  setPolicyRaw: (policy: string) => api.post('/headscale/acl/policy/raw', { policy }),
-  getParsedRules: () => api.get('/headscale/acl/parsed-rules'),
-  syncResourcesAsHosts: () => api.post('/headscale/acl/sync-resources'),
+  }) => aclApi.updatePolicy(policy),
+  setPolicyRaw: (policy: string) => aclApi.setPolicyRaw({ policy }),
+  getParsedRules: () => aclApi.getParsedRules(),
+  syncResourcesAsHosts: () => aclApi.syncResourcesAsHosts(),
   addRule: (data: { name: string; sources: string[]; destinations: string[]; action: string }) =>
-    api.post('/headscale/acl/add-rule', data),
+    aclApi.addRule(data),
   updateRuleByIndex: (data: { index: number; name: string; sources: string[]; destinations: string[]; action: string }) =>
-    api.put('/headscale/acl/update-rule', data),
+    aclApi.updateRuleByIndex(data),
   deleteRuleByIndex: (index: number) =>
-    api.delete('/headscale/acl/delete-rule', { params: { index } }),
-  generate: () => api.post('/headscale/acl/generate'),
-  listPolicies: () => api.get('/headscale/acl/policies'),
-  apply: (id: number) => api.post('/headscale/acl/apply', { id }),
+    aclApi.deleteRuleByIndex({ index }),
+  generate: () => aclApi.generate(),
+  listPolicies: () => aclApi.listPolicies(),
+  apply: (id: number) => aclApi.apply({ id }),
 };
 
 export const resourcesAPI = {
-  list: (params?: { page?: number; pageSize?: number; keyword?: string }) =>
-    api.get('/resources', {
-      params: { page: params?.page || 1, page_size: params?.pageSize || 100, keyword: params?.keyword },
-    }),
-  create: (data: { name: string; ip_address: string; port?: string; description?: string }) =>
-    api.post('/resources', data),
-  update: (id: number, data: { name?: string; ip_address?: string; port?: string; description?: string }) =>
-    api.put('/resources', { id, ...data }),
-  delete: (id: number) => api.delete('/resources', { params: { id } }),
+  list: (params?: { page?: number; pageSize?: number; keyword?: string }) => resourceApi.list(params),
+  create: (data: { name: string; ip_address: string; port?: string; description?: string }) => resourceApi.create(data),
+  update: (id: number, data: { name?: string; ip_address?: string; port?: string; description?: string }) => resourceApi.update({ id, ...data }),
+  delete: (id: number) => resourceApi.delete({ id }),
 };
 
 export const headscaleConfigAPI = {
-  get: () => api.get('/headscale/config'),
-  preview: (config: any) => api.post('/headscale/config/preview', config),
+  get: () => headscaleConfigApi.get(),
+  preview: (config: any) => headscaleConfigApi.preview(config),
 };
 
 export const panelSettingsAPI = {
-  getConnection: () => api.get('/panel/connection'),
+  getConnection: () => panelSettingsApi.getConnection(),
   saveConnection: (data: { grpc_addr: string; api_key?: string; insecure: boolean }) =>
-    api.put('/panel/connection', data),
-  syncData: () => api.post('/panel/sync'),
-  getBuiltinOIDC: () => api.get('/panel/builtin-oidc'),
-  enableBuiltinOIDC: () => api.post('/panel/builtin-oidc'),
-  getOIDCSettings: () => api.get('/panel/oidc-settings'),
-  saveOIDCSettings: (data: any) => api.put('/panel/oidc-settings', data),
-  getOIDCStatus: () => api.get('/panel/oidc-status') as Promise<{
-    oidc_enabled: boolean;
-    third_party: boolean;
-    builtin: boolean;
-    password_required: boolean;
-  }>,
+    panelSettingsApi.saveConnection(data),
+  syncData: () => panelSettingsApi.syncData(),
+  getBuiltinOIDC: () => panelSettingsApi.getBuiltinOIDC(),
+  enableBuiltinOIDC: () => panelSettingsApi.enableBuiltinOIDC(),
+  getOIDCSettings: () => panelSettingsApi.getOIDCSettings(),
+  saveOIDCSettings: (data: any) => panelSettingsApi.saveOIDCSettings(data),
+  getOIDCStatus: () => panelSettingsApi.getOIDCStatus(),
 };
-
-export const derpAPI = {
-  get: () => api.get('/headscale/derp'),
-};
-
-export interface DNSRecord {
-  id: number;
-  name: string;
-  type: 'A' | 'AAAA';
-  value: string;
-  comment?: string;
-  created_at?: string;
-  updated_at?: string;
-}
 
 export const dnsAPI = {
-  list: (params?: { page?: number; pageSize?: number; keyword?: string; type?: string }) =>
-    api.get('/dns/records', {
-      params: {
-        page: params?.page || 1,
-        page_size: params?.pageSize || 50,
-        keyword: params?.keyword,
-        type: params?.type,
-      },
-    }),
-  get: (id: number) => api.get(`/dns/records/${id}`),
-  create: (data: { name: string; type: 'A' | 'AAAA'; value: string; comment?: string }) =>
-    api.post('/dns/records', data),
-  update: (data: { id: number; name?: string; type?: 'A' | 'AAAA'; value?: string; comment?: string }) =>
-    api.put('/dns/records', data),
-  delete: (id: number) => api.delete('/dns/records', { params: { id } }),
-  sync: () => api.post('/dns/sync'),
-  import: () => api.post('/dns/import'),
-  getFile: () => api.get('/dns/file'),
+  list: (params?: { page?: number; pageSize?: number; keyword?: string; type?: string }) => dnsApi.list(params),
+  get: (id: number) => dnsApi.get({ id }),
+  create: (data: { name: string; type: 'A' | 'AAAA'; value: string; comment?: string }) => dnsApi.create(data),
+  update: (data: { id: number; name?: string; type?: 'A' | 'AAAA'; value?: string; comment?: string }) => dnsApi.update(data),
+  delete: (id: number) => dnsApi.delete({ id }),
+  sync: () => dnsApi.sync(),
+  import: () => dnsApi.import(),
+  getFile: () => dnsApi.getFile(),
 };
 
 class WebSocketManager {
@@ -393,6 +253,13 @@ class WebSocketManager {
 }
 
 export const wsManager = new WebSocketManager();
+function handleUnauthorized() {
+  wsManager.disconnect();
+  redirectToLoginWithNotice('sessionExpired');
+}
+setUnauthorizedHandler(() => {
+  wsManager.disconnect();
+});
 
 export interface WSDeviceStatusUpdate {
   machineId: string;

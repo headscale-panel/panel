@@ -1,7 +1,8 @@
 import { Card, Select, Typography, theme } from 'antd';
 import { ClockCircleOutlined, DashboardOutlined, CloudServerOutlined, ExclamationCircleOutlined } from '@ant-design/icons';
 import DashboardLayout from '@/components/DashboardLayout';
-import { useState, useEffect } from 'react';
+import { useState, useMemo } from 'react';
+import { useRequest } from 'ahooks';
 import {
   Bar,
   BarChart,
@@ -25,71 +26,71 @@ export default function Metrics() {
   const t = useTranslation();
   const { token: themeToken } = theme.useToken();
   const [timeRange, setTimeRange] = useState('7d');
-  const [loading, setLoading] = useState(true);
-  const [activityData, setActivityData] = useState<any[]>([]);
-  const [statusData, setStatusData] = useState<any[]>([]);
-  const [summary, setSummary] = useState({
-    avgDuration: 0,
-    totalOnline: 0,
-    totalDevices: 0
-  });
-  const [influxConnected, setInfluxConnected] = useState<boolean | null>(null);
 
-  useEffect(() => {
-    loadData();
-  }, [timeRange]);
+  const { data: metricsData, loading } = useRequest(
+    async () => {
+      try {
+        const influxStatus: any = await metricsAPI.getInfluxDBStatus().catch(() => ({ connected: false }));
+        const influxConnected = !!influxStatus?.connected;
 
-  const loadData = async () => {
-    setLoading(true);
-    try {
-      const influxStatus: any = await metricsAPI.getInfluxDBStatus().catch(() => ({ connected: false }));
-      setInfluxConnected(!!influxStatus?.connected);
+        const end = new Date();
+        const start = new Date();
+        if (timeRange === '7d') start.setDate(end.getDate() - 7);
+        if (timeRange === '30d') start.setDate(end.getDate() - 30);
+        if (timeRange === '90d') start.setDate(end.getDate() - 90);
 
-      const end = new Date();
-      const start = new Date();
-      if (timeRange === '7d') start.setDate(end.getDate() - 7);
-      if (timeRange === '30d') start.setDate(end.getDate() - 30);
-      if (timeRange === '90d') start.setDate(end.getDate() - 90);
+        const formatDate = (d: Date) => d.toISOString().split('T')[0];
 
-      const formatDate = (d: Date) => d.toISOString().split('T')[0];
+        const durationStats: any[] = await metricsAPI.getOnlineDurationStats({
+          start: formatDate(start),
+          end: formatDate(end)
+        }).then((r: any) => Array.isArray(r) ? r : r?.data || []).catch(() => []);
 
-      const durationStats: any[] = await metricsAPI.getOnlineDurationStats({
-        start: formatDate(start),
-        end: formatDate(end)
-      }).then((r: any) => Array.isArray(r) ? r : r?.data || []).catch(() => []);
+        const deviceStatus: any[] = await metricsAPI.getDeviceStatus().then((r: any) => Array.isArray(r) ? r : r?.data || []).catch(() => []);
 
-      const deviceStatus: any[] = await metricsAPI.getDeviceStatus().then((r: any) => Array.isArray(r) ? r : r?.data || []).catch(() => []);
+        const totalDuration = durationStats.reduce((acc, curr) => acc + (curr.online_hours || 0), 0);
+        const avgDuration = durationStats.length ? totalDuration / durationStats.length : 0;
 
-      const totalDuration = durationStats.reduce((acc, curr) => acc + (curr.online_hours || 0), 0);
-      const avgDuration = durationStats.length ? totalDuration / durationStats.length : 0;
+        const onlineCount = deviceStatus.filter((d: any) => d.online).length;
+        const offlineCount = deviceStatus.length - onlineCount;
+        const pieData = [
+          { name: t.common.status.online, value: onlineCount },
+          { name: t.common.status.offline, value: offlineCount },
+        ];
 
-      const onlineCount = deviceStatus.filter((d: any) => d.online).length;
-      const offlineCount = deviceStatus.length - onlineCount;
-      const pieData = [
-        { name: t.common.status.online, value: onlineCount },
-        { name: t.common.status.offline, value: offlineCount },
-      ];
-
-      const sortedActivity = durationStats
+        const sortedActivity = durationStats
           .map((d: any) => ({ name: d.machine_name, hours: parseFloat(d.online_hours?.toFixed(1) || 0) }))
           .sort((a, b) => b.hours - a.hours)
           .slice(0, 10);
 
-      setActivityData(sortedActivity);
-      setStatusData(pieData);
-      setSummary({
-        avgDuration: parseFloat(avgDuration.toFixed(1)),
-        totalOnline: onlineCount,
-        totalDevices: deviceStatus.length
-      });
+        return {
+          influxConnected,
+          activityData: sortedActivity,
+          statusData: pieData,
+          summary: {
+            avgDuration: parseFloat(avgDuration.toFixed(1)),
+            totalOnline: onlineCount,
+            totalDevices: deviceStatus.length
+          }
+        };
+      } catch (error) {
+        console.error(error);
+        message.error(t.metrics.loadFailed);
+        throw error;
+      }
+    },
+    {
+      refreshDeps: [timeRange],
+      onError: () => {
+        // Error already handled
+      },
+    },
+  );
 
-    } catch (error) {
-      console.error(error);
-      message.error(t.metrics.loadFailed);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const activityData = metricsData?.activityData || [];
+  const statusData = metricsData?.statusData || [];
+  const summary = metricsData?.summary || { avgDuration: 0, totalOnline: 0, totalDevices: 0 };
+  const influxConnected = metricsData?.influxConnected ?? null;
 
   const iconBox = (icon: React.ReactNode, color: string) => (
     <div style={{ width: 48, height: 48, borderRadius: 8, background: `${color}15`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>

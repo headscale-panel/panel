@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
+import { useRequest } from 'ahooks';
 import {
   Button,
   Card,
@@ -46,9 +47,6 @@ export default function Devices() {
   const canRenameDevice = hasPermission(user, 'headscale:machine:update');
   const canDeleteDevice = hasPermission(user, 'headscale:machine:delete');
 
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [devices, setDevices] = useState<NormalizedDevice[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
 
   const [addDeviceDialogOpen, setAddDeviceDialogOpen] = useState(false);
@@ -64,38 +62,24 @@ export default function Devices() {
   const [newDeviceName, setNewDeviceName] = useState('');
   const [deviceNameError, setDeviceNameError] = useState('');
 
-  const loadDevices = async (showToast = false) => {
-    if (!owner || !canListDevices) {
-      setDevices([]);
-      setLoading(false);
-      setRefreshing(false);
-      return;
-    }
-
-    if (showToast) {
-      setRefreshing(true);
-    } else {
-      setLoading(true);
-    }
-
-    try {
+  const { data: listData, loading, refresh } = useRequest(
+    async () => {
+      if (!owner || !canListDevices) {
+        return { list: [] };
+      }
       const devicesRes = await devicesAPI.list({ page: 1, pageSize: 1000, userId: owner });
       const { list } = normalizeDeviceListResponse(devicesRes);
-      setDevices(list);
-      if (showToast) {
-        message.success(t.dashboard.dataRefreshed);
-      }
-    } catch (error: any) {
-      message.error(t.devices.loadFailed + (error.message ? `: ${error.message}` : ''));
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  };
+      return { list };
+    },
+    {
+      refreshDeps: [owner, canListDevices],
+      onError: (error: any) => {
+        message.error(t.devices.loadFailed + (error.message ? `: ${error.message}` : ''));
+      },
+    },
+  );
 
-  useEffect(() => {
-    void loadDevices();
-  }, [owner, canListDevices]);
+  const devices: NormalizedDevice[] = listData?.list || [];
 
   const filteredDevices = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
@@ -159,7 +143,7 @@ export default function Devices() {
       setAddDeviceDialogOpen(false);
       setMachineKey('');
       if (canListDevices) {
-        void loadDevices();
+        refresh();
       }
     } catch (error: any) {
       message.error(t.devices.registerNodeFailed + (error.message ? `: ${error.message}` : ''));
@@ -190,7 +174,7 @@ export default function Devices() {
       message.success(t.devices.renameSuccess);
       setRenameDeviceDialogOpen(false);
       setSelectedDevice(null);
-      void loadDevices();
+      refresh();
     } catch (error: any) {
       message.error(t.devices.renameFailed + (error.message || t.common.errors.unknownError));
     }
@@ -206,7 +190,7 @@ export default function Devices() {
         try {
           await devicesAPI.delete(device.id);
           message.success(t.devices.deleteSuccess);
-          void loadDevices();
+          refresh();
         } catch (error: any) {
           message.error(t.devices.deleteFailed + (error.message ? `: ${error.message}` : ''));
         }
@@ -238,7 +222,7 @@ export default function Devices() {
             <Text type="secondary">{t.devices.addDeviceDesc}</Text>
           </div>
           <Space>
-            <Button icon={<ReloadOutlined spin={refreshing} />} onClick={() => void loadDevices(true)} loading={refreshing}>
+            <Button icon={<ReloadOutlined spin={loading} />} onClick={refresh} loading={loading}>
               {t.common.actions.refresh}
             </Button>
             {(canCreatePreAuthKey || canRegisterNode) && (
