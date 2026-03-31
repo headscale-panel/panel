@@ -35,40 +35,49 @@ func (s *dashboardService) GetOverviewWithContext(ctx context.Context, actorUser
 		return nil, err
 	}
 
-	var userCount, groupCount, resourceCount int64
-	if err := model.DB.Model(&model.User{}).Count(&userCount).Error; err != nil {
-		return nil, err
-	}
-	if err := model.DB.Model(&model.Group{}).Count(&groupCount).Error; err != nil {
-		return nil, err
-	}
-	if err := model.DB.Model(&model.Resource{}).Count(&resourceCount).Error; err != nil {
-		return nil, err
-	}
-
-	client, err := headscaleServiceClient()
+	scope, err := loadActorScope(actorUserID)
 	if err != nil {
 		return nil, err
 	}
 
-	queryCtx, cancel := withServiceTimeout(ctx)
-	defer cancel()
-
-	nodesResp, err := client.ListNodes(queryCtx, &v1.ListNodesRequest{})
+	nodes, _, err := listAccessibleNodes(ctx, actorUserID)
 	if err != nil {
 		return nil, err
 	}
 
-	deviceCount := int64(len(nodesResp.Nodes))
+	deviceCount := int64(len(nodes))
 	var onlineDeviceCount int64
-	for _, node := range nodesResp.Nodes {
+	for _, node := range nodes {
 		if node.Online {
 			onlineDeviceCount++
 		}
 	}
 
-	var dnsRecordCount int64
-	_ = model.DB.Model(&model.DNSRecord{}).Count(&dnsRecordCount).Error
+	var userCount, groupCount, resourceCount, dnsRecordCount int64
+	if scope.isAdmin {
+		if err := model.DB.Model(&model.User{}).Count(&userCount).Error; err != nil {
+			return nil, err
+		}
+		if err := model.DB.Model(&model.Group{}).Count(&groupCount).Error; err != nil {
+			return nil, err
+		}
+		if err := model.DB.Model(&model.Resource{}).Count(&resourceCount).Error; err != nil {
+			return nil, err
+		}
+		_ = model.DB.Model(&model.DNSRecord{}).Count(&dnsRecordCount).Error
+	} else {
+		var actor model.User
+		if err := model.DB.Preload("Group").First(&actor, actorUserID).Error; err != nil {
+			return nil, err
+		}
+		userCount = 1
+		if actor.GroupID != 0 {
+			groupCount = 1
+		}
+		if err := model.DB.Model(&model.Resource{}).Where("creator_id = ?", actorUserID).Count(&resourceCount).Error; err != nil {
+			return nil, err
+		}
+	}
 
 	return &OverviewResponse{
 		UserCount:         userCount,
@@ -96,25 +105,54 @@ func (s *dashboardService) GetTopologyWithContext(ctx context.Context, actorUser
 		Children: []*DashboardTopologyNode{},
 	}
 
-	client, err := headscaleServiceClient()
-	if err != nil {
-		return nil, err
-	}
-
-	queryCtx, cancel := withServiceTimeout(ctx)
-	defer cancel()
-
-	nodesResp, err := client.ListNodes(queryCtx, &v1.ListNodesRequest{})
+	nodesResp, scope, err := listAccessibleNodes(ctx, actorUserID)
 	if err != nil {
 		return nil, err
 	}
 
 	// Group nodes by user
 	nodesByUser := make(map[string][]*v1.Node)
-	for _, node := range nodesResp.Nodes {
+	for _, node := range nodesResp {
 		if node.User != nil {
 			nodesByUser[node.User.Name] = append(nodesByUser[node.User.Name], node)
 		}
+	}
+
+	if !scope.isAdmin {
+		var actor model.User
+		if err := model.DB.Preload("Group").First(&actor, actorUserID).Error; err != nil {
+			return nil, err
+		}
+
+		groupName := "Ungrouped"
+		if actor.GroupID != 0 && actor.Group.Name != "" {
+			groupName = actor.Group.Name
+		}
+
+		groupNode := &DashboardTopologyNode{
+			Name:     groupName,
+			Type:     "group",
+			Children: []*DashboardTopologyNode{},
+		}
+		userNode := &DashboardTopologyNode{
+			Name:     actor.Username,
+			Type:     "user",
+			Children: []*DashboardTopologyNode{},
+		}
+		for _, node := range nodesByUser[scope.headscaleName] {
+			userNode.Children = append(userNode.Children, &DashboardTopologyNode{
+				Name: node.Name,
+				Type: "device",
+				Info: map[string]interface{}{
+					"ip":     node.IpAddresses,
+					"id":     node.Id,
+					"online": node.Online,
+				},
+			})
+		}
+		groupNode.Children = append(groupNode.Children, userNode)
+		root.Children = append(root.Children, groupNode)
+		return root, nil
 	}
 
 	// Level 2: Groups

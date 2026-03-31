@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"headscale-panel/pkg/influxdb"
 	v1 "headscale-panel/pkg/proto/headscale/v1"
+	"headscale-panel/pkg/utils/serializer"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -125,6 +128,27 @@ func (s *metricsService) GetOnlineDuration(ctx context.Context, actorUserID uint
 	if err := RequirePermission(actorUserID, "metrics:online_duration:view"); err != nil {
 		return 0, err
 	}
+	if strings.TrimSpace(machineID) != "" {
+		nodes, _, err := listAccessibleNodes(ctx, actorUserID)
+		if err != nil {
+			return 0, err
+		}
+		for _, node := range nodes {
+			if fmt.Sprintf("%d", node.Id) == strings.TrimSpace(machineID) {
+				return influxdb.QueryOnlineDuration(ctx, "", machineID, start, end)
+			}
+		}
+		return 0, serializer.ErrPermissionDenied
+	}
+	if strings.TrimSpace(userID) != "" {
+		parsedUserID, err := strconv.ParseUint(strings.TrimSpace(userID), 10, 64)
+		if err != nil {
+			return 0, serializer.NewError(serializer.CodeParamErr, "invalid user_id", err)
+		}
+		if err := ensureActorCanAccessHeadscaleUserID(ctx, actorUserID, parsedUserID); err != nil {
+			return 0, err
+		}
+	}
 	return influxdb.QueryOnlineDuration(ctx, userID, machineID, start, end)
 }
 
@@ -133,7 +157,19 @@ func (s *metricsService) GetDeviceStatusHistory(ctx context.Context, actorUserID
 	if err := RequirePermission(actorUserID, "metrics:device_status_history:view"); err != nil {
 		return nil, err
 	}
-	return influxdb.GetDeviceStatusHistory(ctx, machineID, start, end)
+	if strings.TrimSpace(machineID) == "" {
+		return nil, serializer.NewError(serializer.CodeParamErr, "machine_id is required", nil)
+	}
+	nodes, _, err := listAccessibleNodes(ctx, actorUserID)
+	if err != nil {
+		return nil, err
+	}
+	for _, node := range nodes {
+		if fmt.Sprintf("%d", node.Id) == strings.TrimSpace(machineID) {
+			return influxdb.GetDeviceStatusHistory(ctx, machineID, start, end)
+		}
+	}
+	return nil, serializer.ErrPermissionDenied
 }
 
 // GetOnlineDurationStats gets online duration statistics for all users
@@ -141,21 +177,13 @@ func (s *metricsService) GetOnlineDurationStats(ctx context.Context, actorUserID
 	if err := RequirePermission(actorUserID, "metrics:online_duration_stats:view"); err != nil {
 		return nil, err
 	}
-	client, err := headscaleServiceClient()
+	nodes, _, err := listAccessibleNodes(ctx, actorUserID)
 	if err != nil {
 		return nil, err
 	}
 
-	queryCtx, cancel := withServiceTimeout(ctx)
-	defer cancel()
-
-	nodes, err := client.ListNodes(queryCtx, &v1.ListNodesRequest{})
-	if err != nil {
-		return nil, fmt.Errorf("failed to list nodes: %w", err)
-	}
-
 	var stats []map[string]interface{}
-	for _, node := range nodes.Nodes {
+	for _, node := range nodes {
 		duration, err := influxdb.QueryOnlineDuration(ctx, "", fmt.Sprintf("%d", node.Id), start, end)
 		if err != nil {
 			logrus.WithError(err).Warnf("Failed to get online duration for node %d", node.Id)
@@ -187,21 +215,13 @@ func (s *metricsService) GetDeviceStatus(ctx context.Context, actorUserID uint) 
 	if err := RequirePermission(actorUserID, "metrics:device_status:view"); err != nil {
 		return nil, err
 	}
-	client, err := headscaleServiceClient()
+	nodes, _, err := listAccessibleNodes(ctx, actorUserID)
 	if err != nil {
 		return nil, err
 	}
 
-	queryCtx, cancel := withServiceTimeout(ctx)
-	defer cancel()
-
-	nodes, err := client.ListNodes(queryCtx, &v1.ListNodesRequest{})
-	if err != nil {
-		return nil, fmt.Errorf("failed to list nodes: %w", err)
-	}
-
 	var devices []map[string]interface{}
-	for _, node := range nodes.Nodes {
+	for _, node := range nodes {
 		online := false
 		if node.LastSeen != nil {
 			lastSeen := node.LastSeen.AsTime()
@@ -240,24 +260,16 @@ func (s *metricsService) GetTrafficStats(ctx context.Context, actorUserID uint, 
 	if err := RequirePermission(actorUserID, "metrics:traffic:view"); err != nil {
 		return nil, err
 	}
-	client, err := headscaleServiceClient()
+	nodes, _, err := listAccessibleNodes(ctx, actorUserID)
 	if err != nil {
 		return nil, err
-	}
-
-	queryCtx, cancel := withServiceTimeout(ctx)
-	defer cancel()
-
-	nodes, err := client.ListNodes(queryCtx, &v1.ListNodesRequest{})
-	if err != nil {
-		return nil, fmt.Errorf("failed to list nodes: %w", err)
 	}
 
 	var totalDevices int64 = 0
 	var onlineDevices int64 = 0
 	var trafficData []map[string]interface{}
 
-	for _, node := range nodes.Nodes {
+	for _, node := range nodes {
 		// Skip if machineID is specified and doesn't match
 		if machineID != "" && fmt.Sprintf("%d", node.Id) != machineID {
 			continue

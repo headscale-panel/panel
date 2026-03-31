@@ -8,7 +8,7 @@ func TestValidateSecurityConfig(t *testing.T) {
 		secret  string
 		wantErr bool
 	}{
-		{name: "empty secret", secret: "", wantErr: true},
+		{name: "empty secret is auto-generated", secret: "", wantErr: false},
 		{name: "default insecure secret", secret: "headscale-panel-secret", wantErr: true},
 		{name: "placeholder insecure secret", secret: "your-secret-key", wantErr: true},
 		{name: "too short secret", secret: "1234567890abcdef", wantErr: true},

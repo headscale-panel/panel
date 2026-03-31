@@ -47,13 +47,19 @@ func (s *setupStateService) GetState() (*model.SetupState, error) {
 	return state, nil
 }
 
-// IsWindowOpen reports whether setup operations are allowed.
-// For first-time bootstrap, setup should remain available until initialized.
-func (s *setupStateService) IsWindowOpen(state *model.SetupState, _ time.Time) bool {
+// IsWindowOpen reports whether setup operations are allowed inside the active
+// initialization window and before the system is initialized.
+func (s *setupStateService) IsWindowOpen(state *model.SetupState, now time.Time) bool {
 	if state == nil {
 		return false
 	}
-	return state.State != model.SetupStateInitialized
+	if state.State != model.SetupStateInitWindow {
+		return false
+	}
+	if state.WindowDeadline == nil {
+		return true
+	}
+	return now.Before(*state.WindowDeadline)
 }
 
 func (s *setupStateService) RequireSetupWindow() (*model.SetupState, error) {

@@ -65,3 +65,15 @@ func TestActorCanAccessNode(t *testing.T) {
 		t.Fatal("non-owner should not be able to access node")
 	}
 }
+
+func TestActorCanAccessHeadscaleUser(t *testing.T) {
+	if !actorCanAccessHeadscaleUser(&actorScope{isAdmin: true}, "alice") {
+		t.Fatal("admin actor should access any headscale user")
+	}
+	if !actorCanAccessHeadscaleUser(&actorScope{headscaleName: "Alice"}, "alice") {
+		t.Fatal("owner match should be case-insensitive")
+	}
+	if actorCanAccessHeadscaleUser(&actorScope{headscaleName: "bob"}, "alice") {
+		t.Fatal("non-owner should not access other headscale users")
+	}
+}

@@ -4,6 +4,7 @@ import (
 	"headscale-panel/pkg/conf"
 	"headscale-panel/router/controllers"
 	"headscale-panel/router/middleware"
+	"headscale-panel/router/services"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -55,6 +56,7 @@ func InitRouter() *gin.Engine {
 		api.GET("/auth/oidc-status", authController.OIDCStatus)
 		api.GET("/auth/oidc/login", authController.OIDCLogin)
 		api.GET("/auth/oidc/callback", authController.OIDCCallback)
+		api.GET("/ws", services.HandleWebSocket)
 
 		oidc := api.Group("/oidc")
 		{
@@ -157,6 +159,7 @@ func InitRouter() *gin.Engine {
 			connectionController := &controllers.ConnectionController{}
 			auth.POST("/connection/generate", middleware.PermissionMiddleware("headscale:machine:list"), connectionController.GenerateConnectionCommands)
 			auth.POST("/connection/pre-auth-key", middleware.PermissionMiddleware("headscale:preauthkey:create"), connectionController.GeneratePreAuthKey)
+			auth.POST("/connection/ssh-command", middleware.PermissionMiddleware("headscale:machine:list"), connectionController.GenerateSSHCommand)
 
 			panelSettingsController := controllers.NewPanelSettingsController()
 			auth.GET("/panel/connection", middleware.PermissionMiddleware("headscale:config:view"), panelSettingsController.GetConnection)

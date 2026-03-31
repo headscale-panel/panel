@@ -394,6 +394,7 @@ func applyHeadscaleConnectionConfig(grpcAddr, apiKey string, insecureMode bool) 
 }
 
 func writeHeadscaleConnectionEnv(grpcAddr, apiKey string, insecureMode bool) error {
+	_ = apiKey
 	path := filepath.Clean(".env")
 
 	lines := []string{}
@@ -419,9 +420,24 @@ func writeHeadscaleConnectionEnv(grpcAddr, apiKey string, insecureMode bool) err
 		}
 		lines = append(lines, target+value)
 	}
+	deleteLine := func(key string) {
+		target := key + "="
+		filtered := lines[:0]
+		for _, line := range lines {
+			trimmed := strings.TrimSpace(line)
+			if strings.HasPrefix(trimmed, "export ") {
+				trimmed = strings.TrimSpace(strings.TrimPrefix(trimmed, "export "))
+			}
+			if strings.HasPrefix(trimmed, target) {
+				continue
+			}
+			filtered = append(filtered, line)
+		}
+		lines = filtered
+	}
 
 	setLine("HEADSCALE_GRPC_ADDR", grpcAddr)
-	setLine("HEADSCALE_API_KEY", apiKey)
+	deleteLine("HEADSCALE_API_KEY")
 	if insecureMode {
 		setLine("HEADSCALE_INSECURE", "true")
 	} else {

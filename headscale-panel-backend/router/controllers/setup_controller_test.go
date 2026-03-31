@@ -20,12 +20,34 @@ func TestSetupBootstrapOptionalWhenNotConfigured(t *testing.T) {
 	w := httptest.NewRecorder()
 	ctx, _ := gin.CreateTestContext(w)
 	ctx.Request = httptest.NewRequest("GET", "/api/v1/setup/status", nil)
+	ctx.Request.RemoteAddr = "127.0.0.1:12345"
 
 	if err := requireSetupBootstrap(ctx); err != nil {
 		t.Fatalf("requireSetupBootstrap() should allow when token is not configured, got error: %v", err)
 	}
 	if !isSetupBootstrapAuthorized(ctx) {
 		t.Fatal("isSetupBootstrapAuthorized() should return true when token is not configured")
+	}
+}
+
+func TestSetupBootstrapRejectsNonLocalWhenNotConfigured(t *testing.T) {
+	previous := conf.Conf.System.SetupBootstrapToken
+	conf.Conf.System.SetupBootstrapToken = ""
+	defer func() {
+		conf.Conf.System.SetupBootstrapToken = previous
+	}()
+
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(w)
+	ctx.Request = httptest.NewRequest("GET", "/api/v1/setup/status", nil)
+	ctx.Request.RemoteAddr = "198.51.100.10:12345"
+
+	if err := requireSetupBootstrap(ctx); err == nil {
+		t.Fatal("requireSetupBootstrap() should reject non-local requests when token is not configured")
+	}
+	if isSetupBootstrapAuthorized(ctx) {
+		t.Fatal("isSetupBootstrapAuthorized() should be false for non-local requests when token is not configured")
 	}
 }
 

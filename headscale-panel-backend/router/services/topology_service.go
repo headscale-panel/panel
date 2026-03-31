@@ -70,6 +70,10 @@ func (s *topologyService) GetTopologyWithContext(ctx context.Context, actorUserI
 	if err != nil {
 		return nil, err
 	}
+	scope, err := loadActorScope(actorUserID)
+	if err != nil {
+		return nil, err
+	}
 
 	// Get all users from Headscale
 	usersResp, err := client.ListUsers(queryCtx, &v1.ListUsersRequest{})
@@ -83,9 +87,21 @@ func (s *topologyService) GetTopologyWithContext(ctx context.Context, actorUserI
 		return nil, fmt.Errorf("failed to list nodes: %w", err)
 	}
 
+	accessibleNodes := make([]*v1.Node, 0, len(nodesResp.Nodes))
+	accessibleUsers := make(map[string]struct{})
+	for _, node := range nodesResp.Nodes {
+		if !actorCanAccessNode(scope, node) {
+			continue
+		}
+		accessibleNodes = append(accessibleNodes, node)
+		if node.User != nil {
+			accessibleUsers[node.User.Name] = struct{}{}
+		}
+	}
+
 	// Build user map for device count
 	deviceCountByUser := make(map[string]int)
-	for _, node := range nodesResp.Nodes {
+	for _, node := range accessibleNodes {
 		if node.User != nil {
 			deviceCountByUser[node.User.Name]++
 		}
@@ -94,6 +110,11 @@ func (s *topologyService) GetTopologyWithContext(ctx context.Context, actorUserI
 	// Build users list
 	users := make([]TopologyUser, 0, len(usersResp.Users))
 	for _, user := range usersResp.Users {
+		if !scope.isAdmin {
+			if _, ok := accessibleUsers[user.Name]; !ok {
+				continue
+			}
+		}
 		users = append(users, TopologyUser{
 			ID:          fmt.Sprintf("%d", user.Id),
 			Name:        user.Name,
@@ -104,8 +125,8 @@ func (s *topologyService) GetTopologyWithContext(ctx context.Context, actorUserI
 	}
 
 	// Build devices list
-	devices := make([]TopologyDevice, 0, len(nodesResp.Nodes))
-	for _, node := range nodesResp.Nodes {
+	devices := make([]TopologyDevice, 0, len(accessibleNodes))
+	for _, node := range accessibleNodes {
 		userName := ""
 		if node.User != nil {
 			userName = node.User.Name
@@ -150,27 +171,18 @@ func (s *topologyService) GetACLMatrixWithContext(ctx context.Context, actorUser
 		return nil, err
 	}
 
-	queryCtx, cancel := withServiceTimeout(ctx)
-	defer cancel()
-
-	client, err := headscaleServiceClient()
+	nodesResp, _, err := listAccessibleNodes(ctx, actorUserID)
 	if err != nil {
 		return nil, err
 	}
 
-	// Get all nodes
-	nodesResp, err := client.ListNodes(queryCtx, &v1.ListNodesRequest{})
-	if err != nil {
-		return nil, fmt.Errorf("failed to list nodes: %w", err)
-	}
-
 	// Build matrix - same user devices can always communicate
 	matrix := make(map[string]map[string]string)
-	for _, source := range nodesResp.Nodes {
+	for _, source := range nodesResp {
 		sourceID := fmt.Sprintf("%d", source.Id)
 		matrix[sourceID] = make(map[string]string)
 
-		for _, target := range nodesResp.Nodes {
+		for _, target := range nodesResp {
 			targetID := fmt.Sprintf("%d", target.Id)
 			// Default to unknown
 			matrix[sourceID][targetID] = "unknown"
@@ -196,6 +208,10 @@ func (s *topologyService) GetTopologyWithACLContext(ctx context.Context, actorUs
 	}
 
 	topology, err := s.GetTopologyWithContext(ctx, actorUserID)
+	if err != nil {
+		return nil, err
+	}
+	scope, err := loadActorScope(actorUserID)
 	if err != nil {
 		return nil, err
 	}
@@ -232,9 +248,11 @@ func (s *topologyService) GetTopologyWithACLContext(ctx context.Context, actorUs
 	}
 
 	// Store full policy for frontend
-	topology.Policy = &TopologyACLPolicy{
-		Groups: policy.Groups,
-		Hosts:  policy.Hosts,
+	if scope.isAdmin {
+		topology.Policy = &TopologyACLPolicy{
+			Groups: policy.Groups,
+			Hosts:  policy.Hosts,
+		}
 	}
 
 	// Build user email to device mapping

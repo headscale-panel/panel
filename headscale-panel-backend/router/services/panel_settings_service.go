@@ -1,9 +1,14 @@
 package services
 
 import (
+	"crypto/aes"
+	"crypto/cipher"
 	"crypto/rand"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"headscale-panel/model"
 	"headscale-panel/pkg/conf"
 	"headscale-panel/pkg/headscale"
@@ -99,17 +104,23 @@ func (s *panelSettingsService) SaveConnectionSettings(actorUserID uint, grpcAddr
 const panelSettingKeyHeadscale = "headscale_connection"
 
 type headscaleConnectionPayload struct {
-	GRPCAddr string `json:"grpc_addr"`
-	APIKey   string `json:"api_key"`
-	Insecure bool   `json:"insecure"`
+	GRPCAddr        string `json:"grpc_addr"`
+	APIKey          string `json:"api_key,omitempty"`
+	APIKeyEncrypted string `json:"api_key_enc,omitempty"`
+	Insecure        bool   `json:"insecure"`
 }
 
 // PersistHeadscaleConnection saves headscale connection settings to the database.
 func PersistHeadscaleConnection(grpcAddr, apiKey string, insecure bool) error {
+	encryptedAPIKey, err := encryptPanelSecret(apiKey)
+	if err != nil {
+		return err
+	}
+
 	payload := headscaleConnectionPayload{
-		GRPCAddr: grpcAddr,
-		APIKey:   apiKey,
-		Insecure: insecure,
+		GRPCAddr:        grpcAddr,
+		APIKeyEncrypted: encryptedAPIKey,
+		Insecure:        insecure,
 	}
 	data, err := json.Marshal(payload)
 	if err != nil {
@@ -141,8 +152,12 @@ func LoadHeadscaleConnectionFromDB() bool {
 	if strings.TrimSpace(payload.GRPCAddr) == "" {
 		return false
 	}
+	apiKey, err := decryptPanelSecret(payload.APIKeyEncrypted, payload.APIKey)
+	if err != nil {
+		return false
+	}
 	conf.Conf.Headscale.GRPCAddr = payload.GRPCAddr
-	conf.Conf.Headscale.APIKey = payload.APIKey
+	conf.Conf.Headscale.APIKey = apiKey
 	conf.Conf.Headscale.Insecure = payload.Insecure
 	return true
 }
@@ -157,6 +172,7 @@ func (s *panelSettingsService) SyncDataFromHeadscale(actorUserID uint) error {
 }
 
 func writePanelConnectionEnv(grpcAddr, apiKey string, insecureMode bool) error {
+	_ = apiKey
 	path := filepath.Clean(".env")
 
 	lines := []string{}
@@ -182,9 +198,24 @@ func writePanelConnectionEnv(grpcAddr, apiKey string, insecureMode bool) error {
 		}
 		lines = append(lines, target+value)
 	}
+	deleteLine := func(key string) {
+		target := key + "="
+		filtered := lines[:0]
+		for _, line := range lines {
+			trimmed := strings.TrimSpace(line)
+			if strings.HasPrefix(trimmed, "export ") {
+				trimmed = strings.TrimSpace(strings.TrimPrefix(trimmed, "export "))
+			}
+			if strings.HasPrefix(trimmed, target) {
+				continue
+			}
+			filtered = append(filtered, line)
+		}
+		lines = filtered
+	}
 
 	setLine("HEADSCALE_GRPC_ADDR", grpcAddr)
-	setLine("HEADSCALE_API_KEY", apiKey)
+	deleteLine("HEADSCALE_API_KEY")
 	if insecureMode {
 		setLine("HEADSCALE_INSECURE", "true")
 	} else {
@@ -232,6 +263,26 @@ type OIDCSettingsPayload struct {
 	PKCEMethod                 string   `json:"pkce_method"`
 }
 
+type persistedOIDCSettingsPayload struct {
+	Enabled                    bool     `json:"enabled"`
+	OnlyStartIfOIDCIsAvailable bool     `json:"only_start_if_oidc_is_available"`
+	Issuer                     string   `json:"issuer"`
+	ClientID                   string   `json:"client_id"`
+	ClientSecret               string   `json:"client_secret,omitempty"`
+	ClientSecretEncrypted      string   `json:"client_secret_enc,omitempty"`
+	ClientSecretPath           string   `json:"client_secret_path"`
+	Scope                      []string `json:"scope"`
+	EmailVerifiedRequired      bool     `json:"email_verified_required"`
+	AllowedDomains             []string `json:"allowed_domains"`
+	AllowedUsers               []string `json:"allowed_users"`
+	AllowedGroups              []string `json:"allowed_groups"`
+	StripEmailDomain           bool     `json:"strip_email_domain"`
+	Expiry                     string   `json:"expiry"`
+	UseExpiryFromToken         bool     `json:"use_expiry_from_token"`
+	PKCEEnabled                bool     `json:"pkce_enabled"`
+	PKCEMethod                 string   `json:"pkce_method"`
+}
+
 // GetOIDCSettings returns the persisted OIDC form settings.
 func (s *panelSettingsService) GetOIDCSettings(actorUserID uint) (*OIDCSettingsPayload, error) {
 	if err := RequireAdmin(actorUserID); err != nil {
@@ -244,11 +295,7 @@ func (s *panelSettingsService) GetOIDCSettings(actorUserID uint) (*OIDCSettingsP
 		return nil, nil
 	}
 
-	var payload OIDCSettingsPayload
-	if err := json.Unmarshal([]byte(setting.Value), &payload); err != nil {
-		return nil, serializer.NewError(serializer.CodeInternalErr, "failed to parse saved OIDC settings", err)
-	}
-	return &payload, nil
+	return loadOIDCSettingsPayload(setting.Value)
 }
 
 // SaveOIDCSettings persists the OIDC form settings.
@@ -257,7 +304,7 @@ func (s *panelSettingsService) SaveOIDCSettings(actorUserID uint, payload *OIDCS
 		return err
 	}
 
-	data, err := json.Marshal(payload)
+	data, err := marshalOIDCSettingsPayload(payload)
 	if err != nil {
 		return serializer.NewError(serializer.CodeInternalErr, "failed to serialize OIDC settings", err)
 	}
@@ -282,8 +329,7 @@ func (s *panelSettingsService) IsOIDCEnabled() bool {
 	// Check saved OIDC form settings
 	var setting model.PanelSetting
 	if err := model.DB.Where("key = ?", panelSettingKeyOIDC).First(&setting).Error; err == nil {
-		var payload OIDCSettingsPayload
-		if err := json.Unmarshal([]byte(setting.Value), &payload); err == nil && payload.Enabled {
+		if payload, err := loadOIDCSettingsPayload(setting.Value); err == nil && payload != nil && payload.Enabled {
 			return true
 		}
 	}
@@ -300,8 +346,7 @@ func (s *panelSettingsService) IsOIDCEnabled() bool {
 func (s *panelSettingsService) IsThirdPartyOIDCEnabled() bool {
 	var setting model.PanelSetting
 	if err := model.DB.Where("key = ?", panelSettingKeyOIDC).First(&setting).Error; err == nil {
-		var payload OIDCSettingsPayload
-		if err := json.Unmarshal([]byte(setting.Value), &payload); err == nil && payload.Enabled {
+		if payload, err := loadOIDCSettingsPayload(setting.Value); err == nil && payload != nil && payload.Enabled {
 			return true
 		}
 	}
@@ -433,4 +478,127 @@ func (s *panelSettingsService) EnableBuiltinOIDC(actorUserID uint) (*BuiltinOIDC
 		ClientSecret: plainSecret,
 		Scope:        []string{"openid", "profile", "email"},
 	}, nil
+}
+
+func marshalOIDCSettingsPayload(payload *OIDCSettingsPayload) ([]byte, error) {
+	if payload == nil {
+		return json.Marshal((*persistedOIDCSettingsPayload)(nil))
+	}
+
+	encryptedSecret, err := encryptPanelSecret(payload.ClientSecret)
+	if err != nil {
+		return nil, err
+	}
+
+	persisted := persistedOIDCSettingsPayload{
+		Enabled:                    payload.Enabled,
+		OnlyStartIfOIDCIsAvailable: payload.OnlyStartIfOIDCIsAvailable,
+		Issuer:                     payload.Issuer,
+		ClientID:                   payload.ClientID,
+		ClientSecretEncrypted:      encryptedSecret,
+		ClientSecretPath:           payload.ClientSecretPath,
+		Scope:                      payload.Scope,
+		EmailVerifiedRequired:      payload.EmailVerifiedRequired,
+		AllowedDomains:             payload.AllowedDomains,
+		AllowedUsers:               payload.AllowedUsers,
+		AllowedGroups:              payload.AllowedGroups,
+		StripEmailDomain:           payload.StripEmailDomain,
+		Expiry:                     payload.Expiry,
+		UseExpiryFromToken:         payload.UseExpiryFromToken,
+		PKCEEnabled:                payload.PKCEEnabled,
+		PKCEMethod:                 payload.PKCEMethod,
+	}
+
+	return json.Marshal(&persisted)
+}
+
+func loadOIDCSettingsPayload(raw string) (*OIDCSettingsPayload, error) {
+	var persisted persistedOIDCSettingsPayload
+	if err := json.Unmarshal([]byte(raw), &persisted); err != nil {
+		return nil, serializer.NewError(serializer.CodeInternalErr, "failed to parse saved OIDC settings", err)
+	}
+
+	clientSecret, err := decryptPanelSecret(persisted.ClientSecretEncrypted, persisted.ClientSecret)
+	if err != nil {
+		return nil, serializer.NewError(serializer.CodeInternalErr, "failed to decrypt saved OIDC settings", err)
+	}
+
+	return &OIDCSettingsPayload{
+		Enabled:                    persisted.Enabled,
+		OnlyStartIfOIDCIsAvailable: persisted.OnlyStartIfOIDCIsAvailable,
+		Issuer:                     persisted.Issuer,
+		ClientID:                   persisted.ClientID,
+		ClientSecret:               clientSecret,
+		ClientSecretPath:           persisted.ClientSecretPath,
+		Scope:                      persisted.Scope,
+		EmailVerifiedRequired:      persisted.EmailVerifiedRequired,
+		AllowedDomains:             persisted.AllowedDomains,
+		AllowedUsers:               persisted.AllowedUsers,
+		AllowedGroups:              persisted.AllowedGroups,
+		StripEmailDomain:           persisted.StripEmailDomain,
+		Expiry:                     persisted.Expiry,
+		UseExpiryFromToken:         persisted.UseExpiryFromToken,
+		PKCEEnabled:                persisted.PKCEEnabled,
+		PKCEMethod:                 persisted.PKCEMethod,
+	}, nil
+}
+
+func encryptPanelSecret(plain string) (string, error) {
+	normalized := strings.TrimSpace(plain)
+	if normalized == "" {
+		return "", nil
+	}
+
+	block, err := aes.NewCipher(panelSettingsKey())
+	if err != nil {
+		return "", err
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", err
+	}
+
+	nonce := make([]byte, gcm.NonceSize())
+	if _, err := rand.Read(nonce); err != nil {
+		return "", err
+	}
+
+	ciphertext := gcm.Seal(nonce, nonce, []byte(normalized), nil)
+	return base64.RawStdEncoding.EncodeToString(ciphertext), nil
+}
+
+func decryptPanelSecret(encrypted string, legacyPlain string) (string, error) {
+	if strings.TrimSpace(encrypted) == "" {
+		return legacyPlain, nil
+	}
+
+	raw, err := base64.RawStdEncoding.DecodeString(encrypted)
+	if err != nil {
+		return "", err
+	}
+
+	block, err := aes.NewCipher(panelSettingsKey())
+	if err != nil {
+		return "", err
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", err
+	}
+	if len(raw) < gcm.NonceSize() {
+		return "", fmt.Errorf("encrypted payload too short")
+	}
+
+	nonce := raw[:gcm.NonceSize()]
+	ciphertext := raw[gcm.NonceSize():]
+	plain, err := gcm.Open(nil, nonce, ciphertext, nil)
+	if err != nil {
+		return "", err
+	}
+	return string(plain), nil
+}
+
+func panelSettingsKey() []byte {
+	sum := sha256.Sum256([]byte(conf.Conf.JWT.Secret))
+	return sum[:]
 }

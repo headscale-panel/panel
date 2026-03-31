@@ -43,8 +43,39 @@ func (s *connectionService) GenerateConnectionCommandsWithContext(ctx context.Co
 		serverURL = "https://headscale.example.com"
 	}
 
-	// Generate auth key (simplified, actual implementation should use Headscale API)
-	authKey := "your-pre-auth-key"
+	scope, err := loadActorScope(actorUserID)
+	if err != nil {
+		return nil, err
+	}
+	if scope.headscaleName == "" {
+		return nil, fmt.Errorf("actor has no headscale identity")
+	}
+
+	headscaleUserID, err := HeadscaleService.ResolveUserIDByNameWithContext(ctx, scope.headscaleName)
+	if err != nil {
+		return nil, err
+	}
+	queryCtx, cancel := withServiceTimeout(ctx)
+	defer cancel()
+
+	client, err := headscaleServiceClient()
+	if err != nil {
+		return nil, err
+	}
+
+	authKeyResp, err := client.CreatePreAuthKey(queryCtx, &v1.CreatePreAuthKeyRequest{
+		User:       headscaleUserID,
+		Reusable:   true,
+		Ephemeral:  false,
+		Expiration: nil,
+	})
+	if err != nil {
+		return nil, err
+	}
+	authKey, ok := extractPreAuthKeyString(authKeyResp)
+	if !ok || strings.TrimSpace(authKey) == "" {
+		return nil, fmt.Errorf("failed to extract generated auth key")
+	}
 
 	switch strings.ToLower(platform) {
 	case "linux":
@@ -62,7 +93,7 @@ func (s *connectionService) GenerateConnectionCommandsWithContext(ctx context.Co
 	}
 
 	// Add SSH connection commands for selected machines
-	sshCommands, err := s.generateSSHCommands(ctx, machineIDs)
+	sshCommands, err := s.generateSSHCommands(ctx, actorUserID, machineIDs, "user")
 	if err == nil && len(sshCommands.Commands) > 0 {
 		commands = append(commands, sshCommands)
 	}
@@ -150,9 +181,13 @@ func (s *connectionService) generateAndroidCommands(serverURL, authKey string) C
 	}
 }
 
-func (s *connectionService) generateSSHCommands(ctx context.Context, machineIDs []string) (ConnectionCommand, error) {
+func (s *connectionService) generateSSHCommands(ctx context.Context, actorUserID uint, machineIDs []string, sshUser string) (ConnectionCommand, error) {
 	queryCtx, cancel := withServiceTimeout(ctx)
 	defer cancel()
+
+	if strings.TrimSpace(sshUser) == "" {
+		sshUser = "user"
+	}
 
 	var commands []string
 	commands = append(commands, "# SSH to selected devices:")
@@ -169,11 +204,14 @@ func (s *connectionService) generateSSHCommands(ctx context.Context, machineIDs 
 		if err != nil {
 			continue
 		}
+		if err := ensureActorCanAccessNode(actorUserID, node.Node); err != nil {
+			continue
+		}
 
 		if len(node.Node.IpAddresses) > 0 {
 			ipAddress := node.Node.IpAddresses[0]
 			commands = append(commands, fmt.Sprintf("# Connect to %s", node.Node.Name))
-			commands = append(commands, fmt.Sprintf("ssh user@%s", ipAddress))
+			commands = append(commands, fmt.Sprintf("ssh %s@%s", sshUser, ipAddress))
 			commands = append(commands, "")
 		}
 	}
@@ -189,13 +227,30 @@ func (s *connectionService) generateSSHCommands(ctx context.Context, machineIDs 
 	}, nil
 }
 
-// GeneratePreAuthKey generates a pre-auth key for device registration
-func (s *connectionService) GeneratePreAuthKey(actorUserID uint, userID uint, reusable bool, ephemeral bool) (string, error) {
-	return s.GeneratePreAuthKeyWithContext(context.Background(), actorUserID, userID, reusable, ephemeral)
+func (s *connectionService) GenerateSSHCommandWithContext(ctx context.Context, actorUserID uint, machineID uint64, sshUser string) (string, error) {
+	commandSet, err := s.generateSSHCommands(ctx, actorUserID, []string{strconv.FormatUint(machineID, 10)}, sshUser)
+	if err != nil {
+		return "", err
+	}
+	for _, command := range commandSet.Commands {
+		trimmed := strings.TrimSpace(command)
+		if strings.HasPrefix(trimmed, "ssh ") {
+			return trimmed, nil
+		}
+	}
+	return "", fmt.Errorf("no SSH command generated")
 }
 
-func (s *connectionService) GeneratePreAuthKeyWithContext(ctx context.Context, actorUserID uint, userID uint, reusable bool, ephemeral bool) (string, error) {
+// GeneratePreAuthKey generates a pre-auth key for device registration
+func (s *connectionService) GeneratePreAuthKey(actorUserID uint, userID uint, reusable bool, ephemeral bool, expiration string) (string, error) {
+	return s.GeneratePreAuthKeyWithContext(context.Background(), actorUserID, userID, reusable, ephemeral, expiration)
+}
+
+func (s *connectionService) GeneratePreAuthKeyWithContext(ctx context.Context, actorUserID uint, userID uint, reusable bool, ephemeral bool, expiration string) (string, error) {
 	if err := RequirePermission(actorUserID, "headscale:preauthkey:create"); err != nil {
+		return "", err
+	}
+	if err := ensureActorCanAccessPanelUser(actorUserID, userID); err != nil {
 		return "", err
 	}
 
@@ -235,14 +290,28 @@ func (s *connectionService) GeneratePreAuthKeyWithContext(ctx context.Context, a
 		return "", fmt.Errorf("user not found in headscale: %s", targetName)
 	}
 
-	resp, err := headscale.GlobalClient.Service.CreatePreAuthKey(queryCtx, &v1.CreatePreAuthKeyRequest{
-		User:      headscaleUserID,
-		Reusable:  reusable,
-		Ephemeral: ephemeral,
-	})
+	resp, err := HeadscaleService.CreatePreAuthKeyWithContext(queryCtx, actorUserID, headscaleUserID, reusable, ephemeral, expiration)
 	if err != nil {
-		return "", fmt.Errorf("failed to create pre-auth key: %w", err)
+		return "", err
 	}
 
-	return resp.PreAuthKey.Key, nil
+	key, ok := extractPreAuthKeyString(resp)
+	if !ok {
+		return "", fmt.Errorf("failed to extract generated pre-auth key")
+	}
+	return key, nil
+}
+
+func extractPreAuthKeyString(value interface{}) (string, bool) {
+	switch typed := value.(type) {
+	case *v1.PreAuthKey:
+		if typed == nil {
+			return "", false
+		}
+		return typed.Key, true
+	case v1.PreAuthKey:
+		return typed.Key, true
+	default:
+		return "", false
+	}
 }

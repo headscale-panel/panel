@@ -230,7 +230,11 @@ func (a *AuthController) OIDCCallback(c *gin.Context) {
 		return
 	}
 
-	if claims.Sub == "" || !claims.EmailVerified {
+	if claims.Sub == "" {
+		failOIDCAuth(c)
+		return
+	}
+	if hsConfig.OIDC.EmailVerifiedRequired && !claims.EmailVerified {
 		failOIDCAuth(c)
 		return
 	}

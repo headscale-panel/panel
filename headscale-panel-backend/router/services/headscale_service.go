@@ -88,6 +88,10 @@ func (s *headscaleService) ListHeadscaleUsersWithContext(ctx context.Context, ac
 	if err != nil {
 		return nil, err
 	}
+	scope, err := loadActorScope(actorUserID)
+	if err != nil {
+		return nil, err
+	}
 
 	queryCtx, cancel := withServiceTimeout(ctx)
 	defer cancel()
@@ -99,6 +103,9 @@ func (s *headscaleService) ListHeadscaleUsersWithContext(ctx context.Context, ac
 
 	users := make([]HeadscaleUser, 0, len(resp.Users))
 	for _, u := range resp.Users {
+		if !actorCanAccessHeadscaleUser(scope, u.Name) {
+			continue
+		}
 		user := HeadscaleUser{
 			ID:            u.Id,
 			Name:          u.Name,
@@ -236,33 +243,32 @@ func (s *headscaleService) GetAccessibleMachinesWithContext(ctx context.Context,
 	if err := RequirePermission(actorUserID, "headscale:acl:access"); err != nil {
 		return nil, err
 	}
-	client, err := headscaleServiceClient()
+	nodes, scope, err := listAccessibleNodes(ctx, actorUserID)
 	if err != nil {
 		return nil, err
 	}
 
-	queryCtx, cancel := withServiceTimeout(ctx)
-	defer cancel()
-
-	resp, err := client.ListNodes(queryCtx, &v1.ListNodesRequest{})
-	if err != nil {
-		return nil, fmt.Errorf("failed to list nodes from Headscale: %w", err)
+	if canAccessAll && scope.isAdmin {
+		machines := make([]HeadscaleMachine, 0, len(nodes))
+		for _, node := range nodes {
+			machines = append(machines, s.nodeToMachine(node))
+		}
+		return machines, nil
 	}
 
-	machines := make([]HeadscaleMachine, 0, len(resp.Nodes))
-	for _, node := range resp.Nodes {
-		machine := s.nodeToMachine(node)
+	targetHeadscaleName, err := resolvePanelUserHeadscaleName(userID)
+	if err != nil {
+		return nil, err
+	}
+	if err := ensureActorCanAccessHeadscaleUserName(actorUserID, targetHeadscaleName); err != nil {
+		return nil, err
+	}
 
-		if canAccessAll {
+	machines := make([]HeadscaleMachine, 0, len(nodes))
+	for _, node := range nodes {
+		machine := s.nodeToMachine(node)
+		if machine.User != nil && strings.EqualFold(strings.TrimSpace(machine.User.Name), targetHeadscaleName) {
 			machines = append(machines, machine)
-		} else {
-			// Filter by matching user: find panel user by ID, get headscale_name
-			var panelUser model.User
-			if err := model.DB.First(&panelUser, userID).Error; err == nil {
-				if machine.User != nil && machine.User.Name == panelUser.HeadscaleName {
-					machines = append(machines, machine)
-				}
-			}
 		}
 	}
 	return machines, nil
@@ -564,6 +570,9 @@ func (s *headscaleService) GetPreAuthKeysWithContext(ctx context.Context, actorU
 	if err := RequirePermission(actorUserID, "headscale:preauthkey:list"); err != nil {
 		return nil, err
 	}
+	if err := ensureActorCanAccessHeadscaleUserID(ctx, actorUserID, userID); err != nil {
+		return nil, err
+	}
 	client, err := headscaleServiceClient()
 	if err != nil {
 		return nil, err
@@ -588,6 +597,9 @@ func (s *headscaleService) CreatePreAuthKey(actorUserID uint, userID uint64, reu
 
 func (s *headscaleService) CreatePreAuthKeyWithContext(ctx context.Context, actorUserID uint, userID uint64, reusable, ephemeral bool, expiration string) (interface{}, error) {
 	if err := RequirePermission(actorUserID, "headscale:preauthkey:create"); err != nil {
+		return nil, err
+	}
+	if err := ensureActorCanAccessHeadscaleUserID(ctx, actorUserID, userID); err != nil {
 		return nil, err
 	}
 	client, err := headscaleServiceClient()
@@ -623,6 +635,9 @@ func (s *headscaleService) ExpirePreAuthKey(actorUserID uint, userID uint64, key
 
 func (s *headscaleService) ExpirePreAuthKeyWithContext(ctx context.Context, actorUserID uint, userID uint64, key string) error {
 	if err := RequirePermission(actorUserID, "headscale:preauthkey:expire"); err != nil {
+		return err
+	}
+	if err := ensureActorCanAccessHeadscaleUserID(ctx, actorUserID, userID); err != nil {
 		return err
 	}
 	client, err := headscaleServiceClient()
@@ -851,6 +866,9 @@ func extractRepeatedStringField(msg protoreflect.Message, fieldName protoreflect
 // RegisterNode registers a node using a machine key
 func (s *headscaleService) RegisterNodeWithContext(ctx context.Context, actorUserID uint, user string, key string) (*HeadscaleMachine, error) {
 	if err := RequirePermission(actorUserID, "headscale:machine:create"); err != nil {
+		return nil, err
+	}
+	if err := ensureActorCanAccessHeadscaleUserName(actorUserID, user); err != nil {
 		return nil, err
 	}
 	client, err := headscaleServiceClient()

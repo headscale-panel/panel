@@ -1,7 +1,6 @@
 package controllers
 
 import (
-	"fmt"
 	"headscale-panel/pkg/influxdb"
 	"headscale-panel/pkg/utils/serializer"
 	"headscale-panel/router/services"
@@ -17,7 +16,7 @@ type MetricsController struct{}
 // GET /api/metrics/online-duration?user_id=1&machine_id=xxx&start=2024-01-01&end=2024-01-31
 func (c *MetricsController) GetOnlineDuration(ctx *gin.Context) {
 	actorUserID := ctx.GetUint("userID")
-	userID, _ := strconv.ParseUint(ctx.Query("user_id"), 10, 32)
+	userIDParam := ctx.Query("user_id")
 	machineID := ctx.Query("machine_id")
 	startStr := ctx.DefaultQuery("start", time.Now().AddDate(0, 0, -7).Format("2006-01-02"))
 	endStr := ctx.DefaultQuery("end", time.Now().Format("2006-01-02"))
@@ -35,7 +34,14 @@ func (c *MetricsController) GetOnlineDuration(ctx *gin.Context) {
 	}
 	end = end.Add(24 * time.Hour) // Include the end date
 
-	duration, err := services.MetricsService.GetOnlineDuration(ctx.Request.Context(), actorUserID, fmt.Sprintf("%d", userID), machineID, start, end)
+	if userIDParam != "" {
+		if _, err := strconv.ParseUint(userIDParam, 10, 64); err != nil {
+			serializer.FailWithCode(ctx, serializer.CodeParamErr, "Invalid user_id")
+			return
+		}
+	}
+
+	duration, err := services.MetricsService.GetOnlineDuration(ctx.Request.Context(), actorUserID, userIDParam, machineID, start, end)
 	if err != nil {
 		serializer.Fail(ctx, err)
 		return
