@@ -4,7 +4,7 @@ import { Streamdown } from 'streamdown';
 
 export default function Home() {
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+    <div className="min-h-screen flex flex-col">
       <main>
         <Spin indicator={<LoadingOutlined spin />} />
         Example Page

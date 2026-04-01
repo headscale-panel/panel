@@ -14,6 +14,13 @@ func NewDERPController() *DERPController {
 	return &DERPController{}
 }
 
+// Get godoc
+// @Summary Get the current DERP map
+// @Tags derp
+// @Produce json
+// @Success 200 {object} serializer.Response{data=object}
+// @Security BearerAuth
+// @Router /headscale/derp [get]
 // Get returns the current DERP map
 func (c *DERPController) Get(ctx *gin.Context) {
 	userID := ctx.GetUint("userID")

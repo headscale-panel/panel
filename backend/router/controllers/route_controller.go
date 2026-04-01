@@ -9,15 +9,41 @@ import (
 
 type RouteController struct{}
 
-// ListRoutes lists all routes from Headscale via gRPC
-// GET /api/routes?page=1&page_size=10&user_id=xxx&machine_id=xxx
+// RouteActionRequest is the request body for EnableRoute/DisableRoute.
+type RouteActionRequest struct {
+	MachineID   uint64 `json:"machine_id" binding:"required"`
+	Destination string `json:"destination" binding:"required"`
+}
+
+// ListRoutesQuery is the query parameter struct for ListRoutes.
+type ListRoutesQuery struct {
+	serializer.PaginationQuery
+	UserID    string `form:"user_id"`
+	MachineID string `form:"machine_id"`
+}
+
+// ListRoutes godoc
+// @Summary List all routes
+// @Tags routes
+// @Produce json
+// @Param page query int false "Page number" default(1)
+// @Param page_size query int false "Page size" default(10)
+// @Param all query bool false "Return all records"
+// @Param user_id query string false "Filter by user ID"
+// @Param machine_id query string false "Filter by machine ID"
+// @Success 200 {object} serializer.Response{data=serializer.PaginatedData}
+// @Security BearerAuth
+// @Router /routes [get]
 func (c *RouteController) ListRoutes(ctx *gin.Context) {
-	page, pageSize := serializer.ParsePaginationQuery(ctx)
-	userFilter := ctx.Query("user_id")
-	machineID := ctx.Query("machine_id")
+	var q ListRoutesQuery
+	if err := ctx.ShouldBindQuery(&q); err != nil {
+		serializer.Fail(ctx, serializer.ErrBind)
+		return
+	}
+	page, pageSize := q.Resolve()
 
 	userID := ctx.GetUint("userID")
-	routes, total, err := services.RouteService.ListRoutesWithContext(ctx.Request.Context(), userID, page, pageSize, userFilter, machineID)
+	routes, total, err := services.RouteService.ListRoutesWithContext(ctx.Request.Context(), userID, page, pageSize, q.UserID, q.MachineID)
 	if err != nil {
 		serializer.Fail(ctx, err)
 		return
@@ -26,13 +52,18 @@ func (c *RouteController) ListRoutes(ctx *gin.Context) {
 	serializer.SuccessPage(ctx, routes, total, page, pageSize)
 }
 
-// EnableRoute enables (approves) a route on a node
-// POST /api/routes/enable
+// EnableRoute godoc
+// @Summary Enable (approve) a route on a node
+// @Tags routes
+// @Accept json
+// @Produce json
+// @Param body body RouteActionRequest true "Route action"
+// @Success 200 {object} serializer.Response
+// @Failure 400 {object} serializer.Response
+// @Security BearerAuth
+// @Router /routes/enable [post]
 func (c *RouteController) EnableRoute(ctx *gin.Context) {
-	var req struct {
-		MachineID   uint64 `json:"machine_id" binding:"required"`
-		Destination string `json:"destination" binding:"required"`
-	}
+	var req RouteActionRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {
 		serializer.Fail(ctx, serializer.ErrBind)
 		return
@@ -47,13 +78,18 @@ func (c *RouteController) EnableRoute(ctx *gin.Context) {
 	serializer.Success(ctx, nil)
 }
 
-// DisableRoute disables (unapproves) a route on a node
-// POST /api/routes/disable
+// DisableRoute godoc
+// @Summary Disable (unapprove) a route on a node
+// @Tags routes
+// @Accept json
+// @Produce json
+// @Param body body RouteActionRequest true "Route action"
+// @Success 200 {object} serializer.Response
+// @Failure 400 {object} serializer.Response
+// @Security BearerAuth
+// @Router /routes/disable [post]
 func (c *RouteController) DisableRoute(ctx *gin.Context) {
-	var req struct {
-		MachineID   uint64 `json:"machine_id" binding:"required"`
-		Destination string `json:"destination" binding:"required"`
-	}
+	var req RouteActionRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {
 		serializer.Fail(ctx, serializer.ErrBind)
 		return

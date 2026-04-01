@@ -16,8 +16,8 @@ export const metricsApi = {
   getOnlineDuration: (req?: GetOnlineDurationReq) =>
     request.get<any, GetOnlineDurationRes>('/metrics/online-duration', {
       params: {
-        user_id: req?.userId,
-        machine_id: req?.machineId,
+        user_id: req?.user_id,
+        machine_id: req?.machine_id,
         start: req?.start,
         end: req?.end,
       },
@@ -28,7 +28,6 @@ export const metricsApi = {
       params: {
         start: req?.start,
         end: req?.end,
-        group_by: req?.groupBy,
       },
     }),
 
@@ -38,7 +37,7 @@ export const metricsApi = {
   getDeviceStatusHistory: (req: GetDeviceStatusHistoryReq) =>
     request.get<any, GetDeviceStatusHistoryRes>('/metrics/device-status-history', {
       params: {
-        machine_id: req.machineId,
+        machine_id: req.machine_id,
         start: req.start,
         end: req.end,
       },
@@ -47,7 +46,7 @@ export const metricsApi = {
   getTrafficStats: (req?: GetTrafficStatsReq) =>
     request.get<any, GetTrafficStatsRes>('/metrics/traffic', {
       params: {
-        machine_id: req?.machineId,
+        machine_id: req?.machine_id,
         start: req?.start,
         end: req?.end,
       },

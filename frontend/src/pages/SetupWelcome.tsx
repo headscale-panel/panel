@@ -8,7 +8,11 @@ import { useLocation } from 'wouter';
 
 const { Title, Text, Paragraph } = Typography;
 
-type SetupStep = 'connection' | 'admin' | 'done';
+enum SetupStep {
+  Connection = 'connection',
+  Admin = 'admin',
+  Done = 'done',
+}
 
 interface ConnectivityResult {
   name: string;
@@ -17,7 +21,7 @@ interface ConnectivityResult {
   detail: string;
 }
 
-const stepIndex = { connection: 0, admin: 1, done: 2 };
+const stepIndex = { [SetupStep.Connection]: 0, [SetupStep.Admin]: 1, [SetupStep.Done]: 2 };
 
 export default function SetupWelcome() {
   const t = useTranslation();
@@ -27,7 +31,7 @@ export default function SetupWelcome() {
   const successColor = themeToken.colorSuccess;
   const errorColor = themeToken.colorError;
 
-  const [step, setStep] = useState<SetupStep>('connection');
+  const [step, setStep] = useState<SetupStep>(SetupStep.Connection);
 
   const [bootstrapConfigured, setBootstrapConfigured] = useState(false);
   const [bootstrapToken, setBootstrapToken] = useState('');
@@ -122,7 +126,7 @@ export default function SetupWelcome() {
       onSuccess: (data: any) => {
         setDoneUsername(data?.user?.username || adminUsername);
         setDonePassword(data?.password_generated ? (data?.generated_password || '') : adminPassword);
-        setStep('done');
+        setStep(SetupStep.Done);
         message.success(t.setupWelcome.toastInitSuccess);
       },
       onError: () => {
@@ -153,8 +157,8 @@ export default function SetupWelcome() {
 
   if (loading) {
     return (
-      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <Spin indicator={<LoadingOutlined style={{ fontSize: 32 }} spin />} tip={t.setupWelcome.loading} />
+      <div className="auth-page">
+        <Spin indicator={<LoadingOutlined className="text-32px" spin />} tip={t.setupWelcome.loading} />
       </div>
     );
   }
@@ -171,20 +175,20 @@ export default function SetupWelcome() {
       }}
     >
       {/* Language Switcher */}
-      <div style={{ position: 'fixed', top: 16, right: 16 }}>
+      <div className="lang-switcher">
         <Space size={4}>
           <GlobalOutlined style={{ color: themeToken.colorTextSecondary }} />
           {availableLocales.map((code) => (
-            <Button key={code} type={locale === code ? 'link' : 'text'} size="small" onClick={() => setLocale(code)} style={{ fontSize: 12 }}>
+            <Button key={code} type={locale === code ? 'link' : 'text'} size="small" onClick={() => setLocale(code)} className="text-12px">
               {locales[code].label}
             </Button>
           ))}
         </Space>
       </div>
 
-      <div style={{ width: '100%', maxWidth: 460 }}>
+      <div className="w-full max-w-115">
         {/* Header */}
-        <div style={{ textAlign: 'center', marginBottom: 24 }}>
+        <div className="text-center mb-6">
           <div style={{
             width: 48, height: 48, borderRadius: 12,
             background: themeToken.colorPrimary,
@@ -193,12 +197,12 @@ export default function SetupWelcome() {
           }}>
             <SafetyCertificateOutlined style={{ fontSize: 28, color: themeToken.colorWhite }} />
           </div>
-          <Title level={4} style={{ marginBottom: 4 }}>{t.setupWelcome.title}</Title>
+          <Title level={4} className="mb-1">{t.setupWelcome.title}</Title>
           <Text type="secondary">{t.setupWelcome.subtitle}</Text>
         </div>
 
         {/* Step Indicator */}
-        <Steps current={stepIndex[step]} size="small" style={{ marginBottom: 24 }} items={[
+        <Steps current={stepIndex[step]} size="small" className="mb-6" items={[
           { title: t.setupWelcome.connectionTitle },
           { title: t.setupWelcome.adminTitle },
           { title: '✓' },
@@ -208,7 +212,7 @@ export default function SetupWelcome() {
           <Alert
             type="warning"
             showIcon
-            style={{ marginBottom: 24, textAlign: 'left' }}
+            className="mb-6 text-left"
             message={t.setupWelcome.windowClosedTitle}
             description={
               setupWindowDeadline
@@ -219,9 +223,9 @@ export default function SetupWelcome() {
         )}
 
         {/* Step: Connection */}
-        {step === 'connection' && (
+        {step === SetupStep.Connection && (
           <Card>
-            <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+            <Space direction="vertical" size="middle" className="w-full">
               <div>
                 <Title level={5}>{t.setupWelcome.connectionTitle}</Title>
                 <Text type="secondary">{t.setupWelcome.connectionDesc}</Text>
@@ -229,35 +233,35 @@ export default function SetupWelcome() {
 
               {bootstrapConfigured && (
                 <div>
-                  <Text style={{ fontSize: 13, display: 'block', marginBottom: 4 }}>{t.setup.bootstrapCredential}</Text>
+                  <Text className="form-label">{t.setup.bootstrapCredential}</Text>
                   <Input.Password value={bootstrapToken} onChange={(e) => setBootstrapToken(e.target.value)} placeholder={t.setupWelcome.bootstrapPlaceholder} />
-                  <Text type="warning" style={{ fontSize: 12 }}>{t.setupWelcome.bootstrapWarning}</Text>
+                  <Text type="warning" className="text-12px">{t.setupWelcome.bootstrapWarning}</Text>
                 </div>
               )}
 
               <div>
-                <Text style={{ fontSize: 13, display: 'block', marginBottom: 4 }}>{t.setupWelcome.grpcAddressLabel}</Text>
+                <Text className="form-label">{t.setupWelcome.grpcAddressLabel}</Text>
                 <Input value={grpcAddr} onChange={(e) => setGrpcAddr(e.target.value)} placeholder={t.setupWelcome.grpcAddressPlaceholder} />
               </div>
 
               <div>
-                <Text style={{ fontSize: 13, display: 'block', marginBottom: 4 }}>{t.setupWelcome.apiKeyLabel}</Text>
+                <Text className="form-label">{t.setupWelcome.apiKeyLabel}</Text>
                 <Input.Password value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder="headscale apikeys create" />
               </div>
 
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div className="flex items-center justify-between">
                 <div>
-                  <Text style={{ fontSize: 13, display: 'block' }}>{t.setupWelcome.tlsToggleLabel}</Text>
-                  <Text type="secondary" style={{ fontSize: 12 }}>{t.setupWelcome.tlsToggleHint}</Text>
+                  <Text className="text-13px block">{t.setupWelcome.tlsToggleLabel}</Text>
+                  <Text type="secondary" className="text-12px">{t.setupWelcome.tlsToggleHint}</Text>
                 </div>
                 <Switch checked={enableTLS} onChange={setEnableTLS} />
               </div>
 
               {connectResults.length > 0 && (
                 <div style={{ borderTop: `1px solid ${themeToken.colorBorderSecondary}`, paddingTop: 12 }}>
-                  <Text strong style={{ fontSize: 13, display: 'block', marginBottom: 8 }}>{t.setupWelcome.resultTitle}</Text>
+                  <Text strong className="text-13px block mb-2">{t.setupWelcome.resultTitle}</Text>
                   {connectResults.map((r, i) => (
-                    <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 0' }}>
+                    <div key={i} className="flex items-center justify-between py-1.5">
                       <Text type="secondary">{r.name} {r.address ? `(${r.address})` : ''}</Text>
                       <Space size={4}>
                         {r.reachable ? <CheckCircleOutlined style={{ color: successColor }} /> : <CloseCircleOutlined style={{ color: errorColor }} />}
@@ -271,11 +275,11 @@ export default function SetupWelcome() {
               )}
 
               <Space>
-                <Button type="primary" onClick={handleCheckConnection} loading={checking} style={{ flex: 1 }} disabled={!setupWindowOpen}>
+                <Button type="primary" onClick={handleCheckConnection} loading={checking} className="flex-1" disabled={!setupWindowOpen}>
                   {checking ? t.setupWelcome.checkingConnection : t.setupWelcome.checkConnection}
                 </Button>
                 {connectPassed && setupWindowOpen && (
-                  <Button icon={<ArrowRightOutlined />} onClick={() => setStep('admin')} />
+                  <Button icon={<ArrowRightOutlined />} onClick={() => setStep(SetupStep.Admin)} />
                 )}
               </Space>
             </Space>
@@ -283,26 +287,26 @@ export default function SetupWelcome() {
         )}
 
         {/* Step: Admin */}
-        {step === 'admin' && (
+        {step === SetupStep.Admin && (
           <Card>
-            <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+            <Space direction="vertical" size="middle" className="w-full">
               <div>
                 <Title level={5}>{t.setupWelcome.adminTitle}</Title>
                 <Text type="secondary">{t.setupWelcome.adminDesc}</Text>
               </div>
 
               <div>
-                <Text style={{ fontSize: 13, display: 'block', marginBottom: 4 }}>{t.setupWelcome.adminUsernameLabel}</Text>
+                <Text className="form-label">{t.setupWelcome.adminUsernameLabel}</Text>
                 <Input value={adminUsername} onChange={(e) => setAdminUsername(e.target.value)} placeholder="admin" />
               </div>
 
               <div>
-                <Text style={{ fontSize: 13, display: 'block', marginBottom: 4 }}>{t.setupWelcome.adminPasswordLabel}</Text>
+                <Text className="form-label">{t.setupWelcome.adminPasswordLabel}</Text>
                 <Input.Password value={adminPassword} onChange={(e) => setAdminPassword(e.target.value)} placeholder="••••••••" />
               </div>
 
               <div>
-                <Text style={{ fontSize: 13, display: 'block', marginBottom: 4 }}>{t.setupWelcome.adminEmailLabel}</Text>
+                <Text className="form-label">{t.setupWelcome.adminEmailLabel}</Text>
                 <Input type="email" value={adminEmail} onChange={(e) => setAdminEmail(e.target.value)} placeholder={t.setupWelcome.adminEmailPlaceholder} />
               </div>
 
@@ -316,8 +320,8 @@ export default function SetupWelcome() {
               )}
 
               <Space>
-                <Button onClick={() => setStep('connection')}>{t.setup.back}</Button>
-                <Button type="primary" onClick={handleInitialize} loading={initializing} style={{ flex: 1 }} disabled={!setupWindowOpen}>
+                <Button onClick={() => setStep(SetupStep.Connection)}>{t.setup.back}</Button>
+                <Button type="primary" onClick={handleInitialize} loading={initializing} className="flex-1" disabled={!setupWindowOpen}>
                   {initializing ? t.setupWelcome.initializing : t.setupWelcome.initialize}
                 </Button>
               </Space>
@@ -326,9 +330,9 @@ export default function SetupWelcome() {
         )}
 
         {/* Step: Done */}
-        {step === 'done' && (
-          <Card style={{ textAlign: 'center' }}>
-            <Space direction="vertical" size="large" style={{ width: '100%' }}>
+        {step === SetupStep.Done && (
+          <Card className="text-center">
+            <Space direction="vertical" size="large" className="w-full">
               <div
                 style={{
                   width: 64,
@@ -348,7 +352,7 @@ export default function SetupWelcome() {
                 <Text type="secondary">{t.setupWelcome.successSubtitle}</Text>
               </div>
 
-              <Descriptions bordered column={1} size="small" style={{ textAlign: 'left' }}>
+              <Descriptions bordered column={1} size="small" className="text-left">
                 <Descriptions.Item label={t.setupWelcome.adminAccount}>{doneUsername}</Descriptions.Item>
                 {donePassword && (
                   <Descriptions.Item label={t.setupWelcome.adminPassword}>

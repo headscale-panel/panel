@@ -40,6 +40,10 @@ func NewServer() (*Server, error) {
 		return nil, err
 	}
 
+	if err := services.ACLService.InitPolicy(); err != nil {
+		logrus.WithError(err).Warn("Failed to initialize ACL policy on startup")
+	}
+
 	if conf.Conf.InfluxDB.URL != "" {
 		if err := influxdb.Init(influxdb.Config{
 			URL:    conf.Conf.InfluxDB.URL,

@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import { useRequest } from 'ahooks';
 import { useTranslation } from '@/i18n/index';
-import { Button, Card, Input, Modal, Table, Tooltip, Statistic, Space, Typography, message, theme } from 'antd';
+import { Button, Card, Input, Modal, Table, Tooltip, Space, Typography, message, theme } from 'antd';
 import { EditOutlined, PlusOutlined, ReloadOutlined, SearchOutlined, DeleteOutlined, CloudServerOutlined, GlobalOutlined, ApiOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import DashboardLayout from '@/components/DashboardLayout';
+import PageHeaderStatCards from '@/components/PageHeaderStatCards';
 import { resourcesAPI } from '@/lib/api';
+import ResourceModal from '@/components/resources/ResourceModal';
 
 const { Title, Text } = Typography;
 
@@ -23,15 +25,17 @@ export default function Resources() {
   const t = useTranslation();
   const { token: themeToken } = theme.useToken();
   const [searchQuery, setSearchQuery] = useState('');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingResource, setEditingResource] = useState<Resource | null>(null);
 
-  const [formData, setFormData] = useState({ name: '', ip_address: '', port: '', description: '' });
 
   const { data: listData, loading, refresh } = useRequest(
-    async () => resourcesAPI.list(),
+    async () => resourcesAPI.list({ page, pageSize, keyword: searchQuery || undefined }),
     {
+      refreshDeps: [page, pageSize, searchQuery],
       onError: (error: any) => {
         message.error(t.resources.loadFailed);
       },
@@ -39,31 +43,10 @@ export default function Resources() {
   );
 
   const resources: Resource[] = (listData?.list || []) as any;
-
-  const handleSave = async () => {
-    if (!formData.name || !formData.ip_address) {
-      message.error(t.resources.requiredFields);
-      return;
-    }
-    try {
-      if (editingResource) {
-        await resourcesAPI.update(editingResource.ID, formData);
-        message.success(t.resources.updateSuccess);
-      } else {
-        await resourcesAPI.create(formData);
-        message.success(t.resources.createSuccess);
-      }
-      setDialogOpen(false);
-      resetForm();
-      refresh();
-    } catch (error: any) {
-      message.error((editingResource ? t.resources.updateFailed : t.resources.createFailed) + (error.message || ''));
-    }
-  };
+  const total = listData?.total || 0;
 
   const handleEdit = (resource: Resource) => {
     setEditingResource(resource);
-    setFormData({ name: resource.name, ip_address: resource.ip_address, port: resource.port || '', description: resource.description || '' });
     setDialogOpen(true);
   };
 
@@ -84,21 +67,10 @@ export default function Resources() {
     });
   };
 
-  const resetForm = () => {
-    setFormData({ name: '', ip_address: '', port: '', description: '' });
-    setEditingResource(null);
-  };
-
   const openCreateDialog = () => {
-    resetForm();
+    setEditingResource(null);
     setDialogOpen(true);
   };
-
-  const filteredResources = resources.filter((resource) => {
-    if (!searchQuery) return true;
-    const q = searchQuery.toLowerCase();
-    return resource.name.toLowerCase().includes(q) || resource.ip_address.toLowerCase().includes(q) || (resource.description && resource.description.toLowerCase().includes(q));
-  });
 
   const columns: ColumnsType<Resource> = [
     {
@@ -138,11 +110,11 @@ export default function Resources() {
 
   return (
     <DashboardLayout>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+      <div className="flex flex-col gap-6">
         {/* Page Header */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+        <div className="page-header-row">
           <div>
-            <Title level={4} style={{ margin: 0 }}>{t.resources.title}</Title>
+            <Title level={4} className="m-0">{t.resources.title}</Title>
             <Text type="secondary">{t.resources.description}</Text>
           </div>
           <Space>
@@ -152,51 +124,45 @@ export default function Resources() {
         </div>
 
         {/* Stats */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 16 }}>
-          <Card hoverable><Statistic title={t.resources.totalResources} value={resources.length} prefix={<CloudServerOutlined />} /></Card>
-          <Card hoverable><Statistic title={t.resources.withPort} value={resources.filter(r => r.port).length} prefix={<ApiOutlined />} valueStyle={{ color: '#52c41a' }} /></Card>
-          <Card hoverable><Statistic title={t.resources.withoutPort} value={resources.filter(r => !r.port).length} prefix={<GlobalOutlined />} valueStyle={{ color: '#fa8c16' }} /></Card>
-        </div>
+        <PageHeaderStatCards
+          minCardWidth={200}
+          gap={16}
+          items={[
+            { label: t.resources.totalResources, value: resources.length, icon: <CloudServerOutlined className="stat-icon-primary" />, watermark: 'ALL' },
+            { label: t.resources.withPort, value: resources.filter(r => r.port).length, icon: <ApiOutlined className="stat-icon-success" />, watermark: 'PORT' },
+            { label: t.resources.withoutPort, value: resources.filter(r => !r.port).length, icon: <GlobalOutlined className="stat-icon-warn" />, watermark: 'ANY' },
+          ]}
+        />
 
         {/* Table */}
         <Card>
-          <div style={{ marginBottom: 16 }}>
-            <Input prefix={<SearchOutlined />} placeholder={t.resources.searchPlaceholder} value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} style={{ maxWidth: 360 }} allowClear />
+          <div className="mb-4">
+            <Input prefix={<SearchOutlined />} placeholder={t.resources.searchPlaceholder} value={searchQuery} onChange={(e) => { setSearchQuery(e.target.value); setPage(1); }} className="max-w-90" allowClear />
           </div>
-          <Table columns={columns} dataSource={filteredResources} rowKey="ID" loading={loading} pagination={false} locale={{ emptyText: t.resources.noData }} />
+          <Table
+            columns={columns}
+            dataSource={resources}
+            rowKey="ID"
+            loading={loading}
+            pagination={{
+              current: page,
+              pageSize,
+              total,
+              onChange: (p, ps) => { setPage(p); setPageSize(ps); },
+              showSizeChanger: true,
+              pageSizeOptions: [10, 20, 50, 100],
+              showTotal: (t) => `${t} records`,
+            }}
+            locale={{ emptyText: t.resources.noData }}
+          />
         </Card>
 
-        {/* Create/Edit Modal */}
-        <Modal
-          title={editingResource ? t.resources.editResourceTitle : t.resources.addResourceTitle}
+        <ResourceModal
           open={dialogOpen}
+          editingResource={editingResource}
           onCancel={() => setDialogOpen(false)}
-          onOk={handleSave}
-          okText={editingResource ? t.common.actions.save : t.common.actions.create}
-          cancelText={t.common.actions.cancel}
-        >
-          <Space direction="vertical" size="middle" style={{ width: '100%', marginTop: 16 }}>
-            <div>
-              <Text style={{ fontSize: 13, display: 'block', marginBottom: 4 }}>{t.resources.nameLabel}</Text>
-              <Input placeholder={t.resources.namePlaceholder} value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} />
-              <Text type="secondary" style={{ fontSize: 12 }}>{t.resources.nameHint}</Text>
-            </div>
-            <div>
-              <Text style={{ fontSize: 13, display: 'block', marginBottom: 4 }}>{t.resources.ipLabel}</Text>
-              <Input placeholder={t.resources.ipPlaceholder} value={formData.ip_address} onChange={(e) => setFormData({ ...formData, ip_address: e.target.value })} />
-              <Text type="secondary" style={{ fontSize: 12 }}>{t.resources.ipHint}</Text>
-            </div>
-            <div>
-              <Text style={{ fontSize: 13, display: 'block', marginBottom: 4 }}>{t.resources.portLabel}</Text>
-              <Input placeholder={t.resources.portPlaceholder} value={formData.port} onChange={(e) => setFormData({ ...formData, port: e.target.value })} />
-              <Text type="secondary" style={{ fontSize: 12 }}>{t.resources.portHint}</Text>
-            </div>
-            <div>
-              <Text style={{ fontSize: 13, display: 'block', marginBottom: 4 }}>{t.resources.descriptionLabel}</Text>
-              <Input placeholder={t.resources.descriptionPlaceholder} value={formData.description} onChange={(e) => setFormData({ ...formData, description: e.target.value })} />
-            </div>
-          </Space>
-        </Modal>
+          onSuccess={() => { setDialogOpen(false); refresh(); }}
+        />
       </div>
     </DashboardLayout>
   );

@@ -130,12 +130,14 @@ func (s *systemService) ListUsers(actorUserID uint, page, pageSize int) ([]model
 	var users []model.User
 	var total int64
 
-	if err := model.DB.Model(&model.User{}).Count(&total).Error; err != nil {
+	db := model.DB.Model(&model.User{})
+
+	if err := db.Count(&total).Error; err != nil {
 		return nil, 0, serializer.ErrDatabase.WithError(err)
 	}
 
 	offset := (page - 1) * pageSize
-	if err := model.DB.Offset(offset).Limit(pageSize).Preload("Group").Find(&users).Error; err != nil {
+	if err := db.Offset(offset).Limit(pageSize).Preload("Group").Find(&users).Error; err != nil {
 		return nil, 0, serializer.ErrDatabase.WithError(err)
 	}
 

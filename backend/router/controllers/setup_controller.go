@@ -32,6 +32,12 @@ func NewSetupController() *SetupController {
 	return &SetupController{}
 }
 
+// GetStatus godoc
+// @Summary Get setup and initialization status
+// @Tags setup
+// @Produce json
+// @Success 200 {object} serializer.Response{data=object}
+// @Router /setup/status [get]
 // GetStatus checks if the system has been initialized.
 func (s *SetupController) GetStatus(ctx *gin.Context) {
 	state, err := services.SetupStateService.GetState()
@@ -80,6 +86,14 @@ type SetupPreflightRequest struct {
 	SkipNetworkChecks bool   `json:"skip_network_checks"`
 }
 
+// Preflight godoc
+// @Summary Run preflight checks before setup
+// @Tags setup
+// @Accept json
+// @Produce json
+// @Param body body SetupPreflightRequest false "Preflight options"
+// @Success 200 {object} serializer.Response{data=object}
+// @Router /setup/preflight [post]
 func (s *SetupController) Preflight(ctx *gin.Context) {
 	var req SetupPreflightRequest
 	if ctx.Request.ContentLength > 0 {
@@ -117,14 +131,34 @@ func (s *SetupController) Preflight(ctx *gin.Context) {
 	})
 }
 
+// ConnectivityCheckRequest holds the parameters for checking Headscale connectivity.
+type ConnectivityCheckRequest struct {
+	HeadscaleGRPCAddr string `json:"headscale_grpc_addr"`
+	APIKey            string `json:"api_key"`
+	StrictAPI         bool   `json:"strict_api"`
+	GRPCAllowInsecure *bool  `json:"grpc_allow_insecure"`
+}
+
+// ConnectivityPollRequest holds the parameters for polling Headscale connectivity.
+type ConnectivityPollRequest struct {
+	HeadscaleGRPCAddr string `json:"headscale_grpc_addr"`
+	APIKey            string `json:"api_key"`
+	GRPCAllowInsecure *bool  `json:"grpc_allow_insecure"`
+	MaxAttempts       int    `json:"max_attempts"`
+	IntervalSeconds   int    `json:"interval_seconds"`
+}
+
+// ConnectivityCheck godoc
+// @Summary Check Headscale gRPC connectivity
+// @Tags setup
+// @Accept json
+// @Produce json
+// @Param body body ConnectivityCheckRequest false "Connectivity check options"
+// @Success 200 {object} serializer.Response{data=object}
+// @Router /setup/connectivity-check [post]
 // ConnectivityCheck validates gRPC reachability and optional API access.
 func (s *SetupController) ConnectivityCheck(ctx *gin.Context) {
-	var req struct {
-		HeadscaleGRPCAddr string `json:"headscale_grpc_addr"`
-		APIKey            string `json:"api_key"`
-		StrictAPI         bool   `json:"strict_api"`
-		GRPCAllowInsecure *bool  `json:"grpc_allow_insecure"`
-	}
+	var req ConnectivityCheckRequest
 	if ctx.Request.ContentLength > 0 {
 		if err := ctx.ShouldBindJSON(&req); err != nil {
 			serializer.Fail(ctx, serializer.ErrBind)
@@ -171,15 +205,17 @@ func (s *SetupController) ConnectivityCheck(ctx *gin.Context) {
 	})
 }
 
+// ConnectivityPoll godoc
+// @Summary Poll Headscale API access
+// @Tags setup
+// @Accept json
+// @Produce json
+// @Param body body ConnectivityPollRequest true "Poll options"
+// @Success 200 {object} serializer.Response{data=object}
+// @Router /setup/connectivity-poll [post]
 // ConnectivityPoll retries Headscale API access for a short period.
 func (s *SetupController) ConnectivityPoll(ctx *gin.Context) {
-	var req struct {
-		HeadscaleGRPCAddr string `json:"headscale_grpc_addr"`
-		APIKey            string `json:"api_key"`
-		GRPCAllowInsecure *bool  `json:"grpc_allow_insecure"`
-		MaxAttempts       int    `json:"max_attempts"`
-		IntervalSeconds   int    `json:"interval_seconds"`
-	}
+	var req ConnectivityPollRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {
 		serializer.Fail(ctx, serializer.ErrBind)
 		return
@@ -225,6 +261,15 @@ func (s *SetupController) ConnectivityPoll(ctx *gin.Context) {
 	})
 }
 
+// Initialize godoc
+// @Summary Initialize the system with admin user and Headscale connection
+// @Tags setup
+// @Accept json
+// @Produce json
+// @Param body body InitializeRequest true "Initialize parameters"
+// @Success 200 {object} serializer.Response
+// @Failure 400 {object} serializer.Response
+// @Router /setup/initialize [post]
 // Initialize saves the Headscale connection settings and creates the first admin.
 type InitializeRequest struct {
 	HeadscaleGRPCAddr string `json:"headscale_grpc_addr"`

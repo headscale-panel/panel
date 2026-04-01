@@ -1,19 +1,16 @@
-export interface ResourceItem {
-  id: number;
-  name: string;
-  ip_address: string;
-  port?: string;
-  description?: string;
-}
+import type { Resource } from './entities';
+
+export type { Resource };
 
 export interface ListResourcesReq {
   page?: number;
   pageSize?: number;
+  all?: boolean;
   keyword?: string;
 }
 
 export interface ListResourcesRes {
-  list: ResourceItem[];
+  list: Resource[];
   total: number;
   page: number;
   page_size: number;
@@ -26,7 +23,7 @@ export interface CreateResourceReq {
   port?: string;
   description?: string;
 }
-export interface CreateResourceRes {}
+export type CreateResourceRes = Resource;
 
 export interface UpdateResourceReq {
   id: number;
@@ -41,3 +38,4 @@ export interface DeleteResourceReq {
   id: number;
 }
 export interface DeleteResourceRes {}
+

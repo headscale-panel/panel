@@ -17,6 +17,34 @@ type aclService struct {
 
 var ACLService = &aclService{}
 
+// InitPolicy ensures ACL policy exists in Headscale during startup.
+func (s *aclService) InitPolicy() error {
+	return s.InitPolicyWithContext(context.Background())
+}
+
+func (s *aclService) InitPolicyWithContext(ctx context.Context) error {
+	client, err := headscaleServiceClient()
+	if err != nil {
+		return err
+	}
+
+	queryCtx, cancel := withServiceTimeout(ctx)
+	defer cancel()
+
+	_, err = client.GetPolicy(queryCtx, &v1.GetPolicyRequest{})
+	if err == nil {
+		return nil
+	}
+
+	// Initialize a minimal policy once so subsequent reads are stable.
+	if _, setErr := client.SetPolicy(queryCtx, &v1.SetPolicyRequest{Policy: "{}"}); setErr != nil {
+		return err
+	}
+
+	_, err = client.GetPolicy(queryCtx, &v1.GetPolicyRequest{})
+	return err
+}
+
 // GetPolicy retrieves the current ACL policy from Headscale
 func (s *aclService) GetPolicy(actorUserID uint) (*model.ACLPolicyStructure, error) {
 	return s.GetPolicyWithContext(context.Background(), actorUserID)
@@ -40,8 +68,13 @@ func (s *aclService) GetPolicyWithContext(ctx context.Context, actorUserID uint)
 		return nil, err
 	}
 
+	rawPolicy := strings.TrimSpace(resp.Policy)
+	if rawPolicy == "" || strings.EqualFold(rawPolicy, "null") {
+		return &model.ACLPolicyStructure{}, nil
+	}
+
 	var policy model.ACLPolicyStructure
-	if err := json.Unmarshal([]byte(resp.Policy), &policy); err != nil {
+	if err := json.Unmarshal([]byte(rawPolicy), &policy); err != nil {
 		return nil, err
 	}
 

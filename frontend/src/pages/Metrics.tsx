@@ -1,6 +1,7 @@
 import { Card, Select, Typography, theme } from 'antd';
 import { ClockCircleOutlined, DashboardOutlined, CloudServerOutlined, ExclamationCircleOutlined } from '@ant-design/icons';
 import DashboardLayout from '@/components/DashboardLayout';
+import PageHeaderStatCards from '@/components/PageHeaderStatCards';
 import { useState, useMemo } from 'react';
 import { useRequest } from 'ahooks';
 import {
@@ -92,22 +93,16 @@ export default function Metrics() {
   const summary = metricsData?.summary || { avgDuration: 0, totalOnline: 0, totalDevices: 0 };
   const influxConnected = metricsData?.influxConnected ?? null;
 
-  const iconBox = (icon: React.ReactNode, color: string) => (
-    <div style={{ width: 48, height: 48, borderRadius: 8, background: `${color}15`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      {icon}
-    </div>
-  );
-
   return (
     <DashboardLayout>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+      <div className="flex flex-col gap-6">
         {/* Page Header */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+        <div className="page-header-row">
           <div>
-            <Title level={4} style={{ margin: 0 }}>{t.metrics.title}</Title>
+            <Title level={4} className="m-0">{t.metrics.title}</Title>
             <Text type="secondary">{t.metrics.description}</Text>
           </div>
-          <Select value={timeRange} onChange={setTimeRange} style={{ width: 180 }}
+          <Select value={timeRange} onChange={setTimeRange} className="w-45"
             options={[
               { value: '7d', label: t.metrics.last7Days },
               { value: '30d', label: t.metrics.last30Days },
@@ -117,49 +112,38 @@ export default function Metrics() {
         </div>
 
         {/* Stats Cards */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 16 }}>
-          <Card>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-              <div>
-                <Text type="secondary" style={{ fontSize: 13 }}>{t.metrics.avgOnlineDuration.replace('{range}', timeRange)}</Text>
-                <div style={{ fontSize: 24, fontWeight: 700, marginTop: 4 }}>{summary.avgDuration}h</div>
-              </div>
-              {iconBox(<ClockCircleOutlined style={{ fontSize: 24, color: themeToken.colorPrimary }} />, themeToken.colorPrimary)}
-            </div>
-          </Card>
-
-          <Card>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-              <div>
-                <Text type="secondary" style={{ fontSize: 13 }}>{t.metrics.onlineDevices}</Text>
-                <div style={{ fontSize: 24, fontWeight: 700, marginTop: 4 }}>{summary.totalOnline}</div>
-                <Text type="secondary" style={{ fontSize: 12 }}>{t.metrics.totalDevicesSuffix.replace('{total}', String(summary.totalDevices))}</Text>
-              </div>
-              {iconBox(<DashboardOutlined style={{ fontSize: 24, color: '#52c41a' }} />, '#52c41a')}
-            </div>
-          </Card>
-
-          <Card>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-              <div>
-                <Text type="secondary" style={{ fontSize: 13 }}>{t.metrics.dataStatus}</Text>
-                <div style={{
-                  fontSize: 18, fontWeight: 700, marginTop: 8,
-                  color: loading ? undefined : influxConnected === false ? '#fa8c16' : undefined
-                }}>
-                  {loading ? t.metrics.updating : influxConnected === false ? t.metrics.notConnected : t.metrics.updated}
-                </div>
-              </div>
-              {iconBox(<CloudServerOutlined style={{ fontSize: 24, color: '#1677ff' }} />, '#1677ff')}
-            </div>
-          </Card>
-        </div>
+        <PageHeaderStatCards
+          minCardWidth={260}
+          gap={16}
+          items={[
+            {
+              label: t.metrics.avgOnlineDuration.replace('{range}', timeRange),
+              value: `${summary.avgDuration}h`,
+              icon: <ClockCircleOutlined style={{ fontSize: 28, color: themeToken.colorPrimary }} />,
+              watermark: 'AVG',
+            },
+            {
+              label: t.metrics.onlineDevices,
+              value: summary.totalOnline,
+              subText: t.metrics.totalDevicesSuffix.replace('{total}', String(summary.totalDevices)),
+              icon: <DashboardOutlined className="stat-icon-success" />,
+              watermark: 'ON',
+            },
+            {
+              label: t.metrics.dataStatus,
+              value: loading ? t.metrics.updating : influxConnected === false ? t.metrics.notConnected : t.metrics.updated,
+              valueColor: loading ? undefined : influxConnected === false ? '#fa8c16' : undefined,
+              icon: <CloudServerOutlined className="stat-icon-primary" />,
+              watermark: 'DB',
+            },
+          ]}
+        />
 
         {/* Charts */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(400px, 1fr))', gap: 16 }}>
+        <div className="metric-chart-grid">
           {/* Device Activity Bar Chart */}
           <Card title={t.metrics.activeDevicesRanking}>
-            <div style={{ height: 300, width: '100%' }}>
+            <div className="chart-box">
               {activityData.length > 0 ? (
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={activityData} layout="vertical" margin={{ left: 20 }}>
@@ -172,7 +156,7 @@ export default function Metrics() {
                 </ResponsiveContainer>
               ) : (
                 <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: themeToken.colorTextSecondary }}>
-                  <ExclamationCircleOutlined style={{ marginRight: 8 }} />
+                  <ExclamationCircleOutlined className="mr-2" />
                   {t.metrics.noActiveData}
                 </div>
               )}
@@ -181,7 +165,7 @@ export default function Metrics() {
 
           {/* Device Status Pie Chart */}
           <Card title={t.metrics.deviceStatusDistribution}>
-            <div style={{ height: 300, width: '100%' }}>
+            <div className="chart-box">
               {statusData.length > 0 && summary.totalDevices > 0 ? (
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
@@ -196,7 +180,7 @@ export default function Metrics() {
                 </ResponsiveContainer>
               ) : (
                 <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: themeToken.colorTextSecondary }}>
-                  <ExclamationCircleOutlined style={{ marginRight: 8 }} />
+                  <ExclamationCircleOutlined className="mr-2" />
                   {t.metrics.noDeviceData}
                 </div>
               )}

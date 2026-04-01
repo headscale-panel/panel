@@ -1,11 +1,12 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { UserRole } from './enums';
 
 export interface User {
   id: number;
   username: string;
   email: string;
-  role: string;
+  role: UserRole;
   headscale_name?: string;
   display_name?: string;
   avatar?: string;

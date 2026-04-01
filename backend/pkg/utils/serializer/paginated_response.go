@@ -3,10 +3,36 @@ package serializer
 import (
 	"headscale-panel/pkg/constants"
 	"math"
-	"strconv"
 
 	"github.com/gin-gonic/gin"
 )
+
+// PaginationQuery is an embeddable struct for binding pagination query parameters.
+type PaginationQuery struct {
+	All      bool `form:"all"`
+	Page     int  `form:"page,default=1"`
+	PageSize int  `form:"page_size,default=10"`
+}
+
+// Resolve normalises the pagination values and returns (page, pageSize).
+// When All is true it returns (1, -1), which signals "no limit" to callers.
+func (q PaginationQuery) Resolve() (page, pageSize int) {
+	if q.All {
+		return 1, -1
+	}
+	page = q.Page
+	if page < 1 {
+		page = constants.DefaultPage
+	}
+	pageSize = q.PageSize
+	if pageSize < 1 {
+		pageSize = constants.DefaultPageSize
+	}
+	if pageSize > constants.MaxPageSize {
+		pageSize = constants.MaxPageSize
+	}
+	return page, pageSize
+}
 
 type PaginatedData struct {
 	List      interface{} `json:"list"`
@@ -16,21 +42,19 @@ type PaginatedData struct {
 	PageCount int         `json:"page_count"`
 }
 
-func ParsePaginationQuery(c *gin.Context) (int, int) {
-	page := parsePositiveInt(c.Query("page"), constants.DefaultPage)
-	pageSize := parsePositiveInt(c.Query("page_size"), constants.DefaultPageSize)
-	if pageSize > constants.MaxPageSize {
-		pageSize = constants.MaxPageSize
-	}
-	return page, pageSize
-}
-
 func NewPaginatedData(list interface{}, total int64, page, pageSize int) PaginatedData {
 	if page < 1 {
 		page = constants.DefaultPage
 	}
-	if pageSize < 1 {
-		pageSize = constants.DefaultPageSize
+	if pageSize <= 0 {
+		// all mode: single page containing everything
+		return PaginatedData{
+			List:      list,
+			Total:     total,
+			Page:      1,
+			PageSize:  int(total),
+			PageCount: 1,
+		}
 	}
 
 	pageCount := 0
@@ -49,15 +73,4 @@ func NewPaginatedData(list interface{}, total int64, page, pageSize int) Paginat
 
 func SuccessPage(c *gin.Context, list interface{}, total int64, page, pageSize int) {
 	Success(c, NewPaginatedData(list, total, page, pageSize))
-}
-
-func parsePositiveInt(raw string, fallback int) int {
-	if raw == "" {
-		return fallback
-	}
-	v, err := strconv.Atoi(raw)
-	if err != nil || v < 1 {
-		return fallback
-	}
-	return v
 }

@@ -42,14 +42,14 @@ function ArrayEditor({ value, onChange, placeholder }: {
   };
 
   return (
-    <Space direction="vertical" style={{ width: '100%' }} size={8}>
+    <Space direction="vertical" className="w-full" size={8}>
       {value.map((item, i) => (
-        <Space.Compact key={i} style={{ width: '100%' }}>
+        <Space.Compact key={i} className="w-full">
           <Input
             value={item}
             onChange={(e) => updateItem(i, e.target.value)}
             placeholder={placeholder}
-            style={{ flex: 1 }}
+            className="flex-1"
           />
           <Button icon={<CloseOutlined />} onClick={() => removeItem(i)} />
         </Space.Compact>
@@ -67,14 +67,14 @@ function SectionCard({ title, description, children, actions }: {
 }) {
   return (
     <Card>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
+      <div className="flex justify-between items-start mb-4">
         <div>
-          <Text strong style={{ fontSize: 15 }}>{title}</Text>
-          {description && <div><Text type="secondary" style={{ fontSize: 13 }}>{description}</Text></div>}
+          <Text strong className="text-15px">{title}</Text>
+          {description && <div><Text type="secondary" className="text-13px">{description}</Text></div>}
         </div>
         {actions}
       </div>
-      <Space direction="vertical" style={{ width: '100%' }} size={16}>
+      <Space direction="vertical" className="w-full" size={16}>
         {children}
       </Space>
     </Card>
@@ -88,9 +88,9 @@ function FieldRow({ label, description, children }: {
 }) {
   return (
     <div>
-      <Text style={{ fontSize: 13, display: 'block', marginBottom: 4 }}>{label}</Text>
+      <Text className="form-label">{label}</Text>
       {children}
-      {description && <Text type="secondary" style={{ fontSize: 12 }}>{description}</Text>}
+      {description && <Text type="secondary" className="text-12px">{description}</Text>}
     </div>
   );
 }
@@ -102,10 +102,10 @@ function SwitchRow({ label, description, checked, onCheckedChange }: {
   onCheckedChange: (v: boolean) => void;
 }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 0' }}>
+    <div className="form-setting-row">
       <div>
-        <Text style={{ fontSize: 13 }}>{label}</Text>
-        {description && <div><Text type="secondary" style={{ fontSize: 12 }}>{description}</Text></div>}
+        <Text className="text-13px">{label}</Text>
+        {description && <div><Text type="secondary" className="text-12px">{description}</Text></div>}
       </div>
       <Switch checked={checked} onChange={onCheckedChange} />
     </div>
@@ -313,8 +313,8 @@ export default function Settings() {
   if (loading) {
     return (
       <DashboardLayout>
-        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', padding: 80 }}>
-          <Spin indicator={<LoadingOutlined style={{ fontSize: 32 }} />} />
+        <div className="centered-loading">
+          <Spin indicator={<LoadingOutlined className="text-32px" />} />
         </div>
       </DashboardLayout>
     );
@@ -322,10 +322,10 @@ export default function Settings() {
 
   return (
     <DashboardLayout>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+      <div className="flex flex-col gap-6">
         <div>
-          <Title level={4} style={{ margin: 0 }}>{t.settings.title}</Title>
-          <Text type="secondary" style={{ fontSize: 13 }}>{t.settings.description}</Text>
+          <Title level={4} className="m-0">{t.settings.title}</Title>
+          <Text type="secondary" className="text-13px">{t.settings.description}</Text>
         </div>
 
         <Tabs
@@ -335,7 +335,7 @@ export default function Settings() {
               key: 'grpc',
               label: t.settings.tabs.headscale,
               children: (
-                <Space direction="vertical" size={16} style={{ width: '100%' }}>
+                <Space direction="vertical" size={16} className="w-full">
                   <SectionCard
                     title={t.settings.headscaleConnection.title}
                     description={t.settings.headscaleConnection.description}
@@ -350,8 +350,8 @@ export default function Settings() {
                     </FieldRow>
 
                     <div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                        <Text style={{ fontSize: 13 }}>{t.settings.headscaleConnection.apiKeyLabel}</Text>
+                      <div className="flex justify-between items-center mb-1">
+                        <Text className="text-13px">{t.settings.headscaleConnection.apiKeyLabel}</Text>
                         <Space size={8}>
                           {hasApiKey && !showApiKeyInput && (
                             <Tag icon={<SafetyCertificateOutlined />} color="blue">{t.settings.headscaleConnection.apiKeyConfigured}</Tag>
@@ -368,7 +368,7 @@ export default function Settings() {
                           placeholder={hasApiKey ? t.settings.headscaleConnection.apiKeyKeepPlaceholder : t.settings.headscaleConnection.apiKeyPlaceholder}
                         />
                       )}
-                      <Text type="secondary" style={{ fontSize: 12 }}>{t.settings.headscaleConnection.apiKeyDesc}</Text>
+                      <Text type="secondary" className="text-12px">{t.settings.headscaleConnection.apiKeyDesc}</Text>
                     </div>
 
                     <SwitchRow
@@ -378,7 +378,7 @@ export default function Settings() {
                       onCheckedChange={setInsecure}
                     />
 
-                    <Space style={{ paddingTop: 8 }}>
+                    <Space className="pt-2">
                       <Button onClick={handleTestConnection} loading={testingConnection}>
                         {t.settings.headscaleConnection.testConnection}
                       </Button>
@@ -400,7 +400,7 @@ export default function Settings() {
               key: 'oidc',
               label: t.settings.tabs.oidc,
               children: (
-                <Space direction="vertical" size={16} style={{ width: '100%' }}>
+                <Space direction="vertical" size={16} className="w-full">
                   <SectionCard title={t.settings.oidcConfig.title} description={t.settings.oidcConfig.description}>
                     <SwitchRow
                       label={t.settings.oidcConfig.enableOidc}
@@ -411,8 +411,8 @@ export default function Settings() {
                     {oidcForm.enabled && (
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: 12, borderTop: `1px solid ${token.colorBorderSecondary}`, marginTop: 8 }}>
                         <div>
-                          <Text style={{ fontSize: 13 }}>{t.settings.oidcConfig.useBuiltinOidc}</Text>
-                          <div><Text type="secondary" style={{ fontSize: 12 }}>{t.settings.oidcConfig.useBuiltinOidcDesc}</Text></div>
+                          <Text className="text-13px">{t.settings.oidcConfig.useBuiltinOidc}</Text>
+                          <div><Text type="secondary" className="text-12px">{t.settings.oidcConfig.useBuiltinOidcDesc}</Text></div>
                         </div>
                         <Button
                           type={useBuiltinOidc ? 'primary' : 'default'}
@@ -428,10 +428,10 @@ export default function Settings() {
                   </SectionCard>
 
                   {oidcForm.enabled && (
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                    <div className="grid-2col">
                       <Card>
-                        <Text strong style={{ fontSize: 15, display: 'block', marginBottom: 16 }}>{t.settings.oidcConfig.settingsTitle}</Text>
-                        <Space direction="vertical" style={{ width: '100%' }} size={16}>
+                        <Text strong className="section-title-block">{t.settings.oidcConfig.settingsTitle}</Text>
+                        <Space direction="vertical" className="w-full" size={16}>
                           <FieldRow label={t.settings.oidcConfig.issuerLabel}>
                             <Input value={oidcForm.issuer} onChange={(e) => setOidcForm(prev => ({ ...prev, issuer: e.target.value }))} placeholder="https://auth.example.com" />
                           </FieldRow>
@@ -482,19 +482,19 @@ export default function Settings() {
                       </Card>
 
                       <Card style={{ position: 'sticky', top: 16, alignSelf: 'start' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-                          <Text strong style={{ fontSize: 15 }}>{t.settings.oidcConfig.previewTitle}</Text>
+                        <div className="flex justify-between items-center mb-4">
+                          <Text strong className="text-15px">{t.settings.oidcConfig.previewTitle}</Text>
                           <Button type="text" size="small" icon={previewCopied ? <CheckOutlined /> : <CopyOutlined />} onClick={handleCopyPreview}>
                             {previewCopied ? t.settings.oidcConfig.previewCopied : t.settings.oidcConfig.copyPreview}
                           </Button>
                         </div>
-                        <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 12 }}>{t.settings.oidcConfig.previewDesc}</Text>
+                        <Text type="secondary" className="text-12px block mb-3">{t.settings.oidcConfig.previewDesc}</Text>
                         <pre style={{
                           background: token.colorBgLayout,
                           borderRadius: token.borderRadius,
                           padding: 16,
                           fontSize: 12,
-                          fontFamily: 'monospace',
+                          fontFamily: 'var(--font-mono)',
                           maxHeight: 600,
                           overflow: 'auto',
                           whiteSpace: 'pre-wrap',

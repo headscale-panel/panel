@@ -9,13 +9,38 @@ import (
 
 type ConnectionController struct{}
 
-// GenerateConnectionCommands generates connection commands
-// POST /api/connection/generate
+// GenerateConnectionCommandsRequest is the request body for GenerateConnectionCommands.
+type GenerateConnectionCommandsRequest struct {
+	MachineIDs []string `json:"machine_ids" binding:"required"`
+	Platform   string   `json:"platform" binding:"required"`
+}
+
+// GenerateConnectionPreAuthKeyRequest is the request body for GeneratePreAuthKey.
+type GenerateConnectionPreAuthKeyRequest struct {
+	UserID     uint   `json:"user_id" binding:"required"`
+	Reusable   bool   `json:"reusable"`
+	Ephemeral  bool   `json:"ephemeral"`
+	Expiration string `json:"expiration"`
+}
+
+// GenerateSSHCommandRequest is the request body for GenerateSSHCommand.
+type GenerateSSHCommandRequest struct {
+	MachineID uint64 `json:"machine_id" binding:"required"`
+	User      string `json:"user"`
+}
+
+// GenerateConnectionCommands godoc
+// @Summary Generate connection commands
+// @Tags connection
+// @Accept json
+// @Produce json
+// @Param body body GenerateConnectionCommandsRequest true "Connection command parameters"
+// @Success 200 {object} serializer.Response{data=object} "commands object"
+// @Failure 400 {object} serializer.Response
+// @Security BearerAuth
+// @Router /connection/generate [post]
 func (c *ConnectionController) GenerateConnectionCommands(ctx *gin.Context) {
-	var req struct {
-		MachineIDs []string `json:"machine_ids" binding:"required"`
-		Platform   string   `json:"platform" binding:"required"`
-	}
+	var req GenerateConnectionCommandsRequest
 
 	if err := ctx.ShouldBindJSON(&req); err != nil {
 		serializer.Fail(ctx, serializer.ErrBind)
@@ -32,15 +57,18 @@ func (c *ConnectionController) GenerateConnectionCommands(ctx *gin.Context) {
 	serializer.Success(ctx, commands)
 }
 
-// GeneratePreAuthKey generates a pre-auth key
-// POST /api/connection/pre-auth-key
+// GeneratePreAuthKey godoc
+// @Summary Generate a pre-auth key
+// @Tags connection
+// @Accept json
+// @Produce json
+// @Param body body GenerateConnectionPreAuthKeyRequest true "Pre-auth key parameters"
+// @Success 200 {object} serializer.Response{data=object} "key string"
+// @Failure 400 {object} serializer.Response
+// @Security BearerAuth
+// @Router /connection/pre-auth-key [post]
 func (c *ConnectionController) GeneratePreAuthKey(ctx *gin.Context) {
-	var req struct {
-		UserID     uint   `json:"user_id" binding:"required"`
-		Reusable   bool   `json:"reusable"`
-		Ephemeral  bool   `json:"ephemeral"`
-		Expiration string `json:"expiration"`
-	}
+	var req GenerateConnectionPreAuthKeyRequest
 
 	if err := ctx.ShouldBindJSON(&req); err != nil {
 		serializer.Fail(ctx, serializer.ErrBind)
@@ -59,12 +87,18 @@ func (c *ConnectionController) GeneratePreAuthKey(ctx *gin.Context) {
 	})
 }
 
-// GenerateSSHCommand generates a single SSH command for a machine.
+// GenerateSSHCommand godoc
+// @Summary Generate an SSH command for a machine
+// @Tags connection
+// @Accept json
+// @Produce json
+// @Param body body GenerateSSHCommandRequest true "SSH command parameters"
+// @Success 200 {object} serializer.Response{data=object} "command string"
+// @Failure 400 {object} serializer.Response
+// @Security BearerAuth
+// @Router /connection/ssh-command [post]
 func (c *ConnectionController) GenerateSSHCommand(ctx *gin.Context) {
-	var req struct {
-		MachineID uint64 `json:"machine_id" binding:"required"`
-		User      string `json:"user"`
-	}
+	var req GenerateSSHCommandRequest
 
 	if err := ctx.ShouldBindJSON(&req); err != nil {
 		serializer.Fail(ctx, serializer.ErrBind)

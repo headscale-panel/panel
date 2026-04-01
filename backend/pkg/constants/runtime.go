@@ -4,7 +4,7 @@ import "time"
 
 const (
 	DefaultPage     = 1
-	DefaultPageSize = 20
+	DefaultPageSize = 10
 	MaxPageSize     = 200
 
 	SetupWindow = 30 * time.Minute

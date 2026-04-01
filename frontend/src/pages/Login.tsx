@@ -3,6 +3,7 @@ import { UserOutlined, LockOutlined, EyeInvisibleOutlined, EyeTwoTone, GlobalOut
 import { useTranslation, useI18n, availableLocales, locales } from '@/i18n/index';
 import { authAPI, publicAuthAPI } from '@/lib/api';
 import { useAuthStore } from '@/lib/store';
+import { UserRole } from '@/lib/enums';
 import { useState, useEffect, useCallback } from 'react';
 import { useLocation, useSearch } from 'wouter';
 import { message } from 'antd';
@@ -68,7 +69,7 @@ export default function Login() {
       id: u.id,
       username: u.username,
       email: u.email || '',
-      role: u.role === 'admin' || u.group?.name?.toLowerCase() === 'admin' ? 'admin' : 'user',
+      role: u.role === UserRole.Admin || u.group?.name?.toLowerCase() === UserRole.Admin ? UserRole.Admin : UserRole.User,
       headscale_name: u.headscale_name || u.username,
       display_name: u.display_name,
       permissions: data.permissions,
@@ -133,16 +134,16 @@ export default function Login() {
 
   if (oidcLoading) {
     return (
-      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <Spin indicator={<LoadingOutlined style={{ fontSize: 32 }} spin />} tip={t.login.redirecting} />
+      <div className="auth-page">
+        <Spin indicator={<LoadingOutlined className="text-32px" spin />} tip={t.login.redirecting} />
       </div>
     );
   }
 
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+    <div className="auth-page p-4">
       {/* Language Switcher */}
-      <div style={{ position: 'fixed', top: 16, right: 16 }}>
+      <div className="lang-switcher">
         <Space size={4}>
           <GlobalOutlined style={{ color: themeToken.colorTextSecondary }} />
           {availableLocales.map((code) => (
@@ -151,7 +152,7 @@ export default function Login() {
               type={locale === code ? 'link' : 'text'}
               size="small"
               onClick={() => setLocale(code)}
-              style={{ fontSize: 12 }}
+              className="text-12px"
             >
               {locales[code].label}
             </Button>
@@ -159,26 +160,26 @@ export default function Login() {
         </Space>
       </div>
 
-      <div style={{ width: '100%', maxWidth: 380 }}>
+      <div className="w-full max-w-95">
         {/* Logo & Title */}
-        <div style={{ textAlign: 'center', marginBottom: 32 }}>
+        <div className="text-center mb-8">
           <div style={{
             width: 48, height: 48, borderRadius: 12,
             background: themeToken.colorPrimary,
             display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
             marginBottom: 12,
           }}>
-            <SafetyCertificateOutlined style={{ fontSize: 28, color: '#fff' }} />
+            <SafetyCertificateOutlined className="text-28px text-white" />
           </div>
-          <Title level={4} style={{ marginBottom: 0 }}>Headscale Panel</Title>
+          <Title level={4} className="mb-0">Headscale Panel</Title>
         </div>
 
         {/* Login Card */}
         <Card>
           <form onSubmit={(e) => { e.preventDefault(); handleLogin(); }}>
-            <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+            <Space direction="vertical" size="middle" className="w-full">
               <div>
-                <Text style={{ fontSize: 13, marginBottom: 4, display: 'block' }}>{t.login.usernameLabel}</Text>
+                <Text className="form-label">{t.login.usernameLabel}</Text>
                 <Input
                   prefix={<UserOutlined />}
                   value={username}
@@ -191,7 +192,7 @@ export default function Login() {
               </div>
 
               <div>
-                <Text style={{ fontSize: 13, marginBottom: 4, display: 'block' }}>{t.login.passwordLabel}</Text>
+                <Text className="form-label">{t.login.passwordLabel}</Text>
                 <Input.Password
                   prefix={<LockOutlined />}
                   value={password}
@@ -211,7 +212,7 @@ export default function Login() {
 
           {oidcStatus?.enabled && (
             <>
-              <Divider plain style={{ fontSize: 12 }}>{t.login.or}</Divider>
+              <Divider plain className="text-12px">{t.login.or}</Divider>
               <Button block onClick={handleOIDCLogin} size="large">
                 {t.login.oidcLogin.replace('{provider}', oidcStatus.provider_name || 'OIDC')}
               </Button>

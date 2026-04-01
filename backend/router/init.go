@@ -13,6 +13,8 @@ import (
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+	swaggerFiles "github.com/swaggo/files"
+	ginSwagger "github.com/swaggo/gin-swagger"
 )
 
 func InitRouter() *gin.Engine {
@@ -37,6 +39,11 @@ func InitRouter() *gin.Engine {
 
 	oidcController := controllers.NewOIDCController()
 	r.GET("/.well-known/openid-configuration", oidcController.Discovery)
+
+	// Swagger UI (development only)
+	if !conf.Conf.System.Release {
+		r.GET("/panel/api/v1/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
+	}
 
 	api := r.Group("/panel/api/v1")
 	{

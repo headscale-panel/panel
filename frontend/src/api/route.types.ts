@@ -1,12 +1,18 @@
 export interface ListRoutesReq {
   page?: number;
   pageSize?: number;
+  all?: boolean;
   userId?: string;
-  machineId?: string;
+  machine_id?: string;
 }
 
 export interface RouteItem {
-  [key: string]: any;
+  id?: number;
+  machine_id?: number;
+  prefix?: string;
+  advertised?: boolean;
+  enabled?: boolean;
+  is_primary?: boolean;
 }
 
 export interface ListRoutesRes {
@@ -18,8 +24,9 @@ export interface ListRoutesRes {
 }
 
 export interface ToggleRouteReq {
-  machineId: number;
+  machine_id: number;
   destination: string;
 }
 
 export interface ToggleRouteRes {}
+

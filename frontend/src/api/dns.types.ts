@@ -1,16 +1,12 @@
-export interface DNSRecord {
-  id: number;
-  name: string;
-  type: 'A' | 'AAAA';
-  value: string;
-  comment?: string;
-  created_at?: string;
-  updated_at?: string;
-}
+import type { DNSRecord } from './entities';
+import { DNSRecordType } from '@/lib/enums';
+
+export type { DNSRecord };
 
 export interface ListDnsReq {
   page?: number;
   pageSize?: number;
+  all?: boolean;
   keyword?: string;
   type?: string;
 }
@@ -30,7 +26,7 @@ export type GetDnsRes = DNSRecord;
 
 export interface CreateDnsReq {
   name: string;
-  type: 'A' | 'AAAA';
+  type: DNSRecordType;
   value: string;
   comment?: string;
 }
@@ -39,7 +35,7 @@ export type CreateDnsRes = DNSRecord;
 export interface UpdateDnsReq {
   id: number;
   name?: string;
-  type?: 'A' | 'AAAA';
+  type?: DNSRecordType;
   value?: string;
   comment?: string;
 }
@@ -57,11 +53,9 @@ export interface SyncDnsRes {
 
 export interface ImportDnsReq {}
 export interface ImportDnsRes {
-  message: string;
-  imported: number;
+  message?: string;
 }
 
 export interface GetDnsFileReq {}
-export interface GetDnsFileRes {
-  [key: string]: any;
-}
+export type GetDnsFileRes = DNSRecord[];
+

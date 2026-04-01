@@ -1,5 +1,11 @@
 export interface GetDerpReq {}
 
+export interface DerpRelay {
+  hostname?: string;
+  ipv4?: string;
+  ipv6?: string;
+}
+
 export interface DerpServer {
   regionId: number;
   regionCode: string;
@@ -8,14 +14,11 @@ export interface DerpServer {
   ipv6?: string;
   hostname?: string;
   stun?: boolean;
-  relays?: Array<{
-    hostname?: string;
-    ipv4?: string;
-    ipv6?: string;
-  }>;
+  relays?: DerpRelay[];
 }
 
 export type GetDerpRes = {
   servers: DerpServer[];
   default?: number;
 };
+

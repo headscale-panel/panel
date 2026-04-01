@@ -111,7 +111,7 @@ export default function Sidebar({
         borderRight: `1px solid ${themeToken.colorBorderSecondary}`,
       }}
     >
-      <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      <div className="flex flex-col h-full">
       <div style={{
         height: 64,
         display: 'flex',
@@ -123,7 +123,7 @@ export default function Sidebar({
         {collapsed ? (
           <HomeOutlined style={{ fontSize: 24, color: themeToken.colorPrimary }} />
         ) : (
-          <Text strong style={{ fontSize: 18 }}>Headscale Panel</Text>
+          <Text strong className="text-18px">Headscale Panel</Text>
         )}
       </div>
 
@@ -132,7 +132,7 @@ export default function Sidebar({
         selectedKeys={[selectedKey]}
         items={menuItems}
         onClick={handleMenuClick}
-        style={{ borderRight: 0, flex: 1, overflow: 'auto', background: 'transparent' }}
+        className="border-r-0 flex-1 overflow-auto bg-transparent"
       />
 
       <div style={{
@@ -148,10 +148,10 @@ export default function Sidebar({
         </Avatar>
         {!collapsed && (
           <>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <Text strong ellipsis style={{ display: 'block', fontSize: 13 }}>{displayName}</Text>
+            <div className="flex-1 min-w-0">
+              <Text strong ellipsis className="text-13px block">{displayName}</Text>
               {user?.email && (
-                <Text type="secondary" ellipsis style={{ display: 'block', fontSize: 11 }}>{user.email}</Text>
+                <Text type="secondary" ellipsis className="text-11px block">{user.email}</Text>
               )}
             </div>
             <Button

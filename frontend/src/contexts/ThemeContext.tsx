@@ -2,12 +2,16 @@ import React, { createContext, useContext, useEffect, useState, useCallback } fr
 import { ConfigProvider, theme as antdTheme } from "antd";
 import zhCN from "antd/locale/zh_CN";
 import enUS from "antd/locale/en_US";
+import { ThemeMode } from "@/lib/enums";
+import { THEME_STORAGE_KEY } from "@/lib/storage-keys";
 
-type ThemeMode = "light" | "dark" | "system";
+const SYSTEM_SANS_FONT_FAMILY = "'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Source Han Sans SC', 'WenQuanYi Micro Hei', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
+
+type ResolvedTheme = ThemeMode.Light | ThemeMode.Dark;
 
 interface ThemeContextType {
   mode: ThemeMode;
-  resolvedTheme: "light" | "dark";
+  resolvedTheme: ResolvedTheme;
   setMode: (mode: ThemeMode) => void;
 }
 
@@ -19,32 +23,32 @@ interface ThemeProviderProps {
   locale?: string;
 }
 
-function getSystemTheme(): "light" | "dark" {
-  if (typeof window === "undefined") return "light";
-  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+function getSystemTheme(): ResolvedTheme {
+  if (typeof window === "undefined") return ThemeMode.Light;
+  return window.matchMedia("(prefers-color-scheme: dark)").matches ? ThemeMode.Dark : ThemeMode.Light;
 }
 
-function resolveTheme(mode: ThemeMode): "light" | "dark" {
-  if (mode === "system") return getSystemTheme();
+function resolveTheme(mode: ThemeMode): ResolvedTheme {
+  if (mode === ThemeMode.System) return getSystemTheme();
   return mode;
 }
 
-export function ThemeProvider({ children, defaultMode = "system", locale = "zh" }: ThemeProviderProps) {
+export function ThemeProvider({ children, defaultMode = ThemeMode.System, locale = "zh" }: ThemeProviderProps) {
   const [mode, setModeState] = useState<ThemeMode>(() => {
-    const stored = localStorage.getItem("theme") as ThemeMode | null;
-    if (stored && ["light", "dark", "system"].includes(stored)) {
+    const stored = localStorage.getItem(THEME_STORAGE_KEY) as ThemeMode | null;
+    if (stored && Object.values(ThemeMode).includes(stored)) {
       return stored;
     }
     return defaultMode;
   });
 
-  const [resolvedTheme, setResolvedTheme] = useState<"light" | "dark">(() =>
+  const [resolvedTheme, setResolvedTheme] = useState<ResolvedTheme>(() =>
     resolveTheme(mode)
   );
 
-  const applyTheme = useCallback((theme: "light" | "dark") => {
+  const applyTheme = useCallback((theme: ResolvedTheme) => {
     const root = document.documentElement;
-    if (theme === "dark") {
+    if (theme === ThemeMode.Dark) {
       root.classList.add("dark");
     } else {
       root.classList.remove("dark");
@@ -54,7 +58,7 @@ export function ThemeProvider({ children, defaultMode = "system", locale = "zh" 
 
   const setMode = useCallback((newMode: ThemeMode) => {
     setModeState(newMode);
-    localStorage.setItem("theme", newMode);
+    localStorage.setItem(THEME_STORAGE_KEY, newMode);
     applyTheme(resolveTheme(newMode));
   }, [applyTheme]);
 
@@ -63,16 +67,16 @@ export function ThemeProvider({ children, defaultMode = "system", locale = "zh" 
   }, [mode, applyTheme]);
 
   useEffect(() => {
-    if (mode !== "system") return;
+    if (mode !== ThemeMode.System) return;
     const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
     const handler = (e: MediaQueryListEvent) => {
-      applyTheme(e.matches ? "dark" : "light");
+      applyTheme(e.matches ? ThemeMode.Dark : ThemeMode.Light);
     };
     mediaQuery.addEventListener("change", handler);
     return () => mediaQuery.removeEventListener("change", handler);
   }, [mode, applyTheme]);
 
-  const isDark = resolvedTheme === "dark";
+  const isDark = resolvedTheme === ThemeMode.Dark;
   const antdLocale = locale === "zh" ? zhCN : enUS;
 
   return (
@@ -84,6 +88,7 @@ export function ThemeProvider({ children, defaultMode = "system", locale = "zh" 
           token: {
             colorPrimary: "#1677ff",
             borderRadius: 8,
+            fontFamily: SYSTEM_SANS_FONT_FAMILY,
           },
           components: {
             Layout: {
@@ -110,3 +115,5 @@ export function useTheme() {
   }
   return context;
 }
+
+export { ThemeMode };

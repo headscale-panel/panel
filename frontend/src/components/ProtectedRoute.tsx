@@ -4,6 +4,8 @@ import { useLocation } from 'wouter';
 import { useEffect, useRef, ReactNode } from 'react';
 import { redirectToLogin } from '@/lib/auth';
 import { getDefaultRouteForUser, hasAnyPermission } from '@/lib/permissions';
+import { UserRole } from '@/lib/enums';
+import { isArray } from 'radashi';
 
 interface ProtectedRouteProps {
   children: ReactNode;
@@ -21,7 +23,7 @@ export default function ProtectedRoute({
   const fetched = useRef(false);
   const pendingProfile =
     isAuthenticated &&
-    (!user || !Array.isArray(user.permissions) || !user.headscale_name);
+    (!user || !isArray(user.permissions) || !user.headscale_name);
 
   // Fetch fresh user info only when auth state lacks a persisted user profile.
   useEffect(() => {
@@ -30,7 +32,7 @@ export default function ProtectedRoute({
       authAPI.getUserInfo().then((data: any) => {
         if (data?.user) {
           const u = data.user;
-          const role = u.group?.name?.toLowerCase() === 'admin' ? 'admin' : 'user';
+          const role = u.group?.name?.toLowerCase() === UserRole.Admin ? UserRole.Admin : UserRole.User;
           updateUser({
             id: u.id,
             username: u.username,
@@ -59,7 +61,7 @@ export default function ProtectedRoute({
     }
 
     // Wait until user profile is loaded before applying admin redirect.
-    if (requireAdmin && user && user.role !== 'admin') {
+    if (requireAdmin && user && user.role !== UserRole.Admin) {
       setLocation(getDefaultRouteForUser(user));
       return;
     }
@@ -77,7 +79,7 @@ export default function ProtectedRoute({
     return null;
   }
 
-  if (requireAdmin && user?.role !== 'admin') {
+  if (requireAdmin && user?.role !== UserRole.Admin) {
     return null;
   }
 

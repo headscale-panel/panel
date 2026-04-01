@@ -1,20 +1,14 @@
+import type { User } from './entities';
+
 export interface LoginReq {
   username: string;
   password: string;
+  totp_code?: string;
 }
 
 export interface LoginRes {
   token: string;
-  user: {
-    id: number;
-    username: string;
-    email?: string;
-    role?: string;
-    headscale_name?: string;
-    display_name?: string;
-    avatar?: string;
-    permissions?: string[];
-  };
+  user: User;
 }
 
 export interface RegisterReq {
@@ -29,17 +23,18 @@ export interface RegisterRes {
 }
 
 export interface UserInfoReq {}
+export type UserInfoRes = User;
 
-export interface UserInfoRes {
-  id: number;
-  username: string;
-  email?: string;
-  role?: string;
-  headscale_name?: string;
-  display_name?: string;
-  avatar?: string;
-  permissions?: string[];
+export interface GenerateTOTPReq {}
+export interface GenerateTOTPRes {
+  secret: string;
+  qr_code?: string;
 }
+
+export interface EnableTOTPReq {
+  code: string;
+}
+export interface EnableTOTPRes {}
 
 export interface OidcCallbackReq {
   code: string;
@@ -48,11 +43,20 @@ export interface OidcCallbackReq {
 
 export interface OidcCallbackRes {
   token?: string;
-  user?: UserInfoRes;
+  user?: User;
 }
 
 export interface OidcStatusReq {}
 
 export interface OidcStatusRes {
   enabled: boolean;
+  builtin?: boolean;
+  provider_name?: string;
+  issuer?: string;
 }
+
+export interface OidcLoginReq {}
+export interface OidcLoginRes {
+  redirect_url: string;
+}
+

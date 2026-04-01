@@ -18,6 +18,9 @@ temp/
 bin/
 dist/
 build/
+
+# Generated Swagger docs (run: swag init -g main.go --output ./docs --parseDependency; go build -tags with_docs)
+docs/
 *.exe
 *.exe~
 *.dll

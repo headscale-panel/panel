@@ -8,6 +8,7 @@ import {
   systemUsersAPI,
   usersAPI,
 } from './api';
+import { isObject } from 'radashi';
 import {
   normalizeACLPolicy,
   normalizeDeviceListResponse,
@@ -20,14 +21,15 @@ import {
   normalizeSystemUsers,
   type OIDCFormValues,
 } from './normalizers';
+import { UserProvider } from './enums';
 
 export async function loadUsersPageData() {
   const [usersRes, groupsRes, policyRes, oidcStatusRes, onlineDevicesRes] = await Promise.all([
-    systemUsersAPI.list({ pageSize: 1000 }),
-    groupsAPI.list({ pageSize: 100 }),
+    systemUsersAPI.list({ all: true }),
+    groupsAPI.list({ all: true }),
     aclAPI.getPolicy().catch(() => null),
     panelSettingsAPI.getOIDCStatus().catch(() => null),
-    devicesAPI.list({ pageSize: 5000, status: 'online' }).catch(() => null),
+    devicesAPI.list({ all: true, status: 'online' }).catch(() => null),
   ]);
 
   const devices = normalizeDeviceListResponse(onlineDevicesRes).list;
@@ -35,8 +37,11 @@ export async function loadUsersPageData() {
     devices.filter((device) => device.online && device.user?.name).map((device) => device.user!.name)
   );
 
+  const users = normalizeSystemUsers(usersRes);
+
   return {
-    users: normalizeSystemUsers(usersRes),
+    users,
+    hsUsers: users.filter((u) => u.provider === UserProvider.Headscale),
     groups: normalizeGroups(groupsRes),
     aclPolicy: normalizeACLPolicy(policyRes),
     oidcStatus: normalizeOIDCStatus(oidcStatusRes),
@@ -47,9 +52,9 @@ export async function loadUsersPageData() {
 export async function loadACLPageData() {
   const [policyRes, devicesRes, resourcesRes, usersRes] = await Promise.all([
     aclAPI.getPolicy().catch(() => null),
-    devicesAPI.list({ page: 1, pageSize: 1000 }).catch(() => null),
-    resourcesAPI.list({ page: 1, pageSize: 1000 }).catch(() => null),
-    usersAPI.list({ page: 1, pageSize: 1000 }).catch(() => null),
+    devicesAPI.list({ all: true }).catch(() => null),
+    resourcesAPI.list({ all: true }).catch(() => null),
+    usersAPI.list({ all: true }).catch(() => null),
   ]);
 
   return {
@@ -75,7 +80,7 @@ export async function loadOIDCSettingsData(): Promise<{
   return {
     oidcForm: normalizeOIDCForm(saved, headscaleConfig),
     fullConfig:
-      typeof headscaleConfig === 'object' && headscaleConfig !== null
+      isObject(headscaleConfig)
         ? (headscaleConfig as unknown as Record<string, unknown>)
         : null,
   };

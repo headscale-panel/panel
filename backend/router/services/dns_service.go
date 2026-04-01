@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"headscale-panel/model"
 	"headscale-panel/pkg/conf"
-	"headscale-panel/pkg/constants"
 	"headscale-panel/pkg/utils/serializer"
 	"os"
 	"path/filepath"
@@ -40,10 +39,9 @@ type UpdateDNSRecordRequest struct {
 }
 
 type ListDNSRecordRequest struct {
-	Page     int    `form:"page,default=1"`
-	PageSize int    `form:"page_size,default=10"`
-	Keyword  string `form:"keyword"`
-	Type     string `form:"type"`
+	serializer.PaginationQuery
+	Keyword string `form:"keyword"`
+	Type    string `form:"type"`
 }
 
 // ExtraRecord 表示 Headscale extra-records.json 的记录格式
@@ -80,17 +78,6 @@ func (s *dnsService) Create(actorUserID uint, req *CreateDNSRecordRequest) (*mod
 func (s *dnsService) List(actorUserID uint, req *ListDNSRecordRequest) ([]model.DNSRecord, int64, error) {
 	if err := RequirePermission(actorUserID, "dns:record:list"); err != nil {
 		return nil, 0, err
-	}
-
-	// Normalize pagination parameters
-	if req.Page <= 0 {
-		req.Page = constants.DefaultPage
-	}
-	if req.PageSize <= 0 {
-		req.PageSize = constants.DefaultPageSize
-	}
-	if req.PageSize > constants.MaxPageSize {
-		req.PageSize = constants.MaxPageSize
 	}
 
 	// Reflect manual edits in extra-records.json only when the file has changed.

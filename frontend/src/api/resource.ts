@@ -15,7 +15,8 @@ export const resourceApi = {
     request.get<any, ListResourcesRes>('/resources', {
       params: {
         page: req?.page || 1,
-        page_size: req?.pageSize || 20,
+        page_size: req?.pageSize || 10,
+        all: req?.all ? 'true' : undefined,
         keyword: req?.keyword,
       },
     }),

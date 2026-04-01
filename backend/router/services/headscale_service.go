@@ -191,7 +191,10 @@ func (s *headscaleService) ListMachinesWithContext(ctx context.Context, actorUse
 
 	total := int64(len(allMachines))
 
-	// Paginate
+	// Paginate (pageSize < 0 means return all)
+	if pageSize < 0 {
+		return allMachines, total, nil
+	}
 	start := (page - 1) * pageSize
 	if start >= len(allMachines) {
 		return []HeadscaleMachine{}, total, nil

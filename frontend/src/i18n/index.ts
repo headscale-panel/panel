@@ -12,6 +12,7 @@
 import { createContext, useContext } from 'react';
 import zh from './locales/zh';
 import en from './locales/en';
+import { LOCALE_STORAGE_KEY } from '@/lib/storage-keys';
 
 // ── Types ──────────────────────────────────────────────
 
@@ -66,7 +67,7 @@ export function useTranslation(): Translations {
  * Reads the current locale from localStorage.
  */
 export function getTranslations(): Translations {
-  const stored = typeof window !== 'undefined' ? localStorage.getItem('locale') : null;
+  const stored = typeof window !== 'undefined' ? localStorage.getItem(LOCALE_STORAGE_KEY) : null;
   const code = stored && locales[stored] ? stored : defaultLocale;
   return locales[code].translations;
 }

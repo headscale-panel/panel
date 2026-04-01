@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useTranslation } from '@/i18n/index';
 import { dnsAPI, DNSRecord } from '@/lib/api';
+import RecordModal from '@/components/dns/RecordModal';
 import DashboardLayout from '@/components/DashboardLayout';
+import PageHeaderStatCards from '@/components/PageHeaderStatCards';
 import { Button, Card, Input, Modal, Select, Space, Table, Tag, Typography, message, theme } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined, DownloadOutlined, UploadOutlined, SaveOutlined, ReloadOutlined, SearchOutlined, GlobalOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
@@ -13,19 +15,13 @@ export default function DNS() {
   const t = useTranslation();
   theme.useToken();
   const [page, setPage] = useState(1);
-  const pageSize = 50;
+  const [pageSize, setPageSize] = useState(10);
   const [keyword, setKeyword] = useState('');
   const [typeFilter, setTypeFilter] = useState<string>('');
 
   const [showDialog, setShowDialog] = useState(false);
   const [editingRecord, setEditingRecord] = useState<DNSRecord | null>(null);
 
-  const [formData, setFormData] = useState({
-    name: '',
-    type: 'A' as 'A' | 'AAAA',
-    value: '',
-    comment: '',
-  });
   const [importing, setImporting] = useState(false);
   const [hasTriedAutoImport, setHasTriedAutoImport] = useState(false);
 
@@ -72,30 +68,12 @@ export default function DNS() {
 
   const handleCreate = () => {
     setEditingRecord(null);
-    setFormData({ name: '', type: 'A', value: '', comment: '' });
     setShowDialog(true);
   };
 
   const handleEdit = (record: DNSRecord) => {
     setEditingRecord(record);
-    setFormData({ name: record.name, type: record.type, value: record.value, comment: record.comment || '' });
     setShowDialog(true);
-  };
-
-  const handleSubmit = async () => {
-    try {
-      if (editingRecord) {
-        await dnsAPI.update({ id: editingRecord.id, ...formData });
-        message.success(t.dns.recordUpdated);
-      } else {
-        await dnsAPI.create(formData);
-        message.success(t.dns.recordCreated);
-      }
-      setShowDialog(false);
-      refresh();
-    } catch (error: any) {
-      message.error(error.message || t.common.errors.operationFailed);
-    }
   };
 
   const handleDelete = (record: DNSRecord) => {
@@ -150,23 +128,13 @@ export default function DNS() {
     }
   };
 
-  const validateIPv4 = (ip: string) => /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/.test(ip);
-  const validateIPv6 = (ip: string) => /^(([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|:((:[0-9a-fA-F]{1,4}){1,7}|:))$/.test(ip);
-
-  const isFormValid = () => {
-    if (!formData.name || !formData.value) return false;
-    if (formData.type === 'A' && !validateIPv4(formData.value)) return false;
-    if (formData.type === 'AAAA' && !validateIPv6(formData.value)) return false;
-    return true;
-  };
-
   const columns: ColumnsType<DNSRecord> = [
-    { title: t.dns.tableDomain, dataIndex: 'name', key: 'name', render: (v: string) => <Text style={{ fontFamily: 'monospace' }}>{v}</Text> },
+    { title: t.dns.tableDomain, dataIndex: 'name', key: 'name', render: (v: string) => <Text className="mono-text">{v}</Text> },
     {
       title: t.dns.tableType, dataIndex: 'type', key: 'type', width: 100,
       render: (v: string) => <Tag color={v === 'A' ? 'blue' : 'purple'}>{v}</Tag>,
     },
-    { title: t.dns.tableIp, dataIndex: 'value', key: 'value', render: (v: string) => <Text style={{ fontFamily: 'monospace' }}>{v}</Text> },
+    { title: t.dns.tableIp, dataIndex: 'value', key: 'value', render: (v: string) => <Text className="mono-text">{v}</Text> },
     { title: t.dns.tableComment, dataIndex: 'comment', key: 'comment', render: (v: string) => <Text type="secondary">{v || '-'}</Text> },
     {
       title: t.dns.tableActions, key: 'actions', width: 100, align: 'right',
@@ -181,14 +149,14 @@ export default function DNS() {
 
   return (
     <DashboardLayout>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+      <div className="app-page-stack">
         {/* Header */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+        <div className="page-header-row">
           <div>
-            <Title level={4} style={{ margin: 0 }}><GlobalOutlined style={{ marginRight: 8 }} />{t.dns.title}</Title>
+            <Title level={4} className="page-title-with-icon"><GlobalOutlined />{t.dns.title}</Title>
             <Text type="secondary">{t.dns.description}</Text>
           </div>
-          <Space wrap>
+          <Space wrap className="header-actions-wrap">
             <Button icon={<UploadOutlined />} onClick={() => handleImportFromFile(false)} loading={importing}>{importing ? t.dns.importing : t.dns.importFromFile}</Button>
             <Button icon={<DownloadOutlined />} onClick={handleExportJson}>{t.dns.exportJson}</Button>
             <Button icon={<SaveOutlined />} onClick={handleApply}>{t.dns.applyConfig}</Button>
@@ -197,30 +165,19 @@ export default function DNS() {
         </div>
 
         {/* Stats */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 12 }}>
-          {[
-            { label: t.dns.totalRecords, value: total, icon: <GlobalOutlined style={{ fontSize: 28, color: '#1677ff' }} />, watermark: 'DNS' },
-            { label: t.dns.aRecords, value: records.filter(r => r.type === 'A').length, icon: <GlobalOutlined style={{ fontSize: 28, color: '#52c41a' }} />, watermark: 'A' },
-            { label: t.dns.aaaaRecords, value: records.filter(r => r.type === 'AAAA').length, icon: <GlobalOutlined style={{ fontSize: 28, color: '#722ed1' }} />, watermark: 'AAAA' },
-          ].map((stat, i) => (
-            <Card key={i} size="small" style={{ padding: 4, position: 'relative', overflow: 'hidden' }}>
-              <div style={{ position: 'absolute', right: 8, bottom: -4, fontSize: 48, fontWeight: 900, opacity: 0.04, letterSpacing: -2, lineHeight: 1, pointerEvents: 'none', userSelect: 'none' }}>{stat.watermark}</div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'relative' }}>
-                <div>
-                  <Text type="secondary" style={{ fontSize: 13 }}>{stat.label}</Text>
-                  <div style={{ fontSize: 24, fontWeight: 700, marginTop: 4 }}>{stat.value}</div>
-                </div>
-                {stat.icon}
-              </div>
-            </Card>
-          ))}
-        </div>
+        <PageHeaderStatCards
+          items={[
+            { label: t.dns.totalRecords, value: total, icon: <GlobalOutlined className="stat-icon-primary" />, watermark: 'DNS' },
+            { label: t.dns.aRecords, value: records.filter(r => r.type === 'A').length, icon: <GlobalOutlined className="stat-icon-success" />, watermark: 'A' },
+            { label: t.dns.aaaaRecords, value: records.filter(r => r.type === 'AAAA').length, icon: <GlobalOutlined className="stat-icon-accent" />, watermark: 'AAAA' },
+          ]}
+        />
 
         {/* Records Table */}
         <Card title={t.dns.recordListTitle} extra={<Text type="secondary">{t.dns.recordListDesc}</Text>}>
-          <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
-            <Input prefix={<SearchOutlined />} placeholder={t.dns.searchPlaceholder} value={keyword} onChange={(e) => setKeyword(e.target.value)} style={{ flex: 1, minWidth: 200, maxWidth: 360 }} allowClear />
-            <Select value={typeFilter || 'all'} onChange={(v) => setTypeFilter(v === 'all' ? '' : v)} style={{ width: 130 }}
+          <div className="table-filter-row">
+            <Input prefix={<SearchOutlined />} placeholder={t.dns.searchPlaceholder} value={keyword} onChange={(e) => setKeyword(e.target.value)} className="table-search-input" allowClear />
+            <Select value={typeFilter || 'all'} onChange={(v) => setTypeFilter(v === 'all' ? '' : v)} className="select-fixed-sm"
               options={[{ value: 'all', label: t.dns.allTypes }, { value: 'A', label: 'A' }, { value: 'AAAA', label: 'AAAA' }]}
             />
             <Button icon={<ReloadOutlined />} onClick={refresh} />
@@ -231,50 +188,25 @@ export default function DNS() {
             dataSource={records}
             rowKey="id"
             loading={loading}
-            pagination={total > pageSize ? {
+            pagination={{
               current: page,
               pageSize,
               total,
-              onChange: setPage,
+              onChange: (p, ps) => { setPage(p); setPageSize(ps); },
+              showSizeChanger: true,
+              pageSizeOptions: [10, 20, 50, 100],
               showTotal: (t) => `${t} records`,
-            } : false}
+            }}
             locale={{ emptyText: t.dns.noData }}
           />
         </Card>
 
-        {/* Create/Edit Modal */}
-        <Modal
-          title={editingRecord ? t.dns.editRecordTitle : t.dns.addRecordTitle}
+        <RecordModal
           open={showDialog}
+          editingRecord={editingRecord}
           onCancel={() => setShowDialog(false)}
-          onOk={handleSubmit}
-          okText={editingRecord ? t.common.actions.save : t.common.actions.create}
-          cancelText={t.common.actions.cancel}
-          okButtonProps={{ disabled: !isFormValid() }}
-        >
-          <Space direction="vertical" size="middle" style={{ width: '100%', marginTop: 16 }}>
-            <div>
-              <Text style={{ fontSize: 13, display: 'block', marginBottom: 4 }}>{t.dns.domainLabel}</Text>
-              <Input placeholder={t.dns.domainPlaceholder} value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} />
-            </div>
-            <div>
-              <Text style={{ fontSize: 13, display: 'block', marginBottom: 4 }}>{t.dns.typeLabel}</Text>
-              <Select value={formData.type} onChange={(v: 'A' | 'AAAA') => setFormData({ ...formData, type: v })} style={{ width: '100%' }}
-                options={[{ value: 'A', label: 'A (IPv4)' }, { value: 'AAAA', label: 'AAAA (IPv6)' }]}
-              />
-            </div>
-            <div>
-              <Text style={{ fontSize: 13, display: 'block', marginBottom: 4 }}>{t.dns.ipLabel}</Text>
-              <Input placeholder={formData.type === 'A' ? '192.168.1.100' : '2001:db8::1'} value={formData.value} onChange={(e) => setFormData({ ...formData, value: e.target.value })} />
-              {formData.value && formData.type === 'A' && !validateIPv4(formData.value) && <Text type="danger" style={{ fontSize: 12 }}>{t.dns.invalidIpv4}</Text>}
-              {formData.value && formData.type === 'AAAA' && !validateIPv6(formData.value) && <Text type="danger" style={{ fontSize: 12 }}>{t.dns.invalidIpv6}</Text>}
-            </div>
-            <div>
-              <Text style={{ fontSize: 13, display: 'block', marginBottom: 4 }}>{t.dns.commentLabel}</Text>
-              <Input placeholder={t.dns.commentPlaceholder} value={formData.comment} onChange={(e) => setFormData({ ...formData, comment: e.target.value })} />
-            </div>
-          </Space>
-        </Modal>
+          onSuccess={() => { setShowDialog(false); refresh(); }}
+        />
       </div>
     </DashboardLayout>
   );

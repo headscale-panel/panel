@@ -8,6 +8,15 @@ import {
 } from '@ant-design/icons';
 import { useCallback, useEffect, useRef, useState, useMemo } from 'react';
 import { useTranslation } from '@/i18n/index';
+import { ACLAction } from '@/lib/enums';
+
+enum DeviceType {
+  Laptop = 'laptop',
+  Phone = 'phone',
+  Desktop = 'desktop',
+  Tablet = 'tablet',
+  Server = 'server',
+}
 
 const { Text } = Typography;
 
@@ -26,7 +35,7 @@ const USER_COLORS = [
 interface Device {
   id: string;
   name: string;
-  type: 'laptop' | 'phone' | 'desktop' | 'tablet' | 'server';
+  type: DeviceType;
   ip: string;
   online: boolean;
   userId: string;
@@ -45,7 +54,7 @@ interface User {
 interface ACLRule {
   src: string;
   dst: string;
-  action: 'accept' | 'deny';
+  action: ACLAction;
 }
 
 interface ACLPolicy {
@@ -79,7 +88,7 @@ interface NetworkTopologyProps {
     acl: Array<{
       src: string;
       dst: string;
-      action: 'accept' | 'deny';
+      action: ACLAction;
     }>;
     policy?: {
       groups?: Record<string, string[]>;
@@ -93,18 +102,18 @@ interface NetworkTopologyProps {
 const inferDeviceType = (name: string): Device['type'] => {
   const lowerName = name.toLowerCase();
   if (lowerName.includes('iphone') || lowerName.includes('android') || lowerName.includes('phone') || lowerName.includes('pixel') || lowerName.includes('mobile')) {
-    return 'phone';
+    return DeviceType.Phone;
   }
   if (lowerName.includes('ipad') || lowerName.includes('tablet') || lowerName.includes('surface') || lowerName.includes('pad')) {
-    return 'tablet';
+    return DeviceType.Tablet;
   }
   if (lowerName.includes('macbook') || lowerName.includes('laptop') || lowerName.includes('thinkpad') || lowerName.includes('thinkbook') || lowerName.includes('notebook') || lowerName.includes('mba')) {
-    return 'laptop';
+    return DeviceType.Laptop;
   }
   if (lowerName.includes('server') || lowerName.includes('nas') || lowerName.includes('raspberry') || lowerName.includes('pi') || lowerName.includes('vault') || lowerName.includes('kvm') || lowerName.includes('openwrt') || lowerName.includes('cloud') || lowerName.includes('dev')) {
-    return 'server';
+    return DeviceType.Server;
   }
-  return 'desktop';
+  return DeviceType.Desktop;
 };
 
 export default function NetworkTopology({ data, deviceStatuses }: NetworkTopologyProps) {
@@ -589,7 +598,7 @@ export default function NetworkTopology({ data, deviceStatuses }: NetworkTopolog
     const allowed = new Map<string, Set<string>>();
     
     topologyData.acl.forEach(rule => {
-      if (rule.action === 'accept') {
+      if (rule.action === ACLAction.Accept) {
         if (!allowed.has(rule.src)) allowed.set(rule.src, new Set());
         allowed.get(rule.src)!.add(rule.dst);
       }
@@ -1036,12 +1045,12 @@ export default function NetworkTopology({ data, deviceStatuses }: NetworkTopolog
 
   if (!topologyData) {
     return (
-      <Card style={{ position: 'relative', overflow: 'hidden' }}>
-        <div ref={containerRef} style={{ position: 'relative', width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', height: 500 }}>
+      <Card className="relative overflow-hidden">
+        <div ref={containerRef} className="relative w-full flex items-center justify-center h-500px">
           <div style={{ textAlign: 'center', color: token.colorTextSecondary }}>
-            <ExclamationCircleOutlined style={{ fontSize: 48, opacity: 0.5, display: 'block', margin: '0 auto 16px' }} />
-            <p style={{ fontSize: 18, fontWeight: 500 }}>{t.topology.noData}</p>
-            <p style={{ fontSize: 14 }}>{t.topology.waitForData}</p>
+            <ExclamationCircleOutlined className="text-48px opacity-50 block mx-auto mb-4" />
+            <p className="text-18px font-500">{t.topology.noData}</p>
+            <p className="text-14px">{t.topology.waitForData}</p>
           </div>
         </div>
       </Card>
@@ -1049,7 +1058,7 @@ export default function NetworkTopology({ data, deviceStatuses }: NetworkTopolog
   }
 
   return (
-    <Card style={{ position: 'relative', overflow: 'hidden' }} styles={{ body: { padding: 0 } }}>
+    <Card className="relative overflow-hidden" styles={{ body: { padding: 0 } }}>
       {/* Controls */}
       <div style={{ position: 'absolute', top: 12, left: 12, zIndex: 30, display: 'flex', gap: 4 }}>
         <Button size="small" icon={<ZoomInOutlined />} onClick={() => setZoom(z => Math.min(z + 0.15, 2.5))} />
@@ -1089,9 +1098,9 @@ export default function NetworkTopology({ data, deviceStatuses }: NetworkTopolog
             {/* Server Node */}
             {nodePositions['server'] && (
               <div style={{ position: 'absolute', transform: 'translate(-50%, -50%)', zIndex: 20, left: nodePositions['server'].x, top: nodePositions['server'].y }}>
-                <div style={{ position: 'relative', cursor: 'pointer' }}>
+                <div className="relative cursor-pointer">
                   <div style={{ position: 'absolute', inset: -16, background: 'linear-gradient(to right, rgba(96,165,250,0.25), rgba(59,130,246,0.35), rgba(96,165,250,0.25))', filter: 'blur(16px)', borderRadius: '50%' }} />
-                  <div style={{ position: 'relative', width: 56, height: 40, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <div className="relative w-14 h-10 flex items-center justify-center">
                     <svg viewBox="0 0 120 70" style={{ width: '100%', height: '100%', filter: 'drop-shadow(0 3px 10px rgba(0, 102, 255, 0.35))' }}>
                       <defs>
                         <linearGradient id="cloudGradient" x1="0%" y1="0%" x2="100%" y2="100%">
@@ -1146,7 +1155,7 @@ export default function NetworkTopology({ data, deviceStatuses }: NetworkTopolog
                     onMouseEnter={() => setHoveredNode(user.id)}
                     onMouseLeave={() => setHoveredNode(null)}
                   >
-                    <div style={{ position: 'relative' }}>
+                    <div className="relative">
                       <div style={{
                         width: nodeSize.user, height: nodeSize.user, borderRadius: '50%',
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -1227,14 +1236,14 @@ export default function NetworkTopology({ data, deviceStatuses }: NetworkTopolog
                         background: device.online ? '#52c41a' : '#999',
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                       }}>
-                        {device.online && <WifiOutlined style={{ fontSize: 5, color: '#fff' }} />}
+                        {device.online && <WifiOutlined className="text-5px text-white" />}
                       </div>
                     </div>
                     <div style={{ position: 'absolute', bottom: -28, left: '50%', transform: 'translateX(-50%)', textAlign: 'center', whiteSpace: 'nowrap' }}>
                       <p style={{ fontSize: 8, fontWeight: 500, lineHeight: 1.2, color: device.online ? token.colorText : token.colorTextSecondary }}>
                         {device.name.length > 10 ? device.name.slice(0, 10) + '...' : device.name}
                       </p>
-                      <p style={{ fontSize: 7, color: token.colorTextSecondary, fontFamily: 'monospace' }}>{device.ip}</p>
+                      <p style={{ fontSize: 7, color: token.colorTextSecondary, fontFamily: 'var(--font-mono)' }}>{device.ip}</p>
                     </div>
                   </div>
                 </div>
@@ -1246,19 +1255,19 @@ export default function NetworkTopology({ data, deviceStatuses }: NetworkTopolog
         {/* Legend */}
         <div style={{ position: 'absolute', bottom: 8, left: 8, background: token.colorBgElevated, borderRadius: 8, padding: 8, boxShadow: '0 1px 3px rgba(0,0,0,0.1)', border: `1px solid ${token.colorBorderSecondary}`, zIndex: 30 }}>
           <p style={{ fontSize: 8, fontWeight: 600, color: token.colorTextSecondary, marginBottom: 4 }}>{t.topology.legend}</p>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 8 }}><div style={{ width: 8, height: 8, borderRadius: '50%', background: '#52c41a' }} /><span style={{ color: token.colorTextSecondary }}>{t.common.status.online}</span></div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 8 }}><div style={{ width: 8, height: 8, borderRadius: '50%', background: '#999' }} /><span style={{ color: token.colorTextSecondary }}>{t.common.status.offline}</span></div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 8 }}><div style={{ width: 16, height: 2, background: '#52c41a', borderRadius: 2 }} /><span style={{ color: token.colorTextSecondary }}>{t.topology.accessiblePath}</span></div>
+          <div className="flex flex-col gap-0.5">
+            <div className="flex items-center gap-1 text-8px"><div style={{ width: 8, height: 8, borderRadius: '50%', background: '#52c41a' }} /><span style={{ color: token.colorTextSecondary }}>{t.common.status.online}</span></div>
+            <div className="flex items-center gap-1 text-8px"><div style={{ width: 8, height: 8, borderRadius: '50%', background: '#999' }} /><span style={{ color: token.colorTextSecondary }}>{t.common.status.offline}</span></div>
+            <div className="flex items-center gap-1 text-8px"><div style={{ width: 16, height: 2, background: '#52c41a', borderRadius: 2 }} /><span style={{ color: token.colorTextSecondary }}>{t.topology.accessiblePath}</span></div>
           </div>
           {topologyData.users.length > 0 && (
             <div style={{ marginTop: 6, paddingTop: 4, borderTop: `1px solid ${token.colorBorderSecondary}` }}>
               <p style={{ fontSize: 7, color: token.colorTextSecondary, marginBottom: 2 }}>{t.topology.userColors}</p>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+              <div className="flex flex-wrap gap-1">
                 {topologyData.users.slice(0, 6).map((user, idx) => {
                   const color = USER_COLORS[idx % USER_COLORS.length];
                   return (
-                    <div key={user.id} style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                    <div key={user.id} className="flex items-center gap-0.5">
                       <div style={{ width: 8, height: 8, borderRadius: '50%', background: color.gradient }} />
                       <span style={{ fontSize: 7, color: token.colorTextSecondary }}>{user.name.slice(0, 3)}</span>
                     </div>
@@ -1274,13 +1283,13 @@ export default function NetworkTopology({ data, deviceStatuses }: NetworkTopolog
         <div style={{ position: 'absolute', bottom: 8, right: 8, background: token.colorBgElevated, borderRadius: 8, padding: '4px 8px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', border: `1px solid ${token.colorBorderSecondary}`, zIndex: 30 }}>
           <p style={{ fontSize: 8, color: token.colorTextSecondary, fontWeight: 500 }}>
             {topologyData.users.length} {t.topology.usersLabel} · {visibleDevices.length}/{topologyData.devices.length} {t.topology.devicesLabel} · {visibleDevices.filter(d => d.online).length} {t.common.status.online}
-            {hideOfflineDevices && <span style={{ color: '#faad14', marginLeft: 4 }}>({t.topology.onlineOnly})</span>}
+            {hideOfflineDevices && <span className="text-#faad14 ml-1">({t.topology.onlineOnly})</span>}
           </p>
         </div>
 
         {/* Instructions */}
         <div style={{ position: 'absolute', top: 8, right: 8, background: token.colorBgElevated, borderRadius: 8, padding: '4px 8px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', border: `1px solid ${token.colorBorderSecondary}`, zIndex: 30 }}>
-          <p style={{ fontSize: 8, color: token.colorTextSecondary, display: 'flex', alignItems: 'center', gap: 4 }}><DragOutlined style={{ fontSize: 12 }} /> {t.topology.instructions}</p>
+          <p style={{ fontSize: 8, color: token.colorTextSecondary, display: 'flex', alignItems: 'center', gap: 4 }}><DragOutlined className="text-12px" /> {t.topology.instructions}</p>
         </div>
       </div>
 
@@ -1290,7 +1299,7 @@ export default function NetworkTopology({ data, deviceStatuses }: NetworkTopolog
         onClose={() => setSelectedDevice(null)}
         title={
           selectedDevice ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div className="flex items-center gap-3">
               <div style={{
                 width: 40, height: 40, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
                 background: selectedDevice.online ? token.colorPrimaryBg : token.colorBgLayout,
@@ -1299,8 +1308,8 @@ export default function NetworkTopology({ data, deviceStatuses }: NetworkTopolog
                 <DeviceIcon type={selectedDevice.type} online={selectedDevice.online} size={22} />
               </div>
               <div>
-                <div style={{ fontSize: 16, fontWeight: 600 }}>{selectedDevice.name}</div>
-                <Text type="secondary" style={{ fontFamily: 'monospace', fontSize: 13 }}>{selectedDevice.ip}</Text>
+                <div className="text-16px font-600">{selectedDevice.name}</div>
+                <Text type="secondary" className="mono-cell">{selectedDevice.ip}</Text>
               </div>
             </div>
           ) : null
@@ -1308,17 +1317,17 @@ export default function NetworkTopology({ data, deviceStatuses }: NetworkTopolog
         width={400}
       >
         {selectedDevice && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div className="flex flex-col gap-4">
+            <div className="flex justify-between items-center">
               <Text type="secondary">{t.topology.status}</Text>
               <Tag color={selectedDevice.online ? 'success' : 'default'}>{selectedDevice.online ? t.common.status.online : t.common.status.offline}</Tag>
             </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div className="flex justify-between items-center">
               <Text type="secondary">{t.topology.belongsToUser}</Text>
               <Text strong>{selectedDevice.userName || selectedDevice.userId}</Text>
             </div>
             {selectedDevice.lastSeen && (
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div className="flex justify-between items-center">
                 <Text type="secondary">{t.topology.lastOnline}</Text>
                 <Text>{new Date(selectedDevice.lastSeen).toLocaleString('zh-CN')}</Text>
               </div>
@@ -1327,12 +1336,12 @@ export default function NetworkTopology({ data, deviceStatuses }: NetworkTopolog
             <div style={{ height: 1, background: token.colorBorderSecondary }} />
 
             <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+              <div className="flex items-center gap-2 mb-2">
                 <Text strong>{t.topology.aclPermissions}</Text>
                 <Tag>{getDeviceACL(selectedDevice.id).allowed.length} {t.topology.allow} / {getDeviceACL(selectedDevice.id).denied.length} {t.topology.deny}</Tag>
               </div>
-              <div style={{ maxHeight: 240, overflow: 'auto', paddingRight: 4 }}>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div className="max-h-60 overflow-auto pr-1">
+                <div className="flex flex-col gap-3">
                   {Object.entries(getACLSortedDevices()).map(([userName, devices]) => (
                     <div key={userName}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 6, fontSize: 12, color: token.colorTextSecondary }}>
@@ -1340,7 +1349,7 @@ export default function NetworkTopology({ data, deviceStatuses }: NetworkTopolog
                         {userName}
                         <span style={{ fontSize: 9, color: token.colorTextQuaternary }}>({devices.length})</span>
                       </div>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginLeft: 8 }}>
+                      <div className="flex flex-col gap-1 ml-2">
                         {devices.map(({ device, canAccessTo }) => (
                           <div key={device.id} style={{
                             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -1348,16 +1357,16 @@ export default function NetworkTopology({ data, deviceStatuses }: NetworkTopolog
                             background: canAccessTo ? 'rgba(82,196,26,0.06)' : 'rgba(255,77,79,0.06)',
                             border: `1px solid ${canAccessTo ? 'rgba(82,196,26,0.2)' : 'rgba(255,77,79,0.2)'}`,
                           }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <div className="flex items-center gap-1.5">
                               <div style={{ width: 24, height: 24, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: device.online ? token.colorBgContainer : token.colorBgLayout }}>
                                 <DeviceIcon type={device.type} online={device.online} size={13} />
                               </div>
                               <div>
-                                <div style={{ fontSize: 10, fontWeight: 500 }}>{device.name}</div>
-                                <div style={{ fontSize: 9, color: token.colorTextSecondary, fontFamily: 'monospace' }}>{device.ip}</div>
+                                <div className="text-10px font-500">{device.name}</div>
+                                <div style={{ fontSize: 9, color: token.colorTextSecondary, fontFamily: 'var(--font-mono)' }}>{device.ip}</div>
                               </div>
                             </div>
-                            <Tag color={canAccessTo ? 'success' : 'error'} style={{ fontSize: 9, margin: 0, padding: '0 4px' }}>{canAccessTo ? t.topology.allow : t.topology.deny}</Tag>
+                            <Tag color={canAccessTo ? 'success' : 'error'} className="text-9px m-0 px-1">{canAccessTo ? t.topology.allow : t.topology.deny}</Tag>
                           </div>
                         ))}
                       </div>
@@ -1370,8 +1379,8 @@ export default function NetworkTopology({ data, deviceStatuses }: NetworkTopolog
             <div style={{ height: 1, background: token.colorBorderSecondary }} />
 
             <div>
-              <Text strong style={{ display: 'block', marginBottom: 6 }}>{t.topology.quickActions}</Text>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <Text strong className="block mb-1.5">{t.topology.quickActions}</Text>
+              <div className="flex flex-col gap-1.5">
                 <Button block size="small" icon={<CodeOutlined />} onClick={() => copyToClipboard(`ssh root@${selectedDevice.ip}`)}>
                   {t.topology.copySSH}
                 </Button>

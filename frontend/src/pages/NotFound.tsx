@@ -6,7 +6,7 @@ export default function NotFound() {
   const [, setLocation] = useLocation();
 
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+    <div className="auth-page">
       <Result
         status="404"
         title="404"

@@ -29,7 +29,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   };
 
   return (
-    <Layout style={{ minHeight: '100vh' }}>
+    <Layout className="min-h-screen">
       {isMobile ? (
         <Drawer
           placement="left"
@@ -51,7 +51,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
 
       <Layout style={{ marginLeft: isMobile ? 0 : (sidebarCollapsed ? SIDEBAR_COLLAPSED_WIDTH : SIDEBAR_WIDTH), transition: 'margin-left 0.2s' }}>
         <Header onMenuClick={handleMenuClick} />
-        <Content style={{ padding: 24 }}>
+        <Content className="p-6">
           <PageTransition>{children}</PageTransition>
         </Content>
       </Layout>

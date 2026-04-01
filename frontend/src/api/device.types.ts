@@ -1,16 +1,17 @@
+import type { HeadscaleMachine, HeadscaleUser } from './entities';
+
+export type { HeadscaleMachine, HeadscaleUser };
+
 export interface ListDevicesReq {
   page?: number;
   pageSize?: number;
+  all?: boolean;
   userId?: string;
   status?: string;
 }
 
-export interface DeviceItem {
-  [key: string]: any;
-}
-
 export interface ListDevicesRes {
-  list: DeviceItem[];
+  list: HeadscaleMachine[];
   total: number;
   page: number;
   page_size: number;
@@ -20,13 +21,13 @@ export interface ListDevicesRes {
 export interface GetDeviceReq {
   id: string;
 }
-export interface GetDeviceRes extends DeviceItem {}
+export type GetDeviceRes = HeadscaleMachine;
 
 export interface RenameDeviceReq {
   id: string;
   name: string;
 }
-export interface RenameDeviceRes extends DeviceItem {}
+export type RenameDeviceRes = HeadscaleMachine;
 
 export interface DeleteDeviceReq {
   id: string;
@@ -36,25 +37,31 @@ export interface DeleteDeviceRes {}
 export interface ExpireDeviceReq {
   id: string;
 }
-export interface ExpireDeviceRes extends DeviceItem {}
+export type ExpireDeviceRes = HeadscaleMachine;
 
 export interface SetDeviceTagsReq {
   id: string;
   tags: string[];
 }
-export interface SetDeviceTagsRes extends DeviceItem {}
+export type SetDeviceTagsRes = HeadscaleMachine;
 
 export interface GetDeviceRoutesReq {
   id: string;
 }
 export interface GetDeviceRoutesRes {
-  [key: string]: any;
+  routes?: Array<{
+    id: number;
+    machine: HeadscaleMachine;
+    prefix: string;
+    advertised: boolean;
+    enabled: boolean;
+    isPrimary: boolean;
+  }>;
 }
 
 export interface RegisterNodeReq {
   user: string;
   key: string;
 }
-export interface RegisterNodeRes {
-  [key: string]: any;
-}
+export type RegisterNodeRes = HeadscaleMachine;
+

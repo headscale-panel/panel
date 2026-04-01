@@ -23,7 +23,8 @@ export const deviceApi = {
     request.get<any, ListDevicesRes>('/headscale/machines', {
       params: {
         page: req?.page || 1,
-        page_size: req?.pageSize || 20,
+        page_size: req?.pageSize || 10,
+        all: req?.all ? 'true' : undefined,
         user_id: req?.userId,
         status: req?.status,
       },

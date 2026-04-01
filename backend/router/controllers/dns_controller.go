@@ -14,6 +14,18 @@ func NewDNSController() *DNSController {
 	return &DNSController{}
 }
 
+// List godoc
+// @Summary List DNS records
+// @Tags dns
+// @Produce json
+// @Param page query int false "Page number" default(1)
+// @Param page_size query int false "Page size" default(10)
+// @Param all query bool false "Return all records"
+// @Param keyword query string false "Search keyword"
+// @Param type query string false "Record type (A|AAAA)"
+// @Success 200 {object} serializer.Response{data=serializer.PaginatedData{list=[]model.DNSRecord}}
+// @Security BearerAuth
+// @Router /dns/records [get]
 // List 获取 DNS 记录列表
 func (c *DNSController) List(ctx *gin.Context) {
 	var req services.ListDNSRecordRequest
@@ -21,9 +33,7 @@ func (c *DNSController) List(ctx *gin.Context) {
 		serializer.Fail(ctx, serializer.ErrBind)
 		return
 	}
-	page, pageSize := serializer.ParsePaginationQuery(ctx)
-	req.Page = page
-	req.PageSize = pageSize
+	req.Page, req.PageSize = req.Resolve()
 
 	userID := ctx.GetUint("userID")
 	records, total, err := services.DNSService.List(userID, &req)
@@ -32,9 +42,19 @@ func (c *DNSController) List(ctx *gin.Context) {
 		return
 	}
 
-	serializer.SuccessPage(ctx, records, total, page, pageSize)
+	serializer.SuccessPage(ctx, records, total, req.Page, req.PageSize)
 }
 
+// Create godoc
+// @Summary Create a DNS record
+// @Tags dns
+// @Accept json
+// @Produce json
+// @Param body body services.CreateDNSRecordRequest true "DNS record data"
+// @Success 200 {object} serializer.Response{data=model.DNSRecord}
+// @Failure 400 {object} serializer.Response
+// @Security BearerAuth
+// @Router /dns/records [post]
 // Create 创建 DNS 记录
 func (c *DNSController) Create(ctx *gin.Context) {
 	var req services.CreateDNSRecordRequest
@@ -53,6 +73,16 @@ func (c *DNSController) Create(ctx *gin.Context) {
 	serializer.Success(ctx, record)
 }
 
+// Update godoc
+// @Summary Update a DNS record
+// @Tags dns
+// @Accept json
+// @Produce json
+// @Param body body services.UpdateDNSRecordRequest true "DNS record update data"
+// @Success 200 {object} serializer.Response{data=model.DNSRecord}
+// @Failure 400 {object} serializer.Response
+// @Security BearerAuth
+// @Router /dns/records [put]
 // Update 更新 DNS 记录
 func (c *DNSController) Update(ctx *gin.Context) {
 	var req services.UpdateDNSRecordRequest
@@ -71,6 +101,15 @@ func (c *DNSController) Update(ctx *gin.Context) {
 	serializer.Success(ctx, record)
 }
 
+// Delete godoc
+// @Summary Delete a DNS record
+// @Tags dns
+// @Produce json
+// @Param id query int true "Record ID"
+// @Success 200 {object} serializer.Response
+// @Failure 400 {object} serializer.Response
+// @Security BearerAuth
+// @Router /dns/records [delete]
 // Delete 删除 DNS 记录
 func (c *DNSController) Delete(ctx *gin.Context) {
 	idStr := ctx.Query("id")
@@ -89,6 +128,15 @@ func (c *DNSController) Delete(ctx *gin.Context) {
 	serializer.Success(ctx, nil)
 }
 
+// Get godoc
+// @Summary Get a single DNS record
+// @Tags dns
+// @Produce json
+// @Param id path int true "Record ID"
+// @Success 200 {object} serializer.Response{data=model.DNSRecord}
+// @Failure 404 {object} serializer.Response
+// @Security BearerAuth
+// @Router /dns/records/{id} [get]
 // Get 获取单个 DNS 记录
 func (c *DNSController) Get(ctx *gin.Context) {
 	idStr := ctx.Param("id")
@@ -108,6 +156,13 @@ func (c *DNSController) Get(ctx *gin.Context) {
 	serializer.Success(ctx, record)
 }
 
+// Sync godoc
+// @Summary Sync DNS records to file
+// @Tags dns
+// @Produce json
+// @Success 200 {object} serializer.Response
+// @Security BearerAuth
+// @Router /dns/sync [post]
 // Sync 同步 DNS 记录到文件
 func (c *DNSController) Sync(ctx *gin.Context) {
 	userID := ctx.GetUint("userID")
@@ -119,6 +174,13 @@ func (c *DNSController) Sync(ctx *gin.Context) {
 	serializer.Success(ctx, gin.H{"message": "同步成功"})
 }
 
+// Import godoc
+// @Summary Import DNS records from extra-records file
+// @Tags dns
+// @Produce json
+// @Success 200 {object} serializer.Response
+// @Security BearerAuth
+// @Router /dns/import [post]
 // Import 从文件导入 DNS 记录
 func (c *DNSController) Import(ctx *gin.Context) {
 	userID := ctx.GetUint("userID")
@@ -134,6 +196,13 @@ func (c *DNSController) Import(ctx *gin.Context) {
 	})
 }
 
+// GetFile godoc
+// @Summary Get DNS records from the extra-records file
+// @Tags dns
+// @Produce json
+// @Success 200 {object} serializer.Response{data=[]model.DNSRecord}
+// @Security BearerAuth
+// @Router /dns/file [get]
 // GetFile 获取文件中的 DNS 记录
 func (c *DNSController) GetFile(ctx *gin.Context) {
 	userID := ctx.GetUint("userID")

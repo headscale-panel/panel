@@ -1,4 +1,5 @@
 import type { User } from './store';
+import { UserRole } from './enums';
 
 export const SELF_DEVICE_PERMISSIONS = [
   'headscale:machine:list',
@@ -40,7 +41,7 @@ function getPermissionSet(user: User | null | undefined): Set<string> {
 }
 
 export function isAdmin(user: User | null | undefined): boolean {
-  return user?.role === 'admin';
+  return user?.role === UserRole.Admin;
 }
 
 export function hasPermission(user: User | null | undefined, permission: string): boolean {

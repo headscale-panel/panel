@@ -23,6 +23,9 @@ func headscaleServiceClient() (v1.HeadscaleServiceClient, error) {
 }
 
 func normalizePagination(page, pageSize int) (int, int) {
+	if pageSize < 0 {
+		return 1, -1 // all mode
+	}
 	if page < 1 {
 		page = constants.DefaultPage
 	}

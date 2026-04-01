@@ -2,7 +2,6 @@ package services
 
 import (
 	"headscale-panel/model"
-	"headscale-panel/pkg/constants"
 	"headscale-panel/pkg/utils/serializer"
 	"net/netip"
 	"strconv"
@@ -29,9 +28,8 @@ type UpdateResourceRequest struct {
 }
 
 type ListResourceRequest struct {
-	Page     int    `form:"page,default=1"`
-	PageSize int    `form:"page_size,default=10"`
-	Keyword  string `form:"keyword"`
+	serializer.PaginationQuery
+	Keyword string `form:"keyword"`
 }
 
 func (s *resourceService) Create(userID uint, req *CreateResourceRequest) error {
@@ -79,16 +77,6 @@ func (s *resourceService) Create(userID uint, req *CreateResourceRequest) error 
 func (s *resourceService) List(userID uint, req *ListResourceRequest) ([]model.Resource, int64, error) {
 	if err := RequirePermission(userID, "resource:list"); err != nil {
 		return nil, 0, err
-	}
-
-	if req.Page <= 0 {
-		req.Page = constants.DefaultPage
-	}
-	if req.PageSize <= 0 {
-		req.PageSize = constants.DefaultPageSize
-	}
-	if req.PageSize > constants.MaxPageSize {
-		req.PageSize = constants.MaxPageSize
 	}
 
 	var resources []model.Resource

@@ -1,5 +1,5 @@
 export interface GenerateCommandsReq {
-  machineIds: string[];
+  machine_ids: string[];
   platform: string;
 }
 
@@ -9,7 +9,7 @@ export interface GenerateCommandsRes {
 }
 
 export interface GeneratePreAuthKeyReq {
-  userId: string;
+  user_id: string;
   reusable: boolean;
   ephemeral: boolean;
   expiration?: string;
@@ -17,24 +17,25 @@ export interface GeneratePreAuthKeyReq {
 
 export interface PreAuthKey {
   key: string;
-  userId: string;
+  user_id: string;
   reusable: boolean;
   ephemeral: boolean;
   expiration?: string;
-  createdAt: string;
+  createdAt?: string;
 }
 
 export type GeneratePreAuthKeyRes = PreAuthKey;
 
 export interface GenerateSSHCommandReq {
-  machineId: string;
+  machine_id: string;
   user?: string;
 }
 
 export interface SSHCommand {
   command: string;
-  machineId: string;
+  machine_id: string;
   user?: string;
 }
 
 export type GenerateSSHCommandRes = SSHCommand;
+

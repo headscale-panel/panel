@@ -5,6 +5,8 @@ import type {
   DashboardTopologyUser,
   DashboardTopologyDevice,
 } from './dashboard';
+import { UserProvider, ACLAction } from './enums';
+import { isString, isNumber, isBoolean, isArray, isObject, toInt } from 'radashi';
 
 export interface AuthPayload {
   token: string;
@@ -63,7 +65,7 @@ export interface NormalizedSystemUser {
   group?: NormalizedGroup;
   is_active: boolean;
   profile_pic_url?: string;
-  provider?: string;
+  provider?: UserProvider;
   provider_id?: string;
 }
 
@@ -141,63 +143,41 @@ export const defaultOIDCFormValues: OIDCFormValues = {
 };
 
 function asRecord(value: unknown): Record<string, unknown> | null {
-  return typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : null;
+  return isObject(value) ? (value as Record<string, unknown>) : null;
 }
 
 function asString(value: unknown, fallback = ''): string {
-  return typeof value === 'string' ? value : fallback;
+  return isString(value) ? value : fallback;
 }
 
 function asIdentifier(value: unknown, fallback = ''): string {
-  if (typeof value === 'string') {
-    return value;
-  }
-
-  if (typeof value === 'number' && Number.isFinite(value)) {
-    return String(value);
-  }
-
+  if (isString(value)) return value;
+  if (isNumber(value) && Number.isFinite(value)) return String(value);
   return fallback;
 }
 
 function asNumber(value: unknown, fallback = 0): number {
-  if (typeof value === 'number' && Number.isFinite(value)) {
-    return value;
-  }
-
-  if (typeof value === 'string') {
-    const parsed = Number.parseInt(value, 10);
-    if (Number.isFinite(parsed)) {
-      return parsed;
-    }
-  }
-
-  return fallback;
+  if (isNumber(value) && Number.isFinite(value)) return value;
+  return toInt(value, fallback);
 }
 
 function asBoolean(value: unknown, fallback = false): boolean {
-  return typeof value === 'boolean' ? value : fallback;
+  return isBoolean(value) ? value : fallback;
 }
 
 function asStringArray(value: unknown): string[] {
-  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
+  return isArray(value) ? value.filter(isString) : [];
 }
 
 function extractListCandidate(value: unknown): unknown[] {
-  if (Array.isArray(value)) {
-    return value;
-  }
+  if (isArray(value)) return value;
 
   const record = asRecord(value);
-  if (!record) {
-    return [];
-  }
+  if (!record) return [];
 
   const directKeys = ['list', 'machines', 'users', 'items', 'records'];
   for (const key of directKeys) {
-    if (Array.isArray(record[key])) {
-      return record[key] as unknown[];
-    }
+    if (isArray(record[key])) return record[key] as unknown[];
   }
 
   return [];
@@ -298,7 +278,7 @@ export function normalizeSystemUsers(value: unknown): NormalizedSystemUser[] {
       username,
       email: asString(user.email),
       display_name: asString(user.display_name),
-      headscale_name: asString(user.headscale_name) || username,
+      headscale_name: asString(user.headscale_name),
       group_id: asNumber(user.group_id),
       group: groupRecord
         ? {
@@ -309,7 +289,7 @@ export function normalizeSystemUsers(value: unknown): NormalizedSystemUser[] {
         : undefined,
       is_active: asBoolean(user.is_active, true),
       profile_pic_url: asString(user.profile_pic_url) || undefined,
-      provider: asString(user.provider) || undefined,
+      provider: (asString(user.provider) || undefined) as UserProvider | undefined,
       provider_id: asString(user.provider_id) || undefined,
     });
   }
@@ -373,7 +353,7 @@ export function normalizeACLPolicy(value: unknown): ACLPolicy | null {
   const groups = asRecord(candidate.groups);
   const hosts = asRecord(candidate.hosts);
   const tagOwners = asRecord(candidate.tagOwners);
-  const acls = Array.isArray(candidate.acls)
+  const acls = isArray(candidate.acls)
     ? candidate.acls.reduce<NonNullable<ACLPolicy['acls']>>((rules, acl) => {
         const rule = asRecord(acl);
         if (!rule) {
@@ -498,7 +478,7 @@ export function normalizeTopology(value: unknown): DashboardTopologyData | null 
     return null;
   }
 
-  const users = Array.isArray(data.users)
+  const users = isArray(data.users)
     ? data.users
         .map((item) => {
           const user = asRecord(item);
@@ -517,7 +497,7 @@ export function normalizeTopology(value: unknown): DashboardTopologyData | null 
         .filter((user): user is DashboardTopologyUser => Boolean(user))
     : [];
 
-  const devices = Array.isArray(data.devices)
+  const devices = isArray(data.devices)
     ? data.devices
         .map((item) => {
           const device = asRecord(item);
@@ -539,7 +519,7 @@ export function normalizeTopology(value: unknown): DashboardTopologyData | null 
         .filter((device): device is DashboardTopologyDevice => Boolean(device))
     : [];
 
-  const acl = Array.isArray(data.acl)
+  const acl = isArray(data.acl)
     ? data.acl
         .map((item) => {
           const rule = asRecord(item);
@@ -547,7 +527,7 @@ export function normalizeTopology(value: unknown): DashboardTopologyData | null 
             return null;
           }
 
-          const action = asString(rule.action) === 'deny' ? 'deny' : 'accept';
+          const action = asString(rule.action) === ACLAction.Deny ? ACLAction.Deny : ACLAction.Accept;
           const normalizedRule: DashboardTopologyACLRule = {
             src: asString(rule.src),
             dst: asString(rule.dst),

@@ -26,7 +26,7 @@ class ErrorBoundary extends Component<Props, State> {
   render() {
     if (this.state.hasError) {
       return (
-        <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 32 }}>
+        <div className="auth-page p-8">
           <Result
             status="error"
             title="An unexpected error occurred."
@@ -42,7 +42,7 @@ class ErrorBoundary extends Component<Props, State> {
           >
             {this.state.error?.stack && (
               <Paragraph>
-                <Text code style={{ whiteSpace: 'pre-wrap', fontSize: 12 }}>
+                <Text code className="whitespace-pre-wrap text-12px">
                   {this.state.error.stack}
                 </Text>
               </Paragraph>

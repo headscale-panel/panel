@@ -1,20 +1,15 @@
+import type { User, Group } from './entities';
+
+export type { User, Group };
+
 export interface ListSystemUsersReq {
   page?: number;
   pageSize?: number;
-}
-
-export interface SystemUserItem {
-  id: number;
-  username: string;
-  email?: string;
-  group_id?: number;
-  is_active?: boolean;
-  headscale_name?: string;
-  display_name?: string;
+  all?: boolean;
 }
 
 export interface ListSystemUsersRes {
-  list: SystemUserItem[];
+  list: User[];
   total: number;
   page: number;
   page_size: number;
@@ -26,17 +21,15 @@ export interface CreateSystemUserReq {
   password?: string;
   email?: string;
   group_id?: number;
-  headscale_name?: string;
   display_name?: string;
 }
 
-export interface CreateSystemUserRes {}
+export interface CreateSystemUserRes extends User {}
 
 export interface UpdateSystemUserReq {
   id: number;
   email?: string;
   group_id?: number;
-  is_active?: boolean;
   password?: string;
   display_name?: string;
 }
@@ -48,3 +41,4 @@ export interface DeleteSystemUserReq {
 }
 
 export interface DeleteSystemUserRes {}
+

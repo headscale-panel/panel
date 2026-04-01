@@ -1,12 +1,11 @@
 import React, { useState, useCallback, useMemo } from 'react';
 import { I18nContext, locales, defaultLocale } from './index';
 import type { I18nContextType } from './index';
-
-const STORAGE_KEY = 'locale';
+import { LOCALE_STORAGE_KEY } from '@/lib/storage-keys';
 
 function getInitialLocale(): string {
   if (typeof window === 'undefined') return defaultLocale;
-  const stored = localStorage.getItem(STORAGE_KEY);
+  const stored = localStorage.getItem(LOCALE_STORAGE_KEY);
   if (stored && locales[stored]) return stored;
   // Try browser language
   const browserLang = navigator.language.split('-')[0];
@@ -24,7 +23,7 @@ export function I18nProvider({ children }: I18nProviderProps) {
   const setLocale = useCallback((code: string) => {
     if (!locales[code]) return;
     setLocaleState(code);
-    localStorage.setItem(STORAGE_KEY, code);
+    localStorage.setItem(LOCALE_STORAGE_KEY, code);
     document.documentElement.lang = code;
   }, []);
 

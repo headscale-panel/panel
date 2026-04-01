@@ -13,7 +13,11 @@ import type {
 export const systemUserApi = {
   list: (req?: ListSystemUsersReq) =>
     request.get<any, ListSystemUsersRes>('/system/users', {
-      params: { page: req?.page || 1, page_size: req?.pageSize || 20 },
+      params: {
+        page: req?.page || 1,
+        page_size: req?.pageSize || 10,
+        all: req?.all ? 'true' : undefined,
+      },
     }),
   create: (req: CreateSystemUserReq) => request.post<any, CreateSystemUserRes>('/system/users', req),
   update: (req: UpdateSystemUserReq) => request.put<any, UpdateSystemUserRes>('/system/users', req),

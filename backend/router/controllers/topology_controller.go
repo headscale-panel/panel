@@ -9,6 +9,13 @@ import (
 
 type TopologyController struct{}
 
+// GetTopology godoc
+// @Summary Get network topology
+// @Tags topology
+// @Produce json
+// @Success 200 {object} serializer.Response{data=object}
+// @Security BearerAuth
+// @Router /topology [get]
 // GetTopology gets network topology data
 // GET /api/topology
 func (c *TopologyController) GetTopology(ctx *gin.Context) {
@@ -22,6 +29,13 @@ func (c *TopologyController) GetTopology(ctx *gin.Context) {
 	serializer.Success(ctx, topology)
 }
 
+// GetTopologyWithACL godoc
+// @Summary Get network topology with ACL information
+// @Tags topology
+// @Produce json
+// @Success 200 {object} serializer.Response{data=object}
+// @Security BearerAuth
+// @Router /topology/with-acl [get]
 // GetTopologyWithACL gets network topology with ACL information
 // GET /api/topology/with-acl
 func (c *TopologyController) GetTopologyWithACL(ctx *gin.Context) {
@@ -35,6 +49,13 @@ func (c *TopologyController) GetTopologyWithACL(ctx *gin.Context) {
 	serializer.Success(ctx, topology)
 }
 
+// GetACLMatrix godoc
+// @Summary Get ACL connectivity matrix
+// @Tags topology
+// @Produce json
+// @Success 200 {object} serializer.Response{data=object}
+// @Security BearerAuth
+// @Router /topology/acl-matrix [get]
 // GetACLMatrix gets ACL connectivity matrix
 // GET /api/topology/acl-matrix
 func (c *TopologyController) GetACLMatrix(ctx *gin.Context) {

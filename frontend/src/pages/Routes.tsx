@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { useRequest } from 'ahooks';
 import { useSearch } from 'wouter';
-import { Button, Card, Input, Select, Switch, Table, Tag, Typography, Statistic, Tooltip, message, theme } from 'antd';
+import { Button, Card, Input, Select, Switch, Table, Tag, Typography, Tooltip, message, theme } from 'antd';
 import { ReloadOutlined, SearchOutlined, LaptopOutlined, CheckCircleOutlined, CloseCircleOutlined, GlobalOutlined, NodeIndexOutlined, UserOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import DashboardLayout from '@/components/DashboardLayout';
+import PageHeaderStatCards from '@/components/PageHeaderStatCards';
 import { routesAPI } from '@/lib/api';
 import { useTranslation } from '@/i18n/index';
 
@@ -37,7 +38,7 @@ export default function Routes() {
   const [filterStatus, setFilterStatus] = useState<string>('all');
 
   const { data: listData, loading, refresh } = useRequest(
-    async () => routesAPI.list({ page: 1, pageSize: 1000 }),
+    async () => routesAPI.list({ all: true }),
     {
       onError: (error: any) => {
         message.error(t.routes.loadFailed);
@@ -93,7 +94,7 @@ export default function Routes() {
       dataIndex: 'destination',
       key: 'destination',
       render: (dest: string) => (
-        <Tag style={{ fontFamily: 'monospace' }}>{dest}</Tag>
+        <Tag className="mono-text">{dest}</Tag>
       ),
     },
     {
@@ -132,11 +133,11 @@ export default function Routes() {
 
   return (
     <DashboardLayout>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+      <div className="flex flex-col gap-6">
         {/* Page Header */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+        <div className="page-header-row">
           <div>
-            <Title level={4} style={{ margin: 0 }}>{t.routes.title}</Title>
+            <Title level={4} className="m-0">{t.routes.title}</Title>
             <Text type="secondary">{t.routes.description}</Text>
           </div>
           <Button icon={<ReloadOutlined spin={loading} />} onClick={refresh} loading={loading}>
@@ -145,32 +146,36 @@ export default function Routes() {
         </div>
 
         {/* Stats */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 16 }}>
-          <Card hoverable><Statistic title={t.routes.totalRoutes} value={stats.total} prefix={<NodeIndexOutlined />} /></Card>
-          <Card hoverable><Statistic title={t.routes.enabled} value={stats.enabled} valueStyle={{ color: '#52c41a' }} prefix={<CheckCircleOutlined />} /></Card>
-          <Card hoverable><Statistic title={t.routes.disabled} value={stats.disabled} prefix={<CloseCircleOutlined />} /></Card>
-          <Card hoverable><Statistic title="Exit Nodes" value={stats.exitNodes} valueStyle={{ color: '#722ed1' }} prefix={<GlobalOutlined />} /></Card>
-        </div>
+        <PageHeaderStatCards
+          minCardWidth={200}
+          gap={16}
+          items={[
+            { label: t.routes.totalRoutes, value: stats.total, icon: <NodeIndexOutlined className="stat-icon-primary" />, watermark: 'ALL' },
+            { label: t.routes.enabled, value: stats.enabled, icon: <CheckCircleOutlined className="stat-icon-success" />, watermark: 'ON' },
+            { label: t.routes.disabled, value: stats.disabled, icon: <CloseCircleOutlined className="stat-icon-muted" />, watermark: 'OFF' },
+            { label: 'Exit Nodes', value: stats.exitNodes, icon: <GlobalOutlined className="stat-icon-accent" />, watermark: 'EXIT' },
+          ]}
+        />
 
         {/* Table Card */}
         <Card>
           {/* Filters */}
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginBottom: 16 }}>
+          <div className="flex flex-wrap gap-3 mb-4">
             <Input
               placeholder={t.routes.searchPlaceholder}
               prefix={<SearchOutlined />}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              style={{ flex: 1, minWidth: 200, maxWidth: 360 }}
+              className="flex-1 min-w-200px max-w-90"
               allowClear
             />
-            <Select value={filterDevice} onChange={setFilterDevice} style={{ width: 180 }}
+            <Select value={filterDevice} onChange={setFilterDevice} className="w-45"
               options={[
                 { value: 'all', label: t.routes.allDevices },
                 ...devices.map(d => ({ value: d, label: d })),
               ]}
             />
-            <Select value={filterStatus} onChange={setFilterStatus} style={{ width: 150 }}
+            <Select value={filterStatus} onChange={setFilterStatus} className="w-150px"
               options={[
                 { value: 'all', label: t.routes.allStatus },
                 { value: 'enabled', label: t.routes.enabled },
@@ -184,7 +189,12 @@ export default function Routes() {
             dataSource={filteredRoutes}
             rowKey="id"
             loading={loading}
-            pagination={false}
+            pagination={{
+              defaultPageSize: 10,
+              showSizeChanger: true,
+              pageSizeOptions: [10, 20, 50, 100],
+              showTotal: (t) => `${t} records`,
+            }}
             locale={{
               emptyText: routes.length === 0 ? t.routes.noRoutes : t.routes.noMatch,
             }}

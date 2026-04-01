@@ -23,7 +23,8 @@ export const dnsApi = {
     request.get<any, ListDnsRes>('/dns/records', {
       params: {
         page: req?.page || 1,
-        page_size: req?.pageSize || 50,
+        page_size: req?.pageSize || 10,
+        all: req?.all ? 'true' : undefined,
         keyword: req?.keyword,
         type: req?.type,
       },

@@ -13,6 +13,15 @@ func NewUserController() *UserController {
 	return &UserController{}
 }
 
+// Register godoc
+// @Summary Register a new user
+// @Tags auth
+// @Accept json
+// @Produce json
+// @Param body body services.RegisterRequest true "Registration data"
+// @Success 200 {object} serializer.Response
+// @Failure 400 {object} serializer.Response
+// @Router /register [post]
 func (u *UserController) Register(c *gin.Context) {
 	var req services.RegisterRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -28,6 +37,15 @@ func (u *UserController) Register(c *gin.Context) {
 	serializer.Success(c, nil)
 }
 
+// Login godoc
+// @Summary Log in with username and password
+// @Tags auth
+// @Accept json
+// @Produce json
+// @Param body body services.LoginRequest true "Login credentials"
+// @Success 200 {object} serializer.Response{data=object} "token and user info"
+// @Failure 400 {object} serializer.Response
+// @Router /login [post]
 func (u *UserController) Login(c *gin.Context) {
 	var req services.LoginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -64,6 +82,13 @@ func (u *UserController) Login(c *gin.Context) {
 	})
 }
 
+// GetInfo godoc
+// @Summary Get current user info and permissions
+// @Tags auth
+// @Produce json
+// @Success 200 {object} serializer.Response{data=object} "user and permissions"
+// @Security BearerAuth
+// @Router /user/info [get]
 func (u *UserController) GetInfo(c *gin.Context) {
 	userID := c.GetUint("userID")
 	if userID == 0 {
@@ -88,6 +113,13 @@ func (u *UserController) GetInfo(c *gin.Context) {
 	})
 }
 
+// GenerateTOTP godoc
+// @Summary Generate a TOTP secret for the current user
+// @Tags auth
+// @Produce json
+// @Success 200 {object} serializer.Response{data=object} "secret and url"
+// @Security BearerAuth
+// @Router /user/totp/generate [post]
 func (u *UserController) GenerateTOTP(c *gin.Context) {
 	userID := c.GetUint("userID")
 	secret, url, err := services.UserService.GenerateTOTP(userID)
@@ -105,6 +137,16 @@ type EnableTOTPRequest struct {
 	Code string `json:"code" binding:"required"`
 }
 
+// EnableTOTP godoc
+// @Summary Enable TOTP for the current user
+// @Tags auth
+// @Accept json
+// @Produce json
+// @Param body body EnableTOTPRequest true "TOTP verification code"
+// @Success 200 {object} serializer.Response
+// @Failure 400 {object} serializer.Response
+// @Security BearerAuth
+// @Router /user/totp/enable [post]
 func (u *UserController) EnableTOTP(c *gin.Context) {
 	var req EnableTOTPRequest
 	if err := c.ShouldBindJSON(&req); err != nil {

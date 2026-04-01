@@ -1,3 +1,11 @@
+// @title Headscale Panel API
+// @version 1.0
+// @description Headscale Panel management API
+// @host localhost:8080
+// @BasePath /panel/api/v1
+// @securityDefinitions.apikey BearerAuth
+// @in header
+// @name Authorization
 package main
 
 import (

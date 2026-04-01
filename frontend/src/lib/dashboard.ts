@@ -1,3 +1,5 @@
+import { ACLAction } from './enums';
+
 export interface DashboardStats {
   onlineDevices: number;
   totalDevices: number;
@@ -23,7 +25,7 @@ export interface DashboardTopologyDevice {
 export interface DashboardTopologyACLRule {
   src: string;
   dst: string;
-  action: 'accept' | 'deny';
+  action: ACLAction;
 }
 
 export interface DashboardTopologyPolicy {

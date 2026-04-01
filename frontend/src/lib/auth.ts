@@ -1,7 +1,8 @@
 import { useAuthStore, type AuthSnapshot, type User } from './store';
+import { isString, isObject } from 'radashi';
+import { AUTH_STORAGE_KEY, AUTH_NOTICE_STORAGE_KEY } from './storage-keys';
 
-export const AUTH_STORAGE_KEY = 'auth-storage';
-export const AUTH_NOTICE_STORAGE_KEY = 'auth-notice';
+export { AUTH_STORAGE_KEY, AUTH_NOTICE_STORAGE_KEY };
 export const PANEL_BASE_PATH = '/panel';
 export const PANEL_LOGIN_PATH = `${PANEL_BASE_PATH}/login`;
 
@@ -13,7 +14,7 @@ interface PersistedAuthValue {
 }
 
 function isUser(value: unknown): value is User {
-  return typeof value === 'object' && value !== null && 'id' in value && 'username' in value;
+  return isObject(value) && 'id' in value && 'username' in value;
 }
 
 export function parsePersistedAuthValue(raw: string | null): Partial<AuthSnapshot> | null {
@@ -29,7 +30,7 @@ export function parsePersistedAuthValue(raw: string | null): Partial<AuthSnapsho
     }
 
     return {
-      token: typeof state.token === 'string' ? state.token : null,
+      token: isString(state.token) ? state.token : null,
       user: isUser(state.user) ? state.user : null,
       isAuthenticated: Boolean(state.isAuthenticated),
     };

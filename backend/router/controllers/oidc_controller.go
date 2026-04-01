@@ -53,20 +53,29 @@ func (oc *OIDCController) Discovery(c *gin.Context) {
 	})
 }
 
-func (oc *OIDCController) Authorize(c *gin.Context) {
-	clientID := c.Query("client_id")
-	redirectURI := c.Query("redirect_uri")
-	responseType := c.Query("response_type")
-	nonce := c.Query("nonce")
-	state := c.Query("state")
-	scope := c.DefaultQuery("scope", "openid")
+// AuthorizeQuery is the query parameter struct for Authorize.
+type AuthorizeQuery struct {
+	ClientID     string `form:"client_id"`
+	RedirectURI  string `form:"redirect_uri"`
+	ResponseType string `form:"response_type"`
+	Nonce        string `form:"nonce"`
+	State        string `form:"state"`
+	Scope        string `form:"scope,default=openid"`
+}
 
-	if responseType != "code" {
+func (oc *OIDCController) Authorize(c *gin.Context) {
+	var q AuthorizeQuery
+	if err := c.ShouldBindQuery(&q); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request"})
+		return
+	}
+
+	if q.ResponseType != "code" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "unsupported_response_type"})
 		return
 	}
 
-	if !services.OIDCService.ValidateRedirectURI(clientID, redirectURI) {
+	if !services.OIDCService.ValidateRedirectURI(q.ClientID, q.RedirectURI) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_client_or_redirect_uri"})
 		return
 	}
@@ -89,7 +98,7 @@ func (oc *OIDCController) Authorize(c *gin.Context) {
 	userID = claims.UserID
 
 	// Generate Code
-	code, err := services.OIDCService.GenerateAuthCode(userID, clientID, redirectURI, nonce, scope)
+	code, err := services.OIDCService.GenerateAuthCode(userID, q.ClientID, q.RedirectURI, q.Nonce, q.Scope)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "server_error"})
 		return
@@ -97,12 +106,12 @@ func (oc *OIDCController) Authorize(c *gin.Context) {
 
 	// Redirect back to client
 	separator := "?"
-	if strings.Contains(redirectURI, "?") {
+	if strings.Contains(q.RedirectURI, "?") {
 		separator = "&"
 	}
-	target := fmt.Sprintf("%s%scode=%s", redirectURI, separator, code)
-	if state != "" {
-		target += "&state=" + state
+	target := fmt.Sprintf("%s%scode=%s", q.RedirectURI, separator, code)
+	if q.State != "" {
+		target += "&state=" + q.State
 	}
 
 	c.Redirect(http.StatusFound, target)

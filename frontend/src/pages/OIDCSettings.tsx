@@ -28,8 +28,8 @@ export default function OIDCSettings() {
 
   const clientColumns: ColumnsType<any> = [
     { title: t.oidcSettingsPage.clients.clientName, dataIndex: 'name', key: 'name', render: (v: string) => <Text strong>{v}</Text> },
-    { title: 'Client ID', dataIndex: 'clientId', key: 'clientId', render: (v: string) => <Text style={{ fontFamily: 'monospace', fontSize: 13 }}>{v}</Text> },
-    { title: 'Redirect URIs', dataIndex: 'redirectUri', key: 'redirectUri', render: (v: string) => <Text style={{ fontSize: 13 }}>{v}</Text> },
+    { title: 'Client ID', dataIndex: 'clientId', key: 'clientId', render: (v: string) => <Text className="mono-text text-13px">{v}</Text> },
+    { title: 'Redirect URIs', dataIndex: 'redirectUri', key: 'redirectUri', render: (v: string) => <Text className="text-13px">{v}</Text> },
     { title: t.oidcSettingsPage.clients.createdAt, dataIndex: 'createdAt', key: 'createdAt', render: (v: string) => <Text type="secondary">{v}</Text> },
     {
       title: t.oidcSettingsPage.clients.actions, key: 'actions', align: 'right',
@@ -48,10 +48,10 @@ export default function OIDCSettings() {
 
   return (
     <DashboardLayout>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+      <div className="app-page-stack">
         <div>
-          <Title level={4} style={{ margin: 0 }}>{t.oidcSettingsPage.title}</Title>
-          <Text type="secondary">{t.oidcSettingsPage.description}</Text>
+          <Title level={4} className="page-title">{t.oidcSettingsPage.title}</Title>
+          <Text type="secondary" className="page-desc">{t.oidcSettingsPage.description}</Text>
         </div>
 
         <Tabs
@@ -61,10 +61,10 @@ export default function OIDCSettings() {
               key: 'provider',
               label: t.oidcSettingsPage.tabs.provider,
               children: (
-                <Space direction="vertical" size={24} style={{ width: '100%' }}>
+                <Space direction="vertical" size={24} className="w-full">
                   {/* Provider Type Selection */}
                   <Card>
-                    <Title level={5} style={{ marginBottom: 16 }}>{t.oidcSettingsPage.providerType.title}</Title>
+                    <Title level={5} className="mb-4!">{t.oidcSettingsPage.providerType.title}</Title>
                     <Space size={8}>
                       <Switch checked={useBuiltIn} onChange={setUseBuiltIn} />
                       <Text>{useBuiltIn ? t.oidcSettingsPage.providerType.builtIn : t.oidcSettingsPage.providerType.thirdParty}</Text>
@@ -74,33 +74,33 @@ export default function OIDCSettings() {
                   {/* Built-in OIDC Server */}
                   {useBuiltIn && (
                     <Card>
-                      <Title level={5} style={{ marginBottom: 4 }}>{t.oidcSettingsPage.builtIn.title}</Title>
-                      <Text type="secondary" style={{ display: 'block', marginBottom: 24 }}>{t.oidcSettingsPage.builtIn.description}</Text>
+                      <Title level={5} className="mb-1!">{t.oidcSettingsPage.builtIn.title}</Title>
+                      <Text type="secondary" className="block mb-6">{t.oidcSettingsPage.builtIn.description}</Text>
 
-                      <Space direction="vertical" size={16} style={{ width: '100%' }}>
-                        <div>
-                          <Text style={{ display: 'block', marginBottom: 4 }}>Issuer URL</Text>
-                          <Space.Compact style={{ width: '100%' }}>
-                            <Input value="http://localhost/oidc" readOnly style={{ fontFamily: 'monospace' }} />
+                      <Space direction="vertical" size={16} className="w-full">
+                        <div className="field-block">
+                          <Text className="field-label">Issuer URL</Text>
+                          <Space.Compact className="w-full">
+                            <Input value="http://localhost/oidc" readOnly className="mono-text" />
                             <Button icon={copied ? <CheckOutlined /> : <CopyOutlined />} onClick={() => handleCopy('http://localhost/oidc')} />
                           </Space.Compact>
                         </div>
 
-                        <div>
-                          <Text style={{ display: 'block', marginBottom: 4 }}>Discovery URL</Text>
-                          <Space.Compact style={{ width: '100%' }}>
-                            <Input value="http://localhost/oidc/.well-known/openid-configuration" readOnly style={{ fontFamily: 'monospace', fontSize: 12 }} />
+                        <div className="field-block">
+                          <Text className="field-label">Discovery URL</Text>
+                          <Space.Compact className="w-full">
+                            <Input value="http://localhost/oidc/.well-known/openid-configuration" readOnly className="mono-text text-12px" />
                             <Button icon={copied ? <CheckOutlined /> : <CopyOutlined />} onClick={() => handleCopy('http://localhost/oidc/.well-known/openid-configuration')} />
                           </Space.Compact>
                         </div>
 
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                        <div className="field-grid-2">
                           <div>
-                            <Text style={{ display: 'block', marginBottom: 4 }}>{t.oidcSettingsPage.builtIn.tokenExpiry}</Text>
+                            <Text className="field-label">{t.oidcSettingsPage.builtIn.tokenExpiry}</Text>
                             <Input type="number" defaultValue="24" min={1} max={720} />
                           </div>
                           <div>
-                            <Text style={{ display: 'block', marginBottom: 4 }}>{t.oidcSettingsPage.builtIn.refreshTokenExpiry}</Text>
+                            <Text className="field-label">{t.oidcSettingsPage.builtIn.refreshTokenExpiry}</Text>
                             <Input type="number" defaultValue="30" min={1} max={365} />
                           </div>
                         </div>
@@ -118,37 +118,37 @@ export default function OIDCSettings() {
                   {/* Third-party OIDC Provider */}
                   {!useBuiltIn && (
                     <Card>
-                      <Title level={5} style={{ marginBottom: 4 }}>{t.oidcSettingsPage.thirdParty.title}</Title>
-                      <Text type="secondary" style={{ display: 'block', marginBottom: 24 }}>{t.oidcSettingsPage.thirdParty.description}</Text>
+                      <Title level={5} className="mb-1!">{t.oidcSettingsPage.thirdParty.title}</Title>
+                      <Text type="secondary" className="block mb-6">{t.oidcSettingsPage.thirdParty.description}</Text>
 
-                      <Space direction="vertical" size={16} style={{ width: '100%' }}>
+                      <Space direction="vertical" size={16} className="w-full">
                         <div>
-                          <Text style={{ display: 'block', marginBottom: 4 }}>{t.oidcSettingsPage.thirdParty.providerName}</Text>
+                          <Text className="field-label">{t.oidcSettingsPage.thirdParty.providerName}</Text>
                           <Input placeholder={t.oidcSettingsPage.thirdParty.providerNamePlaceholder} />
                         </div>
                         <div>
-                          <Text style={{ display: 'block', marginBottom: 4 }}>Issuer URL</Text>
-                          <Input placeholder="https://your-domain.auth0.com" style={{ fontFamily: 'monospace' }} />
+                          <Text className="field-label">Issuer URL</Text>
+                          <Input placeholder="https://your-domain.auth0.com" className="mono-text" />
                         </div>
                         <div>
-                          <Text style={{ display: 'block', marginBottom: 4 }}>Client ID</Text>
+                          <Text className="field-label">Client ID</Text>
                           <Input placeholder="your-client-id" />
                         </div>
                         <div>
-                          <Text style={{ display: 'block', marginBottom: 4 }}>Client Secret</Text>
+                          <Text className="field-label">Client Secret</Text>
                           <Input.Password placeholder="your-client-secret" />
                         </div>
                         <div>
-                          <Text style={{ display: 'block', marginBottom: 4 }}>Redirect URI</Text>
-                          <Input value="http://localhost/auth/callback" readOnly style={{ fontFamily: 'monospace' }} />
+                          <Text className="field-label">Redirect URI</Text>
+                          <Input value="http://localhost/auth/callback" readOnly className="mono-text" />
                         </div>
                         <div>
-                          <Text style={{ display: 'block', marginBottom: 4 }}>{t.oidcSettingsPage.thirdParty.scopes}</Text>
+                          <Text className="field-label">{t.oidcSettingsPage.thirdParty.scopes}</Text>
                           <Input defaultValue="openid, profile, email" placeholder="openid, profile, email" />
                         </div>
-                        <Space style={{ width: '100%' }}>
-                          <Button type="primary" style={{ flex: 1 }}>{t.oidcSettingsPage.thirdParty.testConnection}</Button>
-                          <Button style={{ flex: 1 }}>{t.oidcSettingsPage.thirdParty.saveConfig}</Button>
+                        <Space className="actions-split">
+                          <Button type="primary" className="action-grow">{t.oidcSettingsPage.thirdParty.testConnection}</Button>
+                          <Button className="action-grow">{t.oidcSettingsPage.thirdParty.saveConfig}</Button>
                         </Space>
                       </Space>
                     </Card>
@@ -160,10 +160,10 @@ export default function OIDCSettings() {
               key: 'clients',
               label: t.oidcSettingsPage.tabs.clients,
               children: (
-                <Space direction="vertical" size={24} style={{ width: '100%' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <Space direction="vertical" size={24} className="w-full">
+                  <div className="page-header-row">
                     <div>
-                      <Title level={5} style={{ margin: 0 }}>{t.oidcSettingsPage.clients.title}</Title>
+                      <Title level={5} className="page-title">{t.oidcSettingsPage.clients.title}</Title>
                       <Text type="secondary">{t.oidcSettingsPage.clients.description}</Text>
                     </div>
                     <Button type="primary" icon={<PlusOutlined />}>{t.oidcSettingsPage.clients.addClient}</Button>
@@ -175,28 +175,28 @@ export default function OIDCSettings() {
 
                   {/* Add Client Form */}
                   <Card>
-                    <Title level={5} style={{ marginBottom: 24 }}>{t.oidcSettingsPage.clients.createTitle}</Title>
-                    <Space direction="vertical" size={16} style={{ width: '100%' }}>
+                    <Title level={5} className="mb-6!">{t.oidcSettingsPage.clients.createTitle}</Title>
+                    <Space direction="vertical" size={16} className="w-full">
                       <div>
-                        <Text style={{ display: 'block', marginBottom: 4 }}>{t.oidcSettingsPage.clients.clientNameLabel}</Text>
+                        <Text className="field-label">{t.oidcSettingsPage.clients.clientNameLabel}</Text>
                         <Input placeholder={t.oidcSettingsPage.clients.clientNamePlaceholder} />
                       </div>
                       <div>
-                        <Text style={{ display: 'block', marginBottom: 4 }}>{t.oidcSettingsPage.clients.clientIdLabel}</Text>
-                        <Input placeholder="my-app-client" style={{ fontFamily: 'monospace' }} />
+                        <Text className="field-label">{t.oidcSettingsPage.clients.clientIdLabel}</Text>
+                        <Input placeholder="my-app-client" className="mono-text" />
                       </div>
                       <div>
-                        <Text style={{ display: 'block', marginBottom: 4 }}>{t.oidcSettingsPage.clients.redirectUrisLabel}</Text>
+                        <Text className="field-label">{t.oidcSettingsPage.clients.redirectUrisLabel}</Text>
                         <TextArea
                           placeholder={"http://localhost:3000/callback\nhttps://myapp.com/callback"}
                           rows={4}
-                          style={{ fontFamily: 'monospace' }}
+                          className="mono-text"
                         />
                       </div>
                       <div>
-                        <Text style={{ display: 'block', marginBottom: 4 }}>Grant Types</Text>
+                        <Text className="field-label">Grant Types</Text>
                         <Select
-                          style={{ width: '100%' }}
+                          className="w-full"
                           defaultValue="authorization_code"
                           options={[
                             { value: 'authorization_code', label: 'Authorization Code' },

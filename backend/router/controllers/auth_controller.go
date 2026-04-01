@@ -45,6 +45,12 @@ func cleanExpiredStates() {
 	}
 }
 
+// OIDCStatus godoc
+// @Summary Get OIDC login availability
+// @Tags auth
+// @Produce json
+// @Success 200 {object} serializer.Response{data=object}
+// @Router /auth/oidc/status [get]
 // OIDCStatus returns whether OIDC login is available and provider metadata.
 func (a *AuthController) OIDCStatus(c *gin.Context) {
 	hsConfig, err := services.HeadscaleConfigService.GetConfig()
@@ -74,6 +80,13 @@ func (a *AuthController) OIDCStatus(c *gin.Context) {
 	})
 }
 
+// OIDCLogin godoc
+// @Summary Initiate OIDC authorization code flow
+// @Tags auth
+// @Produce json
+// @Success 200 {object} serializer.Response{data=object} "redirect_url"
+// @Failure 500 {object} serializer.Response
+// @Router /auth/oidc/login [get]
 // OIDCLogin initiates the OIDC authorization code flow by returning the
 // authorization URL the frontend should redirect the user to.
 func (a *AuthController) OIDCLogin(c *gin.Context) {
@@ -136,21 +149,34 @@ func (a *AuthController) OIDCLogin(c *gin.Context) {
 	})
 }
 
+// OIDCCallbackQuery is the query parameter struct for OIDCCallback.
+type OIDCCallbackQuery struct {
+	Code  string `form:"code"  binding:"required"`
+	State string `form:"state" binding:"required"`
+}
+
+// OIDCCallback godoc
+// @Summary Handle OIDC authorization code callback
+// @Tags auth
+// @Produce json
+// @Param code query string true "Authorization code"
+// @Param state query string true "State parameter"
+// @Success 200 {object} serializer.Response{data=object} "token"
+// @Failure 400 {object} serializer.Response
+// @Router /auth/oidc/callback [get]
 // OIDCCallback handles the authorization code callback from the OIDC provider,
 // exchanges the code for tokens, extracts user info, and returns a panel JWT.
 func (a *AuthController) OIDCCallback(c *gin.Context) {
-	code := c.Query("code")
-	state := c.Query("state")
-
-	if code == "" || state == "" {
+	var q OIDCCallbackQuery
+	if err := c.ShouldBindQuery(&q); err != nil {
 		serializer.FailWithCode(c, serializer.CodeParamErr, "missing code or state parameter")
 		return
 	}
 
 	oidcStatesMu.Lock()
-	expiry, exists := oidcStates[state]
+	expiry, exists := oidcStates[q.State]
 	if exists {
-		delete(oidcStates, state)
+		delete(oidcStates, q.State)
 	}
 	oidcStatesMu.Unlock()
 
@@ -198,7 +224,7 @@ func (a *AuthController) OIDCCallback(c *gin.Context) {
 		Scopes:       scopes,
 	}
 
-	oauthToken, err := oauthCfg.Exchange(ctx, code)
+	oauthToken, err := oauthCfg.Exchange(ctx, q.Code)
 	if err != nil {
 		failOIDCAuth(c)
 		return

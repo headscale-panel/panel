@@ -85,50 +85,50 @@ export default function Register() {
   ];
 
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '32px 16px' }}>
-      <div style={{ width: '100%', maxWidth: 420 }}>
+    <div className="auth-page py-8 px-4">
+      <div className="w-full max-w-105">
         <Card>
           {/* Logo and Title */}
-          <div style={{ textAlign: 'center', marginBottom: 24 }}>
+          <div className="text-center mb-6">
             <div style={{
               width: 56, height: 56, borderRadius: 12, background: themeToken.colorPrimary,
               display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginBottom: 12,
             }}>
-              <SafetyCertificateOutlined style={{ fontSize: 32, color: '#fff' }} />
+              <SafetyCertificateOutlined className="text-32px text-white" />
             </div>
-            <Title level={4} style={{ margin: 0 }}>Headscale Panel</Title>
+            <Title level={4} className="m-0">Headscale Panel</Title>
             <Text type="secondary">Create your account</Text>
           </div>
 
           <form onSubmit={handleSubmit}>
-            <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+            <Space direction="vertical" size="middle" className="w-full">
               {/* Username */}
               <div>
-                <Text style={{ fontSize: 13, display: 'block', marginBottom: 4 }}>Username</Text>
+                <Text className="form-label">Username</Text>
                 <Input prefix={<UserOutlined />} value={formData.username} onChange={(e) => setFormData({ ...formData, username: e.target.value })} placeholder="Enter username" required disabled={loading} />
               </div>
 
               {/* Email */}
               <div>
-                <Text style={{ fontSize: 13, display: 'block', marginBottom: 4 }}>Email</Text>
+                <Text className="form-label">Email</Text>
                 <Input prefix={<MailOutlined />} type="email" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} placeholder="you@example.com" required disabled={loading} />
               </div>
 
               {/* Password */}
               <div>
-                <Text style={{ fontSize: 13, display: 'block', marginBottom: 4 }}>Password</Text>
+                <Text className="form-label">Password</Text>
                 <Input.Password prefix={<LockOutlined />} value={formData.password} onChange={(e) => handlePasswordChange(e.target.value)} placeholder="Create a password" required disabled={loading} />
                 {formData.password && (
-                  <div style={{ marginTop: 8 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <Progress percent={strengthPercent} showInfo={false} status={strengthStatus} size="small" style={{ flex: 1 }} />
-                      <Text type="secondary" style={{ fontSize: 11, minWidth: 52, textAlign: 'right' }}>{strengthLabel}</Text>
+                  <div className="mt-2">
+                    <div className="flex items-center gap-2">
+                      <Progress percent={strengthPercent} showInfo={false} status={strengthStatus} size="small" className="flex-1" />
+                      <Text type="secondary" className="text-11px min-w-52px text-right">{strengthLabel}</Text>
                     </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2px 12px', marginTop: 4 }}>
+                    <div className="grid grid-cols-2 gap-x-3 mt-1">
                       {requirements.map((item) => {
                         const met = passwordStrength[item.key as keyof typeof passwordStrength];
                         return (
-                          <div key={item.key} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                          <div key={item.key} className="flex items-center gap-1">
                             <CheckCircleOutlined style={{ fontSize: 12, color: met ? '#52c41a' : themeToken.colorTextQuaternary }} />
                             <Text style={{ fontSize: 11, color: met ? '#52c41a' : themeToken.colorTextQuaternary }}>{item.label}</Text>
                           </div>
@@ -141,10 +141,10 @@ export default function Register() {
 
               {/* Confirm Password */}
               <div>
-                <Text style={{ fontSize: 13, display: 'block', marginBottom: 4 }}>Confirm Password</Text>
+                <Text className="form-label">Confirm Password</Text>
                 <Input.Password prefix={<LockOutlined />} value={formData.confirmPassword} onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })} placeholder="Confirm your password" required disabled={loading} />
                 {formData.confirmPassword && formData.password !== formData.confirmPassword && (
-                  <Text type="danger" style={{ fontSize: 11 }}>Passwords do not match</Text>
+                  <Text type="danger" className="text-11px">Passwords do not match</Text>
                 )}
               </div>
 
@@ -156,7 +156,7 @@ export default function Register() {
           </form>
 
           {/* Login Link */}
-          <div style={{ textAlign: 'center', marginTop: 20 }}>
+          <div className="text-center mt-5">
             <Text type="secondary">Already have an account?</Text>{' '}
             <Link href="/login"><Text style={{ color: themeToken.colorPrimary, cursor: 'pointer', fontWeight: 500 }}>Sign in</Text></Link>
           </div>

@@ -1,4 +1,5 @@
 import { useTheme } from '@/contexts/ThemeContext';
+import { ThemeMode } from '@/lib/enums';
 import { useI18n, locales } from '@/i18n/index';
 import { Layout, Button, Input, Dropdown, Badge, Space, theme } from 'antd';
 import {
@@ -24,12 +25,12 @@ export default function Header({ onMenuClick }: HeaderProps) {
   const { token: themeToken } = theme.useToken();
 
   const cycleTheme = () => {
-    const next = mode === 'light' ? 'dark' : mode === 'dark' ? 'system' : 'light';
+    const next = mode === ThemeMode.Light ? ThemeMode.Dark : mode === ThemeMode.Dark ? ThemeMode.System : ThemeMode.Light;
     setMode(next);
   };
 
-  const ThemeIcon = mode === 'light' ? SunOutlined : mode === 'dark' ? MoonOutlined : DesktopOutlined;
-  const themeLabel = mode === 'light' ? t.header.themeLight : mode === 'dark' ? t.header.themeDark : t.header.themeSystem;
+  const ThemeIcon = mode === ThemeMode.Light ? SunOutlined : mode === ThemeMode.Dark ? MoonOutlined : DesktopOutlined;
+  const themeLabel = mode === ThemeMode.Light ? t.header.themeLight : mode === ThemeMode.Dark ? t.header.themeDark : t.header.themeSystem;
 
   const langMenuItems: MenuProps['items'] = Object.entries(locales).map(([code, meta]) => ({
     key: code,
@@ -50,7 +51,7 @@ export default function Header({ onMenuClick }: HeaderProps) {
       top: 0,
       zIndex: 40,
     }}>
-      <Space size="middle" style={{ flex: 1 }}>
+      <Space size="middle" className="flex-1">
         <Button
           type="text"
           icon={<MenuOutlined />}
@@ -59,7 +60,7 @@ export default function Header({ onMenuClick }: HeaderProps) {
         <Input
           placeholder={t.header.searchPlaceholder}
           prefix={<SearchOutlined />}
-          style={{ maxWidth: 400 }}
+          className="max-w-100"
           variant="filled"
         />
       </Space>

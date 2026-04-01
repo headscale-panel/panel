@@ -108,7 +108,10 @@ func (s *routeService) ListRoutesWithContext(ctx context.Context, actorUserID ui
 
 	total := int64(len(allRoutes))
 
-	// Paginate
+	// Paginate (pageSize < 0 means return all)
+	if pageSize < 0 {
+		return allRoutes, total, nil
+	}
 	start := (page - 1) * pageSize
 	if start >= len(allRoutes) {
 		return []HeadscaleRoute{}, total, nil

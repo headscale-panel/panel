@@ -4,7 +4,6 @@ import (
 	"headscale-panel/model"
 	"headscale-panel/pkg/utils/serializer"
 	"headscale-panel/router/services"
-	"strconv"
 
 	"github.com/gin-gonic/gin"
 )
@@ -15,6 +14,13 @@ func NewACLController() *ACLController {
 	return &ACLController{}
 }
 
+// GetPolicy godoc
+// @Summary Get the current ACL policy
+// @Tags acl
+// @Produce json
+// @Success 200 {object} serializer.Response{data=model.ACLPolicyStructure}
+// @Security BearerAuth
+// @Router /headscale/acl/policy [get]
 // GetPolicy retrieves the current ACL policy from Headscale
 func (c *ACLController) GetPolicy(ctx *gin.Context) {
 	userID := ctx.GetUint("userID")
@@ -26,6 +32,16 @@ func (c *ACLController) GetPolicy(ctx *gin.Context) {
 	serializer.Success(ctx, policy)
 }
 
+// UpdatePolicy godoc
+// @Summary Update the ACL policy
+// @Tags acl
+// @Accept json
+// @Produce json
+// @Param body body model.ACLPolicyStructure true "ACL policy"
+// @Success 200 {object} serializer.Response
+// @Failure 400 {object} serializer.Response
+// @Security BearerAuth
+// @Router /headscale/acl/policy [put]
 // UpdatePolicy updates the ACL policy in Headscale
 func (c *ACLController) UpdatePolicy(ctx *gin.Context) {
 	var policy model.ACLPolicyStructure
@@ -42,6 +58,16 @@ func (c *ACLController) UpdatePolicy(ctx *gin.Context) {
 	serializer.Success(ctx, nil)
 }
 
+// SetPolicyRaw godoc
+// @Summary Set ACL policy from raw JSON string
+// @Tags acl
+// @Accept json
+// @Produce json
+// @Param body body SetPolicyRawRequest true "Raw policy JSON"
+// @Success 200 {object} serializer.Response
+// @Failure 400 {object} serializer.Response
+// @Security BearerAuth
+// @Router /headscale/acl/policy/raw [post]
 // SetPolicyRaw sets the ACL policy from raw JSON
 type SetPolicyRawRequest struct {
 	Policy string `json:"policy" binding:"required"`
@@ -62,6 +88,13 @@ func (c *ACLController) SetPolicyRaw(ctx *gin.Context) {
 	serializer.Success(ctx, nil)
 }
 
+// GetParsedRules godoc
+// @Summary Get ACL rules with resolved groups and hosts
+// @Tags acl
+// @Produce json
+// @Success 200 {object} serializer.Response{data=[]model.ParsedACLRule}
+// @Security BearerAuth
+// @Router /headscale/acl/parsed-rules [get]
 // GetParsedRules returns ACL rules with resolved groups and hosts
 func (c *ACLController) GetParsedRules(ctx *gin.Context) {
 	userID := ctx.GetUint("userID")
@@ -73,6 +106,13 @@ func (c *ACLController) GetParsedRules(ctx *gin.Context) {
 	serializer.Success(ctx, rules)
 }
 
+// SyncResourcesAsHosts godoc
+// @Summary Sync all resources to ACL hosts
+// @Tags acl
+// @Produce json
+// @Success 200 {object} serializer.Response
+// @Security BearerAuth
+// @Router /headscale/acl/sync-resources [post]
 // SyncResourcesAsHosts syncs all resources to ACL hosts
 func (c *ACLController) SyncResourcesAsHosts(ctx *gin.Context) {
 	userID := ctx.GetUint("userID")
@@ -83,6 +123,16 @@ func (c *ACLController) SyncResourcesAsHosts(ctx *gin.Context) {
 	serializer.Success(ctx, nil)
 }
 
+// AddRule godoc
+// @Summary Add a new ACL rule
+// @Tags acl
+// @Accept json
+// @Produce json
+// @Param body body AddRuleRequest true "ACL rule"
+// @Success 200 {object} serializer.Response
+// @Failure 400 {object} serializer.Response
+// @Security BearerAuth
+// @Router /headscale/acl/add-rule [post]
 // AddRule adds a new ACL rule
 type AddRuleRequest struct {
 	Name         string   `json:"name"`
@@ -106,6 +156,16 @@ func (c *ACLController) AddRule(ctx *gin.Context) {
 	serializer.Success(ctx, nil)
 }
 
+// UpdateRuleByIndex godoc
+// @Summary Update an ACL rule by index
+// @Tags acl
+// @Accept json
+// @Produce json
+// @Param body body UpdateRuleByIndexRequest true "ACL rule update"
+// @Success 200 {object} serializer.Response
+// @Failure 400 {object} serializer.Response
+// @Security BearerAuth
+// @Router /headscale/acl/update-rule [put]
 // UpdateRuleByIndex updates an ACL rule by its index
 type UpdateRuleByIndexRequest struct {
 	Index        int      `json:"index" binding:"required"`
@@ -130,17 +190,30 @@ func (c *ACLController) UpdateRuleByIndex(ctx *gin.Context) {
 	serializer.Success(ctx, nil)
 }
 
+// DeleteRuleByIndexQuery is the query parameter struct for DeleteRuleByIndex.
+type DeleteRuleByIndexQuery struct {
+	Index int `form:"index" binding:"required"`
+}
+
+// DeleteRuleByIndex godoc
+// @Summary Delete an ACL rule by index
+// @Tags acl
+// @Produce json
+// @Param index query int true "Rule index"
+// @Success 200 {object} serializer.Response
+// @Failure 400 {object} serializer.Response
+// @Security BearerAuth
+// @Router /headscale/acl/delete-rule [delete]
 // DeleteRuleByIndex deletes an ACL rule by its index
 func (c *ACLController) DeleteRuleByIndex(ctx *gin.Context) {
-	indexStr := ctx.Query("index")
-	index, err := strconv.Atoi(indexStr)
-	if err != nil {
+	var q DeleteRuleByIndexQuery
+	if err := ctx.ShouldBindQuery(&q); err != nil {
 		serializer.FailWithCode(ctx, serializer.CodeParamErr, "无效的索引")
 		return
 	}
 
 	userID := ctx.GetUint("userID")
-	if err := services.ACLService.DeleteRuleByIndexWithContext(ctx.Request.Context(), userID, index); err != nil {
+	if err := services.ACLService.DeleteRuleByIndexWithContext(ctx.Request.Context(), userID, q.Index); err != nil {
 		serializer.Fail(ctx, err)
 		return
 	}
@@ -149,6 +222,13 @@ func (c *ACLController) DeleteRuleByIndex(ctx *gin.Context) {
 
 // ACL Policies (Version History)
 
+// Generate godoc
+// @Summary Generate an ACL policy from current settings
+// @Tags acl
+// @Produce json
+// @Success 200 {object} serializer.Response{data=model.ACLPolicyStructure}
+// @Security BearerAuth
+// @Router /headscale/acl/generate [post]
 func (c *ACLController) Generate(ctx *gin.Context) {
 	userID := ctx.GetUint("userID")
 	policy, err := services.ACLService.GenerateWithContext(ctx.Request.Context(), userID)
@@ -159,8 +239,22 @@ func (c *ACLController) Generate(ctx *gin.Context) {
 	serializer.Success(ctx, policy)
 }
 
+// ListPolicies godoc
+// @Summary List ACL policy versions
+// @Tags acl
+// @Produce json
+// @Param page query int false "Page number" default(1)
+// @Param page_size query int false "Page size" default(10)
+// @Success 200 {object} serializer.Response{data=serializer.PaginatedData{list=[]model.ACLPolicy}}
+// @Security BearerAuth
+// @Router /headscale/acl/policies [get]
 func (c *ACLController) ListPolicies(ctx *gin.Context) {
-	page, pageSize := serializer.ParsePaginationQuery(ctx)
+	var q serializer.PaginationQuery
+	if err := ctx.ShouldBindQuery(&q); err != nil {
+		serializer.Fail(ctx, serializer.ErrBind)
+		return
+	}
+	page, pageSize := q.Resolve()
 
 	userID := ctx.GetUint("userID")
 	policies, total, err := services.ACLService.ListPolicies(userID, page, pageSize)
@@ -175,6 +269,16 @@ type ApplyPolicyRequest struct {
 	ID uint `json:"id" binding:"required"`
 }
 
+// Apply godoc
+// @Summary Apply a saved ACL policy version
+// @Tags acl
+// @Accept json
+// @Produce json
+// @Param body body ApplyPolicyRequest true "Policy ID"
+// @Success 200 {object} serializer.Response
+// @Failure 400 {object} serializer.Response
+// @Security BearerAuth
+// @Router /headscale/acl/apply [post]
 func (c *ACLController) Apply(ctx *gin.Context) {
 	var req ApplyPolicyRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {

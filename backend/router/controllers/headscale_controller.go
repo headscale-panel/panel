@@ -14,6 +14,71 @@ func NewHeadscaleController() *HeadscaleController {
 	return &HeadscaleController{}
 }
 
+// HeadscaleCreateUserRequest is the request body for CreateUser.
+type HeadscaleCreateUserRequest struct {
+	Name string `json:"name" binding:"required"`
+}
+
+// HeadscaleRenameUserRequest is the request body for RenameUser.
+type HeadscaleRenameUserRequest struct {
+	OldName string `json:"old_name" binding:"required"`
+	NewName string `json:"new_name" binding:"required"`
+}
+
+// HeadscaleRenameMachineRequest is the request body for RenameMachine.
+type HeadscaleRenameMachineRequest struct {
+	Name string `json:"name" binding:"required"`
+}
+
+// HeadscaleSetTagsRequest is the request body for SetMachineTags.
+type HeadscaleSetTagsRequest struct {
+	Tags []string `json:"tags" binding:"required"`
+}
+
+// HeadscaleCreatePreAuthKeyRequest is the request body for CreatePreAuthKey.
+type HeadscaleCreatePreAuthKeyRequest struct {
+	User       string `json:"user" binding:"required"`
+	Reusable   bool   `json:"reusable"`
+	Ephemeral  bool   `json:"ephemeral"`
+	Expiration string `json:"expiration"`
+}
+
+// HeadscaleExpirePreAuthKeyRequest is the request body for ExpirePreAuthKey.
+type HeadscaleExpirePreAuthKeyRequest struct {
+	User string `json:"user" binding:"required"`
+	Key  string `json:"key" binding:"required"`
+}
+
+// HeadscaleRegisterNodeRequest is the request body for RegisterNode.
+type HeadscaleRegisterNodeRequest struct {
+	User string `json:"user" binding:"required"`
+	Key  string `json:"key" binding:"required"`
+}
+
+// DeleteUserQuery is the query parameter struct for DeleteUser.
+type DeleteUserQuery struct {
+	Name string `form:"name" binding:"required"`
+}
+
+// ListMachinesQuery is the query parameter struct for ListMachines.
+type ListMachinesQuery struct {
+	serializer.PaginationQuery
+	UserID string `form:"user_id"`
+	Status string `form:"status"`
+}
+
+// GetPreAuthKeysQuery is the query parameter struct for GetPreAuthKeys.
+type GetPreAuthKeysQuery struct {
+	User string `form:"user" binding:"required"`
+}
+
+// ListUsers godoc
+// @Summary List Headscale users
+// @Tags headscale
+// @Produce json
+// @Success 200 {object} serializer.Response{data=[]services.HeadscaleUser}
+// @Security BearerAuth
+// @Router /headscale/users [get]
 func (h *HeadscaleController) ListUsers(c *gin.Context) {
 	actorUserID := c.GetUint("userID")
 	users, err := services.HeadscaleService.ListHeadscaleUsersWithContext(c.Request.Context(), actorUserID)
@@ -24,10 +89,18 @@ func (h *HeadscaleController) ListUsers(c *gin.Context) {
 	serializer.Success(c, users)
 }
 
+// CreateUser godoc
+// @Summary Create a Headscale user
+// @Tags headscale
+// @Accept json
+// @Produce json
+// @Param body body HeadscaleCreateUserRequest true "User name"
+// @Success 200 {object} serializer.Response{data=services.HeadscaleUser}
+// @Failure 400 {object} serializer.Response
+// @Security BearerAuth
+// @Router /headscale/users [post]
 func (h *HeadscaleController) CreateUser(c *gin.Context) {
-	var req struct {
-		Name string `json:"name" binding:"required"`
-	}
+	var req HeadscaleCreateUserRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		serializer.Fail(c, serializer.ErrBind)
 		return
@@ -41,11 +114,18 @@ func (h *HeadscaleController) CreateUser(c *gin.Context) {
 	serializer.Success(c, user)
 }
 
+// RenameUser godoc
+// @Summary Rename a Headscale user
+// @Tags headscale
+// @Accept json
+// @Produce json
+// @Param body body HeadscaleRenameUserRequest true "Old and new name"
+// @Success 200 {object} serializer.Response{data=services.HeadscaleUser}
+// @Failure 400 {object} serializer.Response
+// @Security BearerAuth
+// @Router /headscale/users/rename [put]
 func (h *HeadscaleController) RenameUser(c *gin.Context) {
-	var req struct {
-		OldName string `json:"old_name" binding:"required"`
-		NewName string `json:"new_name" binding:"required"`
-	}
+	var req HeadscaleRenameUserRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		serializer.Fail(c, serializer.ErrBind)
 		return
@@ -78,10 +158,19 @@ func (h *HeadscaleController) RenameUser(c *gin.Context) {
 	serializer.Success(c, user)
 }
 
+// DeleteUser godoc
+// @Summary Delete a Headscale user by name
+// @Tags headscale
+// @Produce json
+// @Param name query string true "User name"
+// @Success 200 {object} serializer.Response
+// @Failure 404 {object} serializer.Response
+// @Security BearerAuth
+// @Router /headscale/users [delete]
 func (h *HeadscaleController) DeleteUser(c *gin.Context) {
-	name := c.Query("name")
-	if name == "" {
-		serializer.FailWithCode(c, serializer.CodeParamErr, "name is required")
+	var q DeleteUserQuery
+	if err := c.ShouldBindQuery(&q); err != nil {
+		serializer.Fail(c, serializer.ErrBind)
 		return
 	}
 
@@ -94,7 +183,7 @@ func (h *HeadscaleController) DeleteUser(c *gin.Context) {
 	}
 	var targetUserID uint64
 	for _, u := range users {
-		if u.Name == name {
+		if u.Name == q.Name {
 			targetUserID = u.ID
 			break
 		}
@@ -111,13 +200,28 @@ func (h *HeadscaleController) DeleteUser(c *gin.Context) {
 	serializer.Success(c, nil)
 }
 
+// ListMachines godoc
+// @Summary List Headscale machines
+// @Tags headscale
+// @Produce json
+// @Param page query int false "Page number" default(1)
+// @Param page_size query int false "Page size" default(10)
+// @Param all query bool false "Return all records"
+// @Param user_id query string false "Filter by user ID"
+// @Param status query string false "Filter by status (online/offline)"
+// @Success 200 {object} serializer.Response{data=serializer.PaginatedData{list=[]services.HeadscaleMachine}}
+// @Security BearerAuth
+// @Router /headscale/machines [get]
 func (h *HeadscaleController) ListMachines(c *gin.Context) {
-	page, pageSize := serializer.ParsePaginationQuery(c)
-	userFilter := c.Query("user_id")
-	statusFilter := c.Query("status")
+	var q ListMachinesQuery
+	if err := c.ShouldBindQuery(&q); err != nil {
+		serializer.Fail(c, serializer.ErrBind)
+		return
+	}
+	page, pageSize := q.Resolve()
 
 	userID := c.GetUint("userID")
-	machines, total, err := services.HeadscaleService.ListMachinesWithContext(c.Request.Context(), userID, page, pageSize, userFilter, statusFilter)
+	machines, total, err := services.HeadscaleService.ListMachinesWithContext(c.Request.Context(), userID, page, pageSize, q.UserID, q.Status)
 	if err != nil {
 		serializer.Fail(c, err)
 		return
@@ -126,6 +230,15 @@ func (h *HeadscaleController) ListMachines(c *gin.Context) {
 	serializer.SuccessPage(c, machines, total, page, pageSize)
 }
 
+// GetMachine godoc
+// @Summary Get a Headscale machine by ID
+// @Tags headscale
+// @Produce json
+// @Param id path string true "Machine ID"
+// @Success 200 {object} serializer.Response{data=services.HeadscaleMachine}
+// @Failure 404 {object} serializer.Response
+// @Security BearerAuth
+// @Router /headscale/machines/{id} [get]
 func (h *HeadscaleController) GetMachine(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 64)
@@ -143,6 +256,17 @@ func (h *HeadscaleController) GetMachine(c *gin.Context) {
 	serializer.Success(c, machine)
 }
 
+// RenameMachine godoc
+// @Summary Rename a Headscale machine
+// @Tags headscale
+// @Accept json
+// @Produce json
+// @Param id path string true "Machine ID"
+// @Param body body HeadscaleRenameMachineRequest true "New name"
+// @Success 200 {object} serializer.Response{data=services.HeadscaleMachine}
+// @Failure 400 {object} serializer.Response
+// @Security BearerAuth
+// @Router /headscale/machines/{id}/rename [put]
 func (h *HeadscaleController) RenameMachine(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 64)
@@ -151,9 +275,7 @@ func (h *HeadscaleController) RenameMachine(c *gin.Context) {
 		return
 	}
 
-	var req struct {
-		Name string `json:"name" binding:"required"`
-	}
+	var req HeadscaleRenameMachineRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		serializer.Fail(c, serializer.ErrBind)
 		return
@@ -168,6 +290,15 @@ func (h *HeadscaleController) RenameMachine(c *gin.Context) {
 	serializer.Success(c, machine)
 }
 
+// DeleteMachine godoc
+// @Summary Delete a Headscale machine
+// @Tags headscale
+// @Produce json
+// @Param id path string true "Machine ID"
+// @Success 200 {object} serializer.Response
+// @Failure 404 {object} serializer.Response
+// @Security BearerAuth
+// @Router /headscale/machines/{id} [delete]
 func (h *HeadscaleController) DeleteMachine(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 64)
@@ -184,6 +315,15 @@ func (h *HeadscaleController) DeleteMachine(c *gin.Context) {
 	serializer.Success(c, nil)
 }
 
+// ExpireMachine godoc
+// @Summary Expire a Headscale machine
+// @Tags headscale
+// @Produce json
+// @Param id path string true "Machine ID"
+// @Success 200 {object} serializer.Response{data=services.HeadscaleMachine}
+// @Failure 404 {object} serializer.Response
+// @Security BearerAuth
+// @Router /headscale/machines/{id}/expire [post]
 func (h *HeadscaleController) ExpireMachine(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 64)
@@ -201,6 +341,17 @@ func (h *HeadscaleController) ExpireMachine(c *gin.Context) {
 	serializer.Success(c, machine)
 }
 
+// SetMachineTags godoc
+// @Summary Set tags on a Headscale machine
+// @Tags headscale
+// @Accept json
+// @Produce json
+// @Param id path string true "Machine ID"
+// @Param body body HeadscaleSetTagsRequest true "Tags list"
+// @Success 200 {object} serializer.Response{data=services.HeadscaleMachine}
+// @Failure 400 {object} serializer.Response
+// @Security BearerAuth
+// @Router /headscale/machines/{id}/tags [put]
 func (h *HeadscaleController) SetMachineTags(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 64)
@@ -209,9 +360,7 @@ func (h *HeadscaleController) SetMachineTags(c *gin.Context) {
 		return
 	}
 
-	var req struct {
-		Tags []string `json:"tags" binding:"required"`
-	}
+	var req HeadscaleSetTagsRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		serializer.Fail(c, serializer.ErrBind)
 		return
@@ -226,6 +375,14 @@ func (h *HeadscaleController) SetMachineTags(c *gin.Context) {
 	serializer.Success(c, machine)
 }
 
+// GetMachineRoutes godoc
+// @Summary Get routes for a Headscale machine
+// @Tags headscale
+// @Produce json
+// @Param id path string true "Machine ID"
+// @Success 200 {object} serializer.Response{data=[]object}
+// @Security BearerAuth
+// @Router /headscale/machines/{id}/routes [get]
 func (h *HeadscaleController) GetMachineRoutes(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 64)
@@ -244,10 +401,19 @@ func (h *HeadscaleController) GetMachineRoutes(c *gin.Context) {
 	serializer.Success(c, routes)
 }
 
+// GetPreAuthKeys godoc
+// @Summary Get pre-auth keys for a Headscale user
+// @Tags headscale
+// @Produce json
+// @Param user query string true "Headscale user name"
+// @Success 200 {object} serializer.Response{data=[]services.HeadscaleAuthKey}
+// @Failure 404 {object} serializer.Response
+// @Security BearerAuth
+// @Router /headscale/preauthkeys [get]
 func (h *HeadscaleController) GetPreAuthKeys(c *gin.Context) {
-	user := c.Query("user")
-	if user == "" {
-		serializer.FailWithCode(c, serializer.CodeParamErr, "user is required")
+	var q GetPreAuthKeysQuery
+	if err := c.ShouldBindQuery(&q); err != nil {
+		serializer.Fail(c, serializer.ErrBind)
 		return
 	}
 
@@ -260,7 +426,7 @@ func (h *HeadscaleController) GetPreAuthKeys(c *gin.Context) {
 	}
 	var targetUserID uint64
 	for _, u := range users {
-		if u.Name == user {
+		if u.Name == q.User {
 			targetUserID = u.ID
 			break
 		}
@@ -278,13 +444,18 @@ func (h *HeadscaleController) GetPreAuthKeys(c *gin.Context) {
 	serializer.Success(c, keys)
 }
 
+// CreatePreAuthKey godoc
+// @Summary Create a pre-auth key for a Headscale user
+// @Tags headscale
+// @Accept json
+// @Produce json
+// @Param body body HeadscaleCreatePreAuthKeyRequest true "Pre-auth key parameters"
+// @Success 200 {object} serializer.Response{data=services.HeadscaleAuthKey}
+// @Failure 400 {object} serializer.Response
+// @Security BearerAuth
+// @Router /headscale/preauthkeys [post]
 func (h *HeadscaleController) CreatePreAuthKey(c *gin.Context) {
-	var req struct {
-		User       string `json:"user" binding:"required"`
-		Reusable   bool   `json:"reusable"`
-		Ephemeral  bool   `json:"ephemeral"`
-		Expiration string `json:"expiration"`
-	}
+	var req HeadscaleCreatePreAuthKeyRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		serializer.Fail(c, serializer.ErrBind)
 		return
@@ -317,11 +488,18 @@ func (h *HeadscaleController) CreatePreAuthKey(c *gin.Context) {
 	serializer.Success(c, key)
 }
 
+// ExpirePreAuthKey godoc
+// @Summary Expire a pre-auth key
+// @Tags headscale
+// @Accept json
+// @Produce json
+// @Param body body HeadscaleExpirePreAuthKeyRequest true "User and key"
+// @Success 200 {object} serializer.Response
+// @Failure 400 {object} serializer.Response
+// @Security BearerAuth
+// @Router /headscale/preauthkeys/expire [post]
 func (h *HeadscaleController) ExpirePreAuthKey(c *gin.Context) {
-	var req struct {
-		User string `json:"user" binding:"required"`
-		Key  string `json:"key" binding:"required"`
-	}
+	var req HeadscaleExpirePreAuthKeyRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		serializer.Fail(c, serializer.ErrBind)
 		return
@@ -353,6 +531,13 @@ func (h *HeadscaleController) ExpirePreAuthKey(c *gin.Context) {
 	serializer.Success(c, nil)
 }
 
+// CheckAccess godoc
+// @Summary Check ACL access for the current user's machines
+// @Tags headscale
+// @Produce json
+// @Success 200 {object} serializer.Response{data=[]object}
+// @Security BearerAuth
+// @Router /headscale/acl/access [get]
 func (h *HeadscaleController) CheckAccess(c *gin.Context) {
 	userID, exists := c.Get("userID")
 	if !exists {
@@ -385,11 +570,18 @@ func (h *HeadscaleController) CheckAccess(c *gin.Context) {
 	serializer.Success(c, machines)
 }
 
+// RegisterNode godoc
+// @Summary Register a Headscale node with a machine key
+// @Tags headscale
+// @Accept json
+// @Produce json
+// @Param body body HeadscaleRegisterNodeRequest true "User and machine key"
+// @Success 200 {object} serializer.Response{data=services.HeadscaleMachine}
+// @Failure 400 {object} serializer.Response
+// @Security BearerAuth
+// @Router /headscale/machines/register [post]
 func (h *HeadscaleController) RegisterNode(c *gin.Context) {
-	var req struct {
-		User string `json:"user" binding:"required"`
-		Key  string `json:"key" binding:"required"`
-	}
+	var req HeadscaleRegisterNodeRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		serializer.Fail(c, serializer.ErrBind)
 		return

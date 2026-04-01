@@ -1,5 +1,6 @@
 import api, { setUnauthorizedHandler } from './request';
 import { getAuthToken, redirectToLoginWithNotice } from './auth';
+import { DNSRecordType } from './enums';
 import {
   aclApi,
   authApi,
@@ -39,7 +40,7 @@ export const dashboardAPI = {
 };
 
 export const devicesAPI = {
-  list: (params?: { page?: number; pageSize?: number; userId?: string; status?: string }) => deviceApi.list(params),
+  list: (params?: { page?: number; pageSize?: number; all?: boolean; userId?: string; status?: string }) => deviceApi.list(params),
   get: (id: string) => deviceApi.get({ id }),
   rename: (id: string, name: string) => deviceApi.rename({ id, name }),
   delete: (id: string) => deviceApi.delete({ id }),
@@ -50,9 +51,9 @@ export const devicesAPI = {
 };
 
 export const usersAPI = {
-  list: (params?: { page?: number; pageSize?: number }) => headscaleUserApi.list(params),
+  list: (params?: { page?: number; pageSize?: number; all?: boolean }) => headscaleUserApi.list(params),
   create: (name: string) => headscaleUserApi.create({ name }),
-  rename: (oldName: string, newName: string) => headscaleUserApi.rename({ oldName, newName }),
+  rename: (oldName: string, newName: string) => headscaleUserApi.rename({ old_name: oldName, new_name: newName }),
   delete: (name: string) => headscaleUserApi.delete({ name }),
   getPreAuthKeys: (user: string) => headscaleUserApi.getPreAuthKeys({ user }),
   createPreAuthKey: (user: string, reusable: boolean, ephemeral: boolean, expiration?: string) =>
@@ -61,7 +62,7 @@ export const usersAPI = {
 };
 
 export const systemUsersAPI = {
-  list: (params?: { page?: number; pageSize?: number }) => systemUserApi.list(params),
+  list: (params?: { page?: number; pageSize?: number; all?: boolean }) => systemUserApi.list(params),
   create: (data: {
     username: string;
     password?: string;
@@ -82,29 +83,29 @@ export const systemUsersAPI = {
 };
 
 export const groupsAPI = {
-  list: (params?: { page?: number; pageSize?: number }) => groupApi.list(params),
+  list: (params?: { page?: number; pageSize?: number; all?: boolean }) => groupApi.list(params),
   create: (data: { name: string; permission_ids?: number[] }) => groupApi.create(data),
   update: (data: { id: number; name: string; permission_ids?: number[] }) => groupApi.update(data),
   delete: (id: number) => groupApi.delete({ id }),
   getPermissions: () => groupApi.getPermissions(),
-  updatePermissions: (id: number, permissionIds: number[]) => groupApi.updatePermissions({ id, permissionIds }),
+  updatePermissions: (id: number, permissionIds: number[]) => groupApi.updatePermissions({ id, permission_ids: permissionIds }),
 };
 
 export const routesAPI = {
-  list: (params?: { page?: number; pageSize?: number; userId?: string; machineId?: string }) => routeApi.list(params),
-  enable: (machineId: number, destination: string) => routeApi.enable({ machineId, destination }),
-  disable: (machineId: number, destination: string) => routeApi.disable({ machineId, destination }),
+  list: (params?: { page?: number; pageSize?: number; all?: boolean; userId?: string; machine_id?: string }) => routeApi.list(params),
+  enable: (machineId: number, destination: string) => routeApi.enable({ machine_id: machineId, destination }),
+  disable: (machineId: number, destination: string) => routeApi.disable({ machine_id: machineId, destination }),
 };
 
 export const metricsAPI = {
-  getOnlineDuration: (params?: { userId?: string; machineId?: string; start?: string; end?: string }) =>
+  getOnlineDuration: (params?: { user_id?: string; machine_id?: string; start?: string; end?: string }) =>
     metricsApi.getOnlineDuration(params),
-  getOnlineDurationStats: (params?: { start?: string; end?: string; groupBy?: string }) =>
+  getOnlineDurationStats: (params?: { start?: string; end?: string }) =>
     metricsApi.getOnlineDurationStats(params),
   getDeviceStatus: () => metricsApi.getDeviceStatus(),
   getDeviceStatusHistory: (machineId: string, params?: { start?: string; end?: string }) =>
-    metricsApi.getDeviceStatusHistory({ machineId, ...params }),
-  getTrafficStats: (params?: { machineId?: string; start?: string; end?: string }) =>
+    metricsApi.getDeviceStatusHistory({ machine_id: machineId, ...params }),
+  getTrafficStats: (params?: { machine_id?: string; start?: string; end?: string }) =>
     metricsApi.getTrafficStats(params),
   getInfluxDBStatus: () => metricsApi.getInfluxDBStatus(),
 };
@@ -137,7 +138,7 @@ export const aclAPI = {
 };
 
 export const resourcesAPI = {
-  list: (params?: { page?: number; pageSize?: number; keyword?: string }) => resourceApi.list(params),
+  list: (params?: { page?: number; pageSize?: number; all?: boolean; keyword?: string }) => resourceApi.list(params),
   create: (data: { name: string; ip_address: string; port?: string; description?: string }) => resourceApi.create(data),
   update: (id: number, data: { name?: string; ip_address?: string; port?: string; description?: string }) => resourceApi.update({ id, ...data }),
   delete: (id: number) => resourceApi.delete({ id }),
@@ -163,8 +164,8 @@ export const panelSettingsAPI = {
 export const dnsAPI = {
   list: (params?: { page?: number; pageSize?: number; keyword?: string; type?: string }) => dnsApi.list(params),
   get: (id: number) => dnsApi.get({ id }),
-  create: (data: { name: string; type: 'A' | 'AAAA'; value: string; comment?: string }) => dnsApi.create(data),
-  update: (data: { id: number; name?: string; type?: 'A' | 'AAAA'; value?: string; comment?: string }) => dnsApi.update(data),
+  create: (data: { name: string; type: DNSRecordType; value: string; comment?: string }) => dnsApi.create(data),
+  update: (data: { id: number; name?: string; type?: DNSRecordType; value?: string; comment?: string }) => dnsApi.update(data),
   delete: (id: number) => dnsApi.delete({ id }),
   sync: () => dnsApi.sync(),
   import: () => dnsApi.import(),
@@ -261,6 +262,10 @@ setUnauthorizedHandler(() => {
   wsManager.disconnect();
 });
 
+export enum WSMetricsUpdateType { OnlineDuration = 'online_duration', Traffic = 'traffic', DeviceCount = 'device_count' }
+export enum WSACLUpdateType { RuleAdded = 'rule_added', RuleUpdated = 'rule_updated', RuleDeleted = 'rule_deleted', PolicyApplied = 'policy_applied' }
+export enum WSNotificationType { Info = 'info', Warning = 'warning', Error = 'error', Success = 'success' }
+
 export interface WSDeviceStatusUpdate {
   machineId: string;
   online: boolean;
@@ -269,18 +274,18 @@ export interface WSDeviceStatusUpdate {
 }
 
 export interface WSMetricsUpdate {
-  type: 'online_duration' | 'traffic' | 'device_count';
+  type: WSMetricsUpdateType;
   data: any;
 }
 
 export interface WSACLUpdate {
-  type: 'rule_added' | 'rule_updated' | 'rule_deleted' | 'policy_applied';
+  type: WSACLUpdateType;
   data: any;
 }
 
 export interface WSNotification {
   id: string;
-  type: 'info' | 'warning' | 'error' | 'success';
+  type: WSNotificationType;
   title: string;
   message: string;
   timestamp: string;

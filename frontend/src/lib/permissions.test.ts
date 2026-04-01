@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { UserRole } from './enums';
 import {
   DASHBOARD_PERMISSIONS,
   SELF_DEVICE_PERMISSIONS,
@@ -15,7 +16,7 @@ describe('permissions helpers', () => {
       id: 1,
       username: 'admin',
       email: 'admin@example.com',
-      role: 'admin',
+      role: UserRole.Admin,
       permissions: [],
     };
 
@@ -29,7 +30,7 @@ describe('permissions helpers', () => {
       id: 2,
       username: 'alice',
       email: 'alice@example.com',
-      role: 'user',
+      role: UserRole.User,
       permissions: [
         SELF_DEVICE_PERMISSIONS[0],
         METRICS_PERMISSIONS[1],
@@ -47,7 +48,7 @@ describe('permissions helpers', () => {
       id: 3,
       username: 'bob',
       email: 'bob@example.com',
-      role: 'user',
+      role: UserRole.User,
       permissions: ['headscale:route:list'],
     };
 

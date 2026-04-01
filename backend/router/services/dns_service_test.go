@@ -8,6 +8,7 @@ import (
 
 	"headscale-panel/model"
 	"headscale-panel/pkg/conf"
+	"headscale-panel/pkg/utils/serializer"
 
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
@@ -78,8 +79,7 @@ func TestDNSListSyncsRecordsFromExtraRecordsFile(t *testing.T) {
 	}
 
 	records, total, err := DNSService.List(user.ID, &ListDNSRecordRequest{
-		Page:     1,
-		PageSize: 50,
+		PaginationQuery: serializer.PaginationQuery{Page: 1, PageSize: 50},
 	})
 	if err != nil {
 		t.Fatalf("list dns records: %v", err)

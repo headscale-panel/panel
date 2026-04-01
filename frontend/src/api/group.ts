@@ -19,7 +19,8 @@ export const groupApi = {
     request.get<any, ListGroupsRes>('/system/groups', {
       params: {
         page: req?.page || 1,
-        page_size: req?.pageSize || 20,
+        page_size: req?.pageSize || 10,
+        all: req?.all ? 'true' : undefined,
       },
     }),
   create: (req: CreateGroupReq) => request.post<any, CreateGroupRes>('/system/groups', req),
@@ -29,6 +30,6 @@ export const groupApi = {
   updatePermissions: (req: UpdateGroupPermissionsReq) =>
     request.put<any, UpdateGroupPermissionsRes>('/system/groups/permissions', {
       id: req.id,
-      permission_ids: req.permissionIds,
+      permission_ids: req.permission_ids,
     }),
 };

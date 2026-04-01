@@ -1,5 +1,6 @@
 import DashboardLayout from '@/components/DashboardLayout';
 import NetworkTopology from '@/components/NetworkTopology';
+import PageHeaderStatCards from '@/components/PageHeaderStatCards';
 import { dashboardAPI, devicesAPI, usersAPI } from '@/lib/api';
 import {
   applyRealtimeDeviceStatus,
@@ -16,7 +17,7 @@ import { useTranslation } from '@/i18n/index';
 import { useWebSocketConnection, useDeviceStatusUpdates, useMetricsUpdates } from '@/hooks/useWebSocket';
 import { useState } from 'react';
 import { useRequest } from 'ahooks';
-import { Button, Card, Tag, Typography, message, theme } from 'antd';
+import { Button, Tag, Typography, message, theme } from 'antd';
 import { ReloadOutlined, WifiOutlined, GlobalOutlined, TeamOutlined, DashboardOutlined, PercentageOutlined, CloudServerOutlined } from '@ant-design/icons';
 
 const { Text } = Typography;
@@ -63,8 +64,8 @@ export default function Dashboard() {
   const fetchDashboardData = async () => {
     // Fetch data from multiple APIs in parallel
     const [devicesRes, usersRes, topologyRes, overviewRes] = await Promise.allSettled([
-      devicesAPI.list({ page: 1, pageSize: 1000 }),
-      usersAPI.list({ page: 1, pageSize: 1000 }),
+      devicesAPI.list({ all: true }),
+      usersAPI.list({ all: true }),
       dashboardAPI.getTopologyWithACL(),
       dashboardAPI.getOverview(),
     ]);
@@ -170,14 +171,14 @@ export default function Dashboard() {
 
   return (
     <DashboardLayout>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+      <div className="flex flex-col gap-6">
         {/* Page Header */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
+        <div className="flex justify-between items-start flex-wrap gap-3">
           <div>
-            <Typography.Title level={4} style={{ margin: 0 }}>{t.dashboard.title}</Typography.Title>
+            <Typography.Title level={4} className="m-0">{t.dashboard.title}</Typography.Title>
             <Typography.Text type="secondary">{t.dashboard.description}</Typography.Text>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div className="flex items-center gap-3">
             {isConnected && (
               <Tag icon={<WifiOutlined />} color="success">{t.dashboard.realtime}</Tag>
             )}
@@ -188,30 +189,19 @@ export default function Dashboard() {
         </div>
 
         {/* Stats Cards */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 12 }}>
-          {[
-            { label: t.dashboard.onlineDevices, value: stats.onlineDevices, sub: t.dashboard.totalDevices.replace('{count}', String(stats.totalDevices)), icon: <DashboardOutlined style={{ fontSize: 28, color: '#1677ff' }} /> },
-            { label: t.dashboard.totalDevicesLabel || '总设备', value: stats.totalDevices, sub: `${stats.onlineDevices} ${t.common.status.online}`, icon: <CloudServerOutlined style={{ fontSize: 28, color: '#722ed1' }} /> },
-            { label: t.dashboard.totalUsers, value: stats.totalUsers, sub: t.dashboard.activeUsers, icon: <TeamOutlined style={{ fontSize: 28, color: '#52c41a' }} /> },
-            { label: t.dashboard.onlineRate || '在线率', value: stats.totalDevices > 0 ? `${Math.round((stats.onlineDevices / stats.totalDevices) * 100)}%` : '0%', sub: `${stats.onlineDevices}/${stats.totalDevices}`, icon: <PercentageOutlined style={{ fontSize: 28, color: '#fa8c16' }} /> },
-            { label: t.dashboard.dnsCount, value: stats.dnsRecordCount, sub: t.dashboard.dnsSubtitle, icon: <GlobalOutlined style={{ fontSize: 28, color: '#13c2c2' }} /> },
-          ].map((stat, i) => (
-            <Card key={i} size="small" style={{ padding: 4 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div>
-                  <Text type="secondary" style={{ fontSize: 13 }}>{stat.label}</Text>
-                  <div style={{ fontSize: 24, fontWeight: 700, marginTop: 4 }}>{stat.value}</div>
-                  {stat.sub && <Text type="secondary" style={{ fontSize: 12 }}>{stat.sub}</Text>}
-                </div>
-                {stat.icon}
-              </div>
-            </Card>
-          ))}
-        </div>
+        <PageHeaderStatCards
+          items={[
+            { label: t.dashboard.onlineDevices, value: stats.onlineDevices, subText: t.dashboard.totalDevices.replace('{count}', String(stats.totalDevices)), icon: <DashboardOutlined className="stat-icon-primary" />, watermark: 'LIVE' },
+            { label: t.dashboard.totalDevicesLabel || '总设备', value: stats.totalDevices, subText: `${stats.onlineDevices} ${t.common.status.online}`, icon: <CloudServerOutlined className="stat-icon-accent" />, watermark: 'ALL' },
+            { label: t.dashboard.totalUsers, value: stats.totalUsers, subText: t.dashboard.activeUsers, icon: <TeamOutlined className="stat-icon-success" />, watermark: 'USR' },
+            { label: t.dashboard.onlineRate || '在线率', value: stats.totalDevices > 0 ? `${Math.round((stats.onlineDevices / stats.totalDevices) * 100)}%` : '0%', subText: `${stats.onlineDevices}/${stats.totalDevices}`, icon: <PercentageOutlined className="stat-icon-warn" />, watermark: '%' },
+            { label: t.dashboard.dnsCount, value: stats.dnsRecordCount, subText: t.dashboard.dnsSubtitle, icon: <GlobalOutlined className="stat-icon-cyan" />, watermark: 'DNS' },
+          ]}
+        />
 
         {/* Network Topology */}
         <div>
-          <Typography.Title level={5} style={{ marginBottom: 16 }}>
+          <Typography.Title level={5} className="mb-4">
             {t.dashboard.networkTopology}
           </Typography.Title>
           <NetworkTopology

@@ -15,11 +15,18 @@ func TestNormalizePagination(t *testing.T) {
 		wantPageSize int
 	}{
 		{
-			name:         "negative values fall back to defaults",
+			name:         "negative page falls back to default",
 			page:         -1,
-			pageSize:     -10,
+			pageSize:     10,
 			wantPage:     constants.DefaultPage,
-			wantPageSize: constants.DefaultPageSize,
+			wantPageSize: 10,
+		},
+		{
+			name:         "negative page size enables all mode",
+			page:         1,
+			pageSize:     -1,
+			wantPage:     1,
+			wantPageSize: -1,
 		},
 		{
 			name:         "zero values fall back to defaults",

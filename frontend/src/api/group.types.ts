@@ -1,16 +1,15 @@
+import type { Group, Permission } from './entities';
+
+export type { Group, Permission };
+
 export interface ListGroupsReq {
   page?: number;
   pageSize?: number;
-}
-
-export interface GroupItem {
-  id: number;
-  name: string;
-  permission_ids?: number[];
+  all?: boolean;
 }
 
 export interface ListGroupsRes {
-  list: GroupItem[];
+  list: Group[];
   total: number;
   page: number;
   page_size: number;
@@ -21,7 +20,7 @@ export interface CreateGroupReq {
   name: string;
   permission_ids?: number[];
 }
-export interface CreateGroupRes extends GroupItem {}
+export interface CreateGroupRes extends Group {}
 
 export interface UpdateGroupReq {
   id: number;
@@ -36,15 +35,23 @@ export interface DeleteGroupReq {
 export interface DeleteGroupRes {}
 
 export interface GetPermissionsReq {}
-export interface PermissionItem {
-  id: number;
-  key: string;
-  name?: string;
-}
-export type GetPermissionsRes = PermissionItem[];
+export type GetPermissionsRes = Permission[];
 
 export interface UpdateGroupPermissionsReq {
   id: number;
-  permissionIds: number[];
+  permission_ids: number[];
 }
 export interface UpdateGroupPermissionsRes {}
+
+export interface AddGroupPermissionsReq {
+  id: number;
+  permission_ids: number[];
+}
+export interface AddGroupPermissionsRes {}
+
+export interface RemoveGroupPermissionsReq {
+  id: number;
+  permission_ids: number[];
+}
+export interface RemoveGroupPermissionsRes {}
+
