@@ -11,6 +11,7 @@ export interface User {
   display_name?: string;
   avatar?: string;
   permissions?: string[];
+  totp_enabled?: boolean;
 }
 
 export interface AuthSnapshot {

@@ -16,6 +16,8 @@ import ACL from "./pages/ACL";
 import Metrics from "./pages/Metrics";
 import Settings from "./pages/Settings";
 import DNS from "./pages/DNS";
+import PanelAccounts from "./pages/PanelAccounts";
+import Profile from "./pages/Profile";
 import SetupWelcome from "./pages/SetupWelcome";
 import api from "./lib/api";
 import { useState, useEffect, type ReactNode } from "react";
@@ -113,6 +115,12 @@ function AppRoutes() {
       </Route>
       <Route path="/dns">
         <ProtectedRoute requireAdmin><DNS /></ProtectedRoute>
+      </Route>
+      <Route path="/panel-accounts">
+        <ProtectedRoute requireAdmin><PanelAccounts /></ProtectedRoute>
+      </Route>
+      <Route path="/profile">
+        <ProtectedRoute><Profile /></ProtectedRoute>
       </Route>
       <Route path="/404" component={NotFound} />
       <Route component={NotFound} />

@@ -27,7 +27,6 @@ import {
   Dropdown,
   Input,
   Modal,
-  Popconfirm,
   Space,
   Spin,
   Tag,
@@ -39,12 +38,11 @@ import {
 import { loadUsersPageData } from '@/lib/page-data';
 import DashboardLayout from '@/components/DashboardLayout';
 import PageHeaderStatCards from '@/components/PageHeaderStatCards';
-import { devicesAPI, groupsAPI, systemUsersAPI } from '@/lib/api';
+import { aclAPI, devicesAPI, usersAPI } from '@/lib/api';
 import type {
+  ACLPolicy,
   NormalizedDevice,
-  NormalizedGroup,
-  NormalizedSystemUser,
-  OIDCStatusData,
+  NormalizedHeadscaleUser,
 } from '@/lib/normalizers';
 import { normalizeDeviceListResponse } from '@/lib/normalizers';
 import { UserProvider } from '@/lib/enums';
@@ -64,15 +62,15 @@ interface ACLGroup {
   members: string[];
 }
 
-type Group = NormalizedGroup;
-type UserData = NormalizedSystemUser;
+type Group = ACLGroup;
+type UserData = NormalizedHeadscaleUser;
 type DeviceData = NormalizedDevice;
 
 type TreeSelection =
   | { type: 'all' }
   | { type: 'ungrouped' }
-  | { type: 'group'; groupId: number }
-  | { type: 'user'; userId: number; groupId?: number };
+  | { type: 'group'; groupName: string }
+  | { type: 'user'; userId: number; groupName?: string };
 
 
 export default function UsersPage() {
@@ -80,15 +78,14 @@ export default function UsersPage() {
   const [, setLocation] = useLocation();
   const { token } = theme.useToken();
 
-  const [users, setUsers] = useState<UserData[]>([]);
   const [hsUsers, setHsUsers] = useState<UserData[]>([]);
   const [userDevicesByOwner, setUserDevicesByOwner] = useState<Record<string, DeviceData[]>>({});
   const [loadingDeviceOwners, setLoadingDeviceOwners] = useState<Set<string>>(new Set());
-  const [groups, setGroups] = useState<Group[]>([]);
   const [aclGroups, setAclGroups] = useState<ACLGroup[]>([]);
+  const [aclPolicy, setAclPolicy] = useState<ACLPolicy | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedNode, setSelectedNode] = useState<TreeSelection>({ type: 'all' });
-  const [expandedGroups, setExpandedGroups] = useState<Set<number>>(new Set());
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [ungroupedExpanded, setUngroupedExpanded] = useState(false);
 
   const [createUserDialogOpen, setCreateUserDialogOpen] = useState(false);
@@ -102,22 +99,13 @@ export default function UsersPage() {
   const [selectedDevice, setSelectedDevice] = useState<DeviceData | null>(null);
   const [addDeviceDialogOpen, setAddDeviceDialogOpen] = useState(false);
   const [onlineUsers, setOnlineUsers] = useState<Set<string>>(new Set());
-  const [oidcStatus, setOidcStatus] = useState<OIDCStatusData>({
-    oidc_enabled: false,
-    third_party: false,
-    builtin: false,
-    password_required: true,
-    mode: 'direct',
-  });
 
   const { loading, refreshAsync } = useRequest(
     async () => loadUsersPageData(),
     {
-      onSuccess: ({ users, hsUsers, groups, aclPolicy, oidcStatus, onlineUsers }) => {
-        setUsers(users);
+      onSuccess: ({ hsUsers, aclPolicy, onlineUsers }) => {
         setHsUsers(hsUsers);
-        setGroups(groups);
-        setOidcStatus(oidcStatus);
+        setAclPolicy(aclPolicy);
         setUserDevicesByOwner({});
         setLoadingDeviceOwners(new Set());
         setAclGroups(
@@ -161,35 +149,60 @@ export default function UsersPage() {
   };
 
   const getUsersByGroup = (group: Group): UserData[] =>
-    users.filter((user) => userMatchesAclGroup(user, group.name.toLowerCase()));
+    hsUsers.filter((user) => userMatchesAclGroup(user, group.name.toLowerCase()));
 
   const ungroupedUsers = useMemo(
-    () => users.filter((user) => !aclGroups.some((group) => userMatchesAclGroup(user, group.name))),
-    [aclGroups, users]
+    () => hsUsers.filter((user) => !aclGroups.some((group) => userMatchesAclGroup(user, group.name))),
+    [aclGroups, hsUsers]
   );
 
-  const getUserById = (userId?: number) => users.find((user) => user.ID === userId) || null;
-  const getGroupById = (groupId?: number) => groups.find((group) => group.ID === groupId) || null;
+  const getUserById = (userId?: number) => hsUsers.find((user) => user.ID === userId) || null;
+  const groups = aclGroups;
+  const getGroupByName = (groupName?: string) =>
+    groups.find((group) => group.name === groupName) || null;
 
   const selectedGroupUsers = useMemo(() => {
     switch (selectedNode.type) {
       case 'all':
-        return users;
+        return hsUsers;
       case 'ungrouped':
         return ungroupedUsers;
       case 'group': {
-        const group = getGroupById(selectedNode.groupId);
+        const group = getGroupByName(selectedNode.groupName);
         return group ? getUsersByGroup(group) : [];
       }
       default:
         return [];
     }
-  }, [selectedNode, users, ungroupedUsers, groups]);
+  }, [selectedNode, hsUsers, ungroupedUsers, groups]);
 
   const selectedTreeUser = useMemo(
     () => (selectedNode.type === 'user' ? getUserById(selectedNode.userId) : null),
-    [selectedNode, users]
+    [selectedNode, hsUsers]
   );
+
+  const getGroupMemberToken = (username: string) => `${username.trim()}@`;
+
+  const buildPolicyWithGroups = (nextGroups: ACLGroup[]): ACLPolicy => {
+    const groupsRecord = nextGroups.reduce<Record<string, string[]>>((record, group) => {
+      record[`group:${group.name}`] = group.members;
+      return record;
+    }, {});
+
+    return {
+      ...(aclPolicy || {}),
+      groups: groupsRecord,
+    };
+  };
+
+  const saveACLGroups = async (nextGroups: ACLGroup[]) => {
+    await aclAPI.updatePolicy(buildPolicyWithGroups(nextGroups));
+  };
+
+  const getPrimaryGroupNameForUser = (user: UserData | null | undefined) => {
+    if (!user) return undefined;
+    return aclGroups.find((group) => userMatchesAclGroup(user, group.name))?.name;
+  };
 
   const getUserOwnerKey = (user: UserData | null | undefined) =>
     (user?.headscale_name || user?.username || '').trim().toLowerCase();
@@ -295,22 +308,64 @@ export default function UsersPage() {
     });
   }, [searchQuery, selectedTreeUserDevices]);
 
-  const shouldSuggestOIDCMigration = (user: UserData) =>
-    oidcStatus.mode === 'builtin_oidc' && user.provider !== UserProvider.OIDC;
+  const onlineCount = hsUsers.filter((user) => onlineUsers.has(user.headscale_name || user.username)).length;
 
-  const onlineCount = users.filter((user) => onlineUsers.has(user.headscale_name || user.username)).length;
-
-  const toggleGroupExpanded = (groupId: number) => {
+  const toggleGroupExpanded = (groupName: string) => {
     setExpandedGroups((current) => {
       const next = new Set(current);
-      if (next.has(groupId)) {
-        next.delete(groupId);
+      if (next.has(groupName)) {
+        next.delete(groupName);
       } else {
-        next.add(groupId);
+        next.add(groupName);
       }
       return next;
     });
   };
+
+  const handleCreateHeadscaleUser = useCallback(
+    async ({ username, groupName }: { username: string; groupName?: string }) => {
+      await usersAPI.create(username);
+      if (!groupName) {
+        return;
+      }
+
+      const memberToken = getGroupMemberToken(username);
+      const nextGroups = aclGroups.map((group) =>
+        group.name === groupName
+          ? {
+              ...group,
+              members: Array.from(new Set([...group.members, memberToken])),
+            }
+          : group,
+      );
+      await saveACLGroups(nextGroups);
+    },
+    [aclGroups, aclPolicy],
+  );
+
+  const handleUpdateHeadscaleUser = useCallback(
+    async ({ oldName, newName, groupName }: { oldName: string; newName: string; groupName?: string }) => {
+      if (oldName !== newName) {
+        await usersAPI.rename(oldName, newName);
+      }
+
+      const oldToken = getGroupMemberToken(oldName);
+      const newToken = getGroupMemberToken(newName);
+      const nextGroups = aclGroups.map((group) => {
+        const filteredMembers = group.members.filter((member) => member !== oldToken && member !== newToken);
+        if (group.name !== groupName) {
+          return { ...group, members: filteredMembers };
+        }
+        return {
+          ...group,
+          members: Array.from(new Set([...filteredMembers, newToken])),
+        };
+      });
+
+      await saveACLGroups(nextGroups);
+    },
+    [aclGroups, aclPolicy],
+  );
 
   const handleEditUser = (user: UserData) => {
     setSelectedUser(user);
@@ -318,22 +373,23 @@ export default function UsersPage() {
   };
 
   const handleDeleteUser = (user: UserData) => {
-    if (user.provider === UserProvider.OIDC) {
-      message.error(t.users.oidcManagedDeleteBlocked);
-      return;
-    }
-
     Modal.confirm({
-      title: t.users.confirmDeleteUser.replace('{username}', user.username),
+      title: t.users.confirmDeleteUser.replace('{username}', user.headscale_name || user.username),
       okText: t.common.actions.delete,
       okButtonProps: { danger: true },
       cancelText: t.common.actions.cancel,
       onOk: async () => {
         try {
-          await systemUsersAPI.delete(user.ID);
+          await usersAPI.delete(user.headscale_name || user.username);
+          const memberToken = getGroupMemberToken(user.headscale_name || user.username);
+          const nextGroups = aclGroups.map((group) => ({
+            ...group,
+            members: group.members.filter((member) => member !== memberToken),
+          }));
+          await saveACLGroups(nextGroups);
           message.success(t.users.deleteSuccess);
           if (selectedNode.type === 'user' && selectedNode.userId === user.ID) {
-            setSelectedNode(selectedNode.groupId ? { type: 'group', groupId: selectedNode.groupId } : { type: 'all' });
+            setSelectedNode(selectedNode.groupName ? { type: 'group', groupName: selectedNode.groupName } : { type: 'all' });
           }
           loadData();
         } catch (error: any) {
@@ -362,11 +418,12 @@ export default function UsersPage() {
       cancelText: t.common.actions.cancel,
       onOk: async () => {
         try {
-          await groupsAPI.delete(group.ID);
+          const nextGroups = aclGroups.filter((candidate) => candidate.name !== group.name);
+          await saveACLGroups(nextGroups);
           message.success(t.users.deleteSuccess);
           if (
-            (selectedNode.type === 'group' && selectedNode.groupId === group.ID) ||
-            (selectedNode.type === 'user' && selectedNode.groupId === group.ID)
+            (selectedNode.type === 'group' && selectedNode.groupName === group.name) ||
+            (selectedNode.type === 'user' && selectedNode.groupName === group.name)
           ) {
             setSelectedNode({ type: 'all' });
           }
@@ -377,6 +434,36 @@ export default function UsersPage() {
       },
     });
   };
+
+  const handleCreateGroup = useCallback(
+    async (name: string) => {
+      if (aclGroups.some((group) => group.name.toLowerCase() === name.toLowerCase())) {
+        throw new Error(t.users.groupExists);
+      }
+      await saveACLGroups([...aclGroups, { name, members: [] }]);
+    },
+    [aclGroups, aclPolicy, t.users.groupExists],
+  );
+
+  const handleRenameGroup = useCallback(
+    async (nextName: string) => {
+      if (!selectedGroup) return;
+      if (
+        aclGroups.some(
+          (group) =>
+            group.name !== selectedGroup.name &&
+            group.name.toLowerCase() === nextName.toLowerCase(),
+        )
+      ) {
+        throw new Error(t.users.groupExists);
+      }
+      const nextGroups = aclGroups.map((group) =>
+        group.name === selectedGroup.name ? { ...group, name: nextName } : group,
+      );
+      await saveACLGroups(nextGroups);
+    },
+    [aclGroups, aclPolicy, selectedGroup, t.users.groupExists],
+  );
 
   const handleViewDevices = (user: UserData) => {
     selectNode({ type: 'user', userId: user.ID });
@@ -521,8 +608,8 @@ export default function UsersPage() {
             <Tooltip title={t.users.editUser}>
               <Button type="text" size="small" icon={<EditOutlined />} onClick={() => handleEditUser(user)} />
             </Tooltip>
-            <Tooltip title={user.provider === UserProvider.OIDC ? t.users.oidcManagedDeleteBlocked : t.users.deleteUser}>
-              <Button type="text" size="small" danger icon={<DeleteOutlined />} onClick={() => handleDeleteUser(user)} disabled={user.provider === UserProvider.OIDC} />
+            <Tooltip title={t.users.deleteUser}>
+              <Button type="text" size="small" danger icon={<DeleteOutlined />} onClick={() => handleDeleteUser(user)} />
             </Tooltip>
           </Space>
         </div>
@@ -552,11 +639,11 @@ export default function UsersPage() {
 
   const renderGroupBranch = (group: Group) => {
     const memberUsers = getUsersByGroup(group);
-    const isExpanded = expandedGroups.has(group.ID);
-    const isSelected = selectedNode.type === 'group' && selectedNode.groupId === group.ID;
+    const isExpanded = expandedGroups.has(group.name);
+    const isSelected = selectedNode.type === 'group' && selectedNode.groupName === group.name;
 
     return (
-      <div key={group.ID}>
+      <div key={group.name}>
         <div className="relative">
           <div
             style={{
@@ -566,11 +653,11 @@ export default function UsersPage() {
               color: isSelected ? token.colorPrimaryText : token.colorText,
               fontWeight: isSelected ? 500 : 400, fontSize: 13,
             }}
-            onClick={() => selectNode({ type: 'group', groupId: group.ID })}
+            onClick={() => selectNode({ type: 'group', groupName: group.name })}
           >
             <span
               className="w-5 h-5 flex items-center justify-center"
-              onClick={(e) => { e.stopPropagation(); toggleGroupExpanded(group.ID); }}
+              onClick={(e) => { e.stopPropagation(); toggleGroupExpanded(group.name); }}
             >
               {isExpanded ? <DownOutlined /> : <RightOutlined className="text-10px text-10px" />}
             </span>
@@ -615,7 +702,7 @@ export default function UsersPage() {
                       background: isUserSelected ? token.colorPrimaryBg : 'transparent',
                       color: isUserSelected ? token.colorPrimaryText : token.colorTextSecondary,
                     }}
-                    onClick={() => selectNode({ type: 'user', userId: user.ID, groupId: group.ID })}
+                    onClick={() => selectNode({ type: 'user', userId: user.ID, groupName: group.name })}
                   >
                     <span style={{
                       width: 10, height: 10, borderRadius: '50%',
@@ -651,7 +738,7 @@ export default function UsersPage() {
       : selectedNode.type === 'ungrouped'
         ? t.users.ungroupedUsers
         : selectedNode.type === 'group'
-          ? getGroupById(selectedNode.groupId)?.name || t.users.groups
+          ? getGroupByName(selectedNode.groupName)?.name || t.users.groups
           : selectedTreeUser?.display_name || selectedTreeUser?.username || t.users.userDevices;
 
   const selectedUserDevicesLoading =
@@ -695,10 +782,10 @@ export default function UsersPage() {
         <PageHeaderStatCards
           gap={16}
           items={[
-            { label: t.users.totalUsers, value: users.length, icon: <TeamOutlined className="stat-icon-primary" />, watermark: 'ALL' },
+            { label: t.users.totalUsers, value: hsUsers.length, icon: <TeamOutlined className="stat-icon-primary" />, watermark: 'ALL' },
             { label: t.users.onlineUsers, value: onlineCount, icon: <WifiOutlined className="stat-icon-success" />, watermark: 'ON' },
             { label: t.users.groups, value: groups.length, icon: <UsergroupAddOutlined className="stat-icon-accent" />, watermark: 'GRP' },
-            { label: t.users.grouped, value: users.filter((u) => aclGroups.some((g) => userMatchesAclGroup(u, g.name))).length, icon: <UserAddOutlined className="stat-icon-success" />, watermark: 'MAP' },
+            { label: t.users.grouped, value: hsUsers.filter((u) => aclGroups.some((g) => userMatchesAclGroup(u, g.name))).length, icon: <UserAddOutlined className="stat-icon-success" />, watermark: 'MAP' },
             { label: t.users.ungrouped, value: ungroupedUsers.length, icon: <UserOutlined className="text-28px" style={{ color: token.colorTextSecondary }} />, watermark: 'RAW' },
           ]}
         />
@@ -725,7 +812,7 @@ export default function UsersPage() {
                 >
                   <TeamOutlined className="opacity-60" />
                   <span className="flex-1">{t.users.allUsers}</span>
-                  <Text type="secondary" className="text-12px">{users.length}</Text>
+                  <Text type="secondary" className="text-12px">{hsUsers.length}</Text>
                 </div>
 
                 {/* Groups Section */}
@@ -765,7 +852,7 @@ export default function UsersPage() {
                     <div className="pb-2 pr-2 pl-10">
                       <Space direction="vertical" className="w-full" size={4}>
                         {ungroupedUsers.map((user) => {
-                          const isSelected = selectedNode.type === 'user' && selectedNode.userId === user.ID && !selectedNode.groupId;
+                          const isSelected = selectedNode.type === 'user' && selectedNode.userId === user.ID && !selectedNode.groupName;
                           return (
                             <div
                               key={user.ID}
@@ -836,23 +923,26 @@ export default function UsersPage() {
         <CreateUserModal
           open={createUserDialogOpen}
           groups={groups}
-          oidcStatus={oidcStatus}
           onCancel={() => setCreateUserDialogOpen(false)}
           onSuccess={loadData}
+          onCreate={handleCreateHeadscaleUser}
         />
 
         <EditUserModal
           open={editUserDialogOpen}
           user={selectedUser}
           groups={groups}
+          currentGroupName={getPrimaryGroupNameForUser(selectedUser)}
           onCancel={() => { setEditUserDialogOpen(false); setSelectedUser(null); }}
           onSuccess={loadData}
+          onSave={handleUpdateHeadscaleUser}
         />
 
         <CreateGroupModal
           open={createGroupDialogOpen}
           onCancel={() => setCreateGroupDialogOpen(false)}
           onSuccess={loadData}
+          onCreate={handleCreateGroup}
         />
 
         <EditGroupModal
@@ -860,6 +950,7 @@ export default function UsersPage() {
           group={selectedGroup}
           onCancel={() => { setEditGroupDialogOpen(false); setSelectedGroup(null); }}
           onSuccess={loadData}
+          onSave={handleRenameGroup}
         />
 
         <RenameDeviceModal

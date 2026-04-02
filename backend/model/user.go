@@ -13,6 +13,7 @@ type User struct {
 	Username string `json:"username" gorm:"uniqueIndex;not null"`
 	Password string `json:"-"` // JSON 中不返回密码
 	Email    string `json:"email"`
+	IsActive bool   `json:"is_active" gorm:"default:true"`
 	GroupID  uint   `json:"group_id"`
 	Group    Group  `json:"group"`
 

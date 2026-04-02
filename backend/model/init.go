@@ -32,6 +32,7 @@ func Init() {
 		&DNSRecord{},
 		&SetupState{},
 		&PanelSetting{},
+		&UserIdentityBinding{},
 	)
 	if err != nil {
 		log.Fatalf("models.AutoMigrate err: %v", err)
@@ -136,6 +137,12 @@ func initDefaultData() {
 		{Name: "查看拓扑", Code: "topology:view", Type: "button"},
 		{Name: "查看拓扑 ACL", Code: "topology:with_acl:view", Type: "button"},
 		{Name: "查看拓扑 ACL 矩阵", Code: "topology:acl_matrix:view", Type: "button"},
+
+		{Name: "查看 Panel 账号", Code: "panel:account:list", Type: "button"},
+		{Name: "创建 Panel 账号", Code: "panel:account:create", Type: "button"},
+		{Name: "编辑 Panel 账号", Code: "panel:account:update", Type: "button"},
+		{Name: "删除 Panel 账号", Code: "panel:account:delete", Type: "button"},
+		{Name: "管理 Panel 账号绑定", Code: "panel:account:bindding", Type: "button"},
 	}
 
 	for _, p := range permissions {
@@ -192,6 +199,8 @@ func initDefaultData() {
 		log.Println("No users found. Create the first admin via /api/v1/setup/init")
 	}
 
+	migrateHeadscaleNameToBindings()
+
 	initSetupStateRecord()
 }
 
@@ -210,6 +219,39 @@ func initSetupStateRecord() {
 	}
 	if err != nil {
 		log.Fatalf("failed to load setup state: %v", err)
+	}
+}
+
+// migrateHeadscaleNameToBindings migrates existing User.HeadscaleName into
+// UserIdentityBinding records. Runs once; skips users that already have at
+// least one binding row.
+func migrateHeadscaleNameToBindings() {
+	// Ensure existing users have is_active = true (new column default may not
+	// retroactively apply to existing SQLite rows).
+	DB.Model(&User{}).Where("is_active = ? OR is_active IS NULL", false).Update("is_active", true)
+
+	var users []User
+	if err := DB.Where("headscale_name IS NOT NULL AND headscale_name <> ''").Find(&users).Error; err != nil {
+		log.Printf("migrateHeadscaleNameToBindings: query failed: %v", err)
+		return
+	}
+	for _, u := range users {
+		var count int64
+		DB.Model(&UserIdentityBinding{}).Where("user_id = ?", u.ID).Count(&count)
+		if count > 0 {
+			continue
+		}
+		binding := UserIdentityBinding{
+			UserID:        u.ID,
+			HeadscaleName: u.HeadscaleName,
+			DisplayName:   u.DisplayName,
+			Email:         u.Email,
+			Provider:      u.Provider,
+			IsPrimary:     true,
+		}
+		if err := DB.Create(&binding).Error; err != nil {
+			log.Printf("migrateHeadscaleNameToBindings: create binding for user %d failed: %v", u.ID, err)
+		}
 	}
 }
 

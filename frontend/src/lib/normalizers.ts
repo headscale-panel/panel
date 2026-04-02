@@ -69,6 +69,18 @@ export interface NormalizedSystemUser {
   provider_id?: string;
 }
 
+export interface NormalizedHeadscaleUser {
+  ID: number;
+  CreatedAt: string;
+  username: string;
+  email: string;
+  display_name: string;
+  headscale_name: string;
+  provider?: UserProvider;
+  provider_id?: string;
+  profile_pic_url?: string;
+}
+
 export interface NormalizedResource {
   id: number;
   name: string;
@@ -257,6 +269,36 @@ export function normalizeHeadscaleUserOptions(value: unknown): HeadscaleUserOpti
       };
     })
     .filter((user): user is HeadscaleUserOption => Boolean(user));
+}
+
+export function normalizeHeadscaleUsers(value: unknown): NormalizedHeadscaleUser[] {
+  const normalizedUsers: NormalizedHeadscaleUser[] = [];
+
+  for (const item of extractListCandidate(value)) {
+    const user = asRecord(item) ?? {};
+    const name =
+      asString(user.name) ||
+      asString(user.username) ||
+      asString(user.headscale_name);
+
+    if (!name) {
+      continue;
+    }
+
+    normalizedUsers.push({
+      ID: asNumber(user.ID ?? user.id),
+      CreatedAt: asString(user.created_at) || asString(user.CreatedAt),
+      username: name,
+      email: asString(user.email),
+      display_name: asString(user.display_name),
+      headscale_name: name,
+      provider: (asString(user.provider) || undefined) as UserProvider | undefined,
+      provider_id: asString(user.provider_id) || undefined,
+      profile_pic_url: asString(user.profile_pic_url) || undefined,
+    });
+  }
+
+  return normalizedUsers;
 }
 
 export function normalizeSystemUsers(value: unknown): NormalizedSystemUser[] {

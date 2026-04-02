@@ -1,32 +1,26 @@
 import {
   aclAPI,
   devicesAPI,
-  groupsAPI,
   headscaleConfigAPI,
   panelSettingsAPI,
   resourcesAPI,
-  systemUsersAPI,
   usersAPI,
 } from './api';
 import { isObject } from 'radashi';
 import {
   normalizeACLPolicy,
   normalizeDeviceListResponse,
-  normalizeGroups,
+  normalizeHeadscaleUsers,
   normalizeHeadscaleUserOptions,
   normalizeOIDCForm,
   normalizeOIDCStatus,
   normalizePanelConnectionSettings,
   normalizeResources,
-  normalizeSystemUsers,
   type OIDCFormValues,
 } from './normalizers';
-import { UserProvider } from './enums';
-
 export async function loadUsersPageData() {
-  const [usersRes, groupsRes, policyRes, oidcStatusRes, onlineDevicesRes] = await Promise.all([
-    systemUsersAPI.list({ all: true }),
-    groupsAPI.list({ all: true }),
+  const [usersRes, policyRes, oidcStatusRes, onlineDevicesRes] = await Promise.all([
+    usersAPI.list({ all: true }),
     aclAPI.getPolicy().catch(() => null),
     panelSettingsAPI.getOIDCStatus().catch(() => null),
     devicesAPI.list({ all: true, status: 'online' }).catch(() => null),
@@ -37,12 +31,10 @@ export async function loadUsersPageData() {
     devices.filter((device) => device.online && device.user?.name).map((device) => device.user!.name)
   );
 
-  const users = normalizeSystemUsers(usersRes);
+  const hsUsers = normalizeHeadscaleUsers(usersRes);
 
   return {
-    users,
-    hsUsers: users.filter((u) => u.provider === UserProvider.Headscale),
-    groups: normalizeGroups(groupsRes),
+    hsUsers,
     aclPolicy: normalizeACLPolicy(policyRes),
     oidcStatus: normalizeOIDCStatus(oidcStatusRes),
     onlineUsers,

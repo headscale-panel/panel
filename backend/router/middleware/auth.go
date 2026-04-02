@@ -4,6 +4,7 @@ import (
 	"headscale-panel/model"
 	"headscale-panel/pkg/utils/jwt"
 	"headscale-panel/pkg/utils/serializer"
+	"headscale-panel/router/services"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -28,10 +29,17 @@ func AuthMiddleware() gin.HandlerFunc {
 			return
 		}
 
+		user, err := services.ValidateSessionUser(claims.UserID)
+		if err != nil {
+			serializer.Fail(c, err)
+			c.Abort()
+			return
+		}
+
 		// Set claims to context
-		c.Set("userID", claims.UserID)
-		c.Set("username", claims.Username)
-		c.Set("groupID", claims.GroupID)
+		c.Set("userID", user.ID)
+		c.Set("username", user.Username)
+		c.Set("groupID", user.GroupID)
 
 		c.Next()
 	}

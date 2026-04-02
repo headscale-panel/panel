@@ -270,6 +270,10 @@ func (a *AuthController) OIDCCallback(c *gin.Context) {
 		failOIDCAuth(c)
 		return
 	}
+	if err := services.EnsureUserCanAuthenticate(user); err != nil {
+		failOIDCAuth(c)
+		return
+	}
 
 	token, err := jwt.GenerateToken(user.ID, user.Username, user.GroupID)
 	if err != nil {

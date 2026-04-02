@@ -34,6 +34,7 @@ export type AppSectionKey =
   | 'acl'
   | 'dns'
   | 'metrics'
+  | 'panelAccounts'
   | 'settings';
 
 function getPermissionSet(user: User | null | undefined): Set<string> {
@@ -86,6 +87,8 @@ export function canAccessSection(user: User | null | undefined, section: AppSect
       return isAdmin(user);
     case 'metrics':
       return hasAnyPermission(user, METRICS_PERMISSIONS);
+    case 'panelAccounts':
+      return isAdmin(user);
     case 'settings':
       return isAdmin(user);
     default:
@@ -100,6 +103,7 @@ export function getDefaultRouteForUser(user: User | null | undefined): string {
     'routes',
     'metrics',
     'users',
+    'panelAccounts',
     'resources',
     'acl',
     'dns',
@@ -125,6 +129,8 @@ export function getDefaultRouteForUser(user: User | null | undefined): string {
           return '/dns';
         case 'metrics':
           return '/metrics';
+        case 'panelAccounts':
+          return '/panel-accounts';
         case 'settings':
           return '/settings';
       }

@@ -1,19 +1,22 @@
 import { useEffect, useState } from 'react';
 import { Input, Modal, Typography, message } from 'antd';
-import { groupsAPI } from '@/lib/api';
-import type { NormalizedGroup } from '@/lib/normalizers';
 import { useTranslation } from '@/i18n/index';
 
 const { Text } = Typography;
 
-interface EditGroupModalProps {
-  open: boolean;
-  group: NormalizedGroup | null;
-  onCancel: () => void;
-  onSuccess: () => void;
+interface GroupLike {
+  name: string;
 }
 
-export default function EditGroupModal({ open, group, onCancel, onSuccess }: EditGroupModalProps) {
+interface EditGroupModalProps {
+  open: boolean;
+  group: GroupLike | null;
+  onCancel: () => void;
+  onSuccess: () => void;
+  onSave: (nextName: string) => Promise<void>;
+}
+
+export default function EditGroupModal({ open, group, onCancel, onSuccess, onSave }: EditGroupModalProps) {
   const t = useTranslation();
   const [groupName, setGroupName] = useState('');
   const [saving, setSaving] = useState(false);
@@ -25,14 +28,15 @@ export default function EditGroupModal({ open, group, onCancel, onSuccess }: Edi
   }, [open, group]);
 
   const handleOk = async () => {
-    if (!group || !groupName.trim()) {
+    const nextName = groupName.trim();
+    if (!group || !nextName) {
       message.error(t.users.groupNameRequired);
       return;
     }
 
     setSaving(true);
     try {
-      await groupsAPI.update({ id: group.ID, name: groupName.trim() });
+      await onSave(nextName);
       message.success(t.users.updateGroupSuccess);
       onCancel();
       onSuccess();

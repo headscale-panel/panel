@@ -246,7 +246,12 @@ func HandleWebSocket(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
 		return
 	}
-	userID := fmt.Sprintf("%d", claims.UserID)
+	user, err := ValidateSessionUser(claims.UserID)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
+		return
+	}
+	userID := fmt.Sprintf("%d", user.ID)
 
 	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {

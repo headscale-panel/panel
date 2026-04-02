@@ -28,7 +28,7 @@ export type UserInfoRes = User;
 export interface GenerateTOTPReq {}
 export interface GenerateTOTPRes {
   secret: string;
-  qr_code?: string;
+  url: string;
 }
 
 export interface EnableTOTPReq {

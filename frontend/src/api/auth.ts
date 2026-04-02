@@ -6,6 +6,8 @@ import type {
   RegisterRes,
   UserInfoReq,
   UserInfoRes,
+  GenerateTOTPRes,
+  EnableTOTPReq,
   OidcCallbackReq,
   OidcCallbackRes,
   OidcStatusReq,
@@ -18,6 +20,8 @@ export const authApi = {
   getUserInfo: (_req?: UserInfoReq) => request.get<any, UserInfoRes>('/user/info'),
   oidcLogin: () => request.get<any, { url?: string }>('/auth/oidc/login'),
   oidcCallback: (req: OidcCallbackReq) => request.get<any, OidcCallbackRes>('/auth/oidc/callback', { params: req }),
+  generateTOTP: () => request.post<any, GenerateTOTPRes>('/user/totp/generate'),
+  enableTOTP: (req: EnableTOTPReq) => request.post<any, void>('/user/totp/enable', req),
 };
 
 export const publicAuthApi = {

@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Button, Input, Modal, Typography, message } from 'antd';
-import { groupsAPI } from '@/lib/api';
+import { Input, Modal, Typography, message } from 'antd';
 import { useTranslation } from '@/i18n/index';
 
 const { Text } = Typography;
@@ -9,9 +8,10 @@ interface CreateGroupModalProps {
   open: boolean;
   onCancel: () => void;
   onSuccess: () => void;
+  onCreate: (name: string) => Promise<void>;
 }
 
-export default function CreateGroupModal({ open, onCancel, onSuccess }: CreateGroupModalProps) {
+export default function CreateGroupModal({ open, onCancel, onSuccess, onCreate }: CreateGroupModalProps) {
   const t = useTranslation();
   const [groupName, setGroupName] = useState('');
   const [saving, setSaving] = useState(false);
@@ -23,14 +23,15 @@ export default function CreateGroupModal({ open, onCancel, onSuccess }: CreateGr
   }, [open]);
 
   const handleOk = async () => {
-    if (!groupName.trim()) {
+    const nextName = groupName.trim();
+    if (!nextName) {
       message.error(t.users.groupNameRequired);
       return;
     }
 
     setSaving(true);
     try {
-      await groupsAPI.create({ name: groupName.trim() });
+      await onCreate(nextName);
       message.success(t.users.createGroupSuccess);
       onCancel();
       onSuccess();

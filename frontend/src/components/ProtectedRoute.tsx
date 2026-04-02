@@ -42,6 +42,7 @@ export default function ProtectedRoute({
             display_name: u.display_name,
             avatar: u.profile_pic_url,
             permissions: data.permissions,
+            totp_enabled: u.totp_enabled,
           });
         }
       }).catch(() => {

@@ -21,6 +21,7 @@
     "ahooks": "^3.9.7",
     "antd": "^6.3.5",
     "axios": "^1.12.0",
+    "qrcode.react": "^4.2.0",
     "radashi": "^12.7.2",
     "react": "^19.2.1",
     "react-dom": "^19.2.1",

@@ -111,6 +111,30 @@ func (s *userService) Login(req *LoginRequest) (string, *model.User, error) {
 	return s.LoginWithContext(context.Background(), req)
 }
 
+func EnsureUserCanAuthenticate(user *model.User) error {
+	if user == nil {
+		return serializer.ErrUserNotFound
+	}
+	if !user.IsActive {
+		return serializer.ErrUserBaned
+	}
+	return nil
+}
+
+func ValidateSessionUser(userID uint) (*model.User, error) {
+	var user model.User
+	if err := model.DB.Preload("Group").First(&user, userID).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, serializer.ErrInvalidToken
+		}
+		return nil, serializer.ErrDatabase.WithError(err)
+	}
+	if !user.IsActive {
+		return nil, serializer.ErrInvalidToken
+	}
+	return &user, nil
+}
+
 func (s *userService) LoginWithContext(ctx context.Context, req *LoginRequest) (string, *model.User, error) {
 	var user model.User
 	if err := model.DB.Preload("Group").Where("username = ?", req.Username).First(&user).Error; err != nil {
@@ -118,6 +142,10 @@ func (s *userService) LoginWithContext(ctx context.Context, req *LoginRequest) (
 			return "", nil, serializer.ErrUserNotFound
 		}
 		return "", nil, serializer.ErrDatabase
+	}
+
+	if err := EnsureUserCanAuthenticate(&user); err != nil {
+		return "", nil, err
 	}
 
 	if !user.CheckPassword(req.Password) {

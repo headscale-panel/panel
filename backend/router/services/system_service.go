@@ -279,6 +279,10 @@ func (s *systemService) DeleteUser(actorUserID uint, id uint) error {
 		}
 	}
 
+	if err := model.DB.Where("user_id = ?", id).Delete(&model.UserIdentityBinding{}).Error; err != nil {
+		return serializer.ErrDatabase.WithError(err)
+	}
+
 	if err := model.DB.Delete(&model.User{}, id).Error; err != nil {
 		return serializer.ErrDatabase.WithError(err)
 	}

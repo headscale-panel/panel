@@ -9,6 +9,7 @@ export * from './group';
 export * from './headscale-config';
 export * from './headscale-user';
 export * from './metrics';
+export * from './panel-account';
 export * from './panel-settings';
 export * from './resource';
 export * from './route';

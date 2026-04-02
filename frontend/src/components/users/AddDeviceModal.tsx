@@ -24,14 +24,14 @@ import {
   StopOutlined,
 } from '@ant-design/icons';
 import { devicesAPI, usersAPI } from '@/lib/api';
-import type { NormalizedSystemUser } from '@/lib/normalizers';
+import type { NormalizedHeadscaleUser } from '@/lib/normalizers';
 import { useTranslation } from '@/i18n/index';
 
 const { Text } = Typography;
 
 interface AddDeviceModalProps {
   open: boolean;
-  hsUsers: NormalizedSystemUser[];
+  hsUsers: NormalizedHeadscaleUser[];
   onCancel: () => void;
   onSuccess: () => void;
 }

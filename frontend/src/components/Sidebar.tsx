@@ -11,8 +11,10 @@ import {
   LockOutlined,
   GlobalOutlined,
   BarChartOutlined,
+  IdcardOutlined,
   SettingOutlined,
   LogoutOutlined,
+  UserOutlined,
 } from '@ant-design/icons';
 import { useLocation } from 'wouter';
 import type { MenuProps } from 'antd';
@@ -36,6 +38,7 @@ const menuIconMap: Record<string, React.ReactNode> = {
   acl: <LockOutlined />,
   dns: <GlobalOutlined />,
   metrics: <BarChartOutlined />,
+  panelAccounts: <IdcardOutlined />,
   settings: <SettingOutlined />,
 };
 
@@ -47,6 +50,7 @@ const menuPaths: Record<string, string> = {
   acl: '/acl',
   dns: '/dns',
   metrics: '/metrics',
+  panelAccounts: '/panel-accounts',
   settings: '/settings',
 };
 
@@ -70,7 +74,7 @@ export default function Sidebar({
   };
 
   // Build menu items
-  const allKeys: AppSectionKey[] = ['dashboard', 'devices', 'users', 'routes', 'resources', 'acl', 'dns', 'metrics', 'settings'];
+  const allKeys: AppSectionKey[] = ['dashboard', 'devices', 'users', 'routes', 'resources', 'acl', 'dns', 'metrics', 'panelAccounts', 'settings'];
   const menuItems: MenuProps['items'] = allKeys
     .filter((key) => canAccessSection(user, key))
     .map((key) => ({
@@ -143,17 +147,22 @@ export default function Sidebar({
         alignItems: 'center',
         gap: 10,
       }}>
-        <Avatar size={collapsed ? 32 : 36} style={{ backgroundColor: themeToken.colorPrimary, fontSize: 13, flexShrink: 0 }}>
+        <Avatar size={collapsed ? 32 : 36} style={{ backgroundColor: themeToken.colorPrimary, fontSize: 13, flexShrink: 0, cursor: 'pointer' }}
+          onClick={() => { setLocation('/profile'); onNavigate?.(); }}
+        >
           {avatarLetter}
         </Avatar>
-        {!collapsed && (
-          <>
-            <div className="flex-1 min-w-0">
-              <Text strong ellipsis className="text-13px block">{displayName}</Text>
-              {user?.email && (
-                <Text type="secondary" ellipsis className="text-11px block">{user.email}</Text>
-              )}
-            </div>
+	        {!collapsed && (
+	          <>
+	            <div
+	              className="flex-1 min-w-0 cursor-pointer flex flex-col items-start"
+	              onClick={() => { setLocation('/profile'); onNavigate?.(); }}
+	            >
+	              <Text strong ellipsis className="text-13px leading-tight w-full">{displayName}</Text>
+	              {user?.email && (
+	                <Text type="secondary" ellipsis className="text-11px leading-tight w-full mt-2px">{user.email}</Text>
+	              )}
+	            </div>
             <Button
               type="text"
               danger

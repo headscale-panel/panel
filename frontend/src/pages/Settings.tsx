@@ -4,17 +4,21 @@ import {
   CloseOutlined,
   CopyOutlined,
   DatabaseOutlined,
+  DeleteOutlined,
+  EditOutlined,
   EyeInvisibleOutlined,
   EyeOutlined,
   LoadingOutlined,
   PlusOutlined,
   SafetyCertificateOutlined,
   SaveOutlined,
+  TeamOutlined,
 } from '@ant-design/icons';
-import { Button, Card, Input, Space, Spin, Switch, Tabs, Tag, Typography, message, theme } from 'antd';
+import { Button, Card, Input, Modal, Select, Space, Spin, Switch, Table, Tabs, Tag, Typography, message, theme } from 'antd';
+import type { ColumnsType } from 'antd/es/table';
 import DashboardLayout from '@/components/DashboardLayout';
 import { useTranslation } from '@/i18n/index';
-import { panelSettingsAPI } from '@/lib/api';
+import { panelSettingsAPI, groupsAPI } from '@/lib/api';
 import api from '@/lib/api';
 import { loadConnectionSettingsData, loadOIDCSettingsData } from '@/lib/page-data';
 import { useRequest } from 'ahooks';
@@ -22,7 +26,7 @@ import {
   defaultOIDCFormValues,
   type OIDCFormValues,
 } from '@/lib/normalizers';
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 
 const { Title, Text } = Typography;
 
@@ -135,6 +139,99 @@ export default function Settings() {
   const [syncing, setSyncing] = useState(false);
 
   const [previewCopied, setPreviewCopied] = useState(false);
+
+  // ── Group management state ───────────────────────────
+  const [groupModalOpen, setGroupModalOpen] = useState(false);
+  const [editingGroup, setEditingGroup] = useState<any>(null);
+  const [groupForm, setGroupForm] = useState({ name: '', permission_ids: [] as number[] });
+  const [savingGroup, setSavingGroup] = useState(false);
+
+  const { data: groupsRawData, loading: loadingGroups, refresh: refreshGroups } = useRequest(
+    () => groupsAPI.list({ all: true }),
+    { onError: () => message.error(t.settings.groups.loadFailed) },
+  );
+  const groupRows: any[] = useMemo(() => (groupsRawData as any)?.list ?? groupsRawData ?? [], [groupsRawData]);
+
+  const { data: allPermsData } = useRequest(
+    () => groupsAPI.getPermissions(),
+    { cacheKey: 'all-permissions' },
+  );
+  const allPermissions: { id: number; code: string; name: string }[] = useMemo(() => {
+    const raw = Array.isArray(allPermsData) ? allPermsData : (allPermsData as any)?.list ?? [];
+    return raw.map((p: any) => ({ id: p.ID ?? p.id, code: p.code, name: p.name || p.code }));
+  }, [allPermsData]);
+
+  const openCreateGroup = useCallback(() => {
+    setEditingGroup(null);
+    setGroupForm({ name: '', permission_ids: [] });
+    setGroupModalOpen(true);
+  }, []);
+
+  const openEditGroup = useCallback((g: any) => {
+    setEditingGroup(g);
+    const perms = g.permissions ?? g.Permissions ?? [];
+    setGroupForm({
+      name: g.name ?? g.Name ?? '',
+      permission_ids: perms.map((p: any) => p.ID ?? p.id),
+    });
+    setGroupModalOpen(true);
+  }, []);
+
+  const handleSaveGroup = useCallback(async () => {
+    if (!groupForm.name.trim()) return;
+    setSavingGroup(true);
+    try {
+      const gid = editingGroup?.ID ?? editingGroup?.id;
+      if (editingGroup && gid) {
+        await groupsAPI.update({ id: gid, name: groupForm.name.trim(), permission_ids: groupForm.permission_ids });
+        message.success(t.settings.groups.updateSuccess);
+      } else {
+        await groupsAPI.create({ name: groupForm.name.trim(), permission_ids: groupForm.permission_ids });
+        message.success(t.settings.groups.createSuccess);
+      }
+      setGroupModalOpen(false);
+      refreshGroups();
+    } catch (error: any) {
+      message.error(error?.message || t.settings.groups.loadFailed);
+    } finally {
+      setSavingGroup(false);
+    }
+  }, [editingGroup, groupForm, t, refreshGroups]);
+
+  const handleDeleteGroup = useCallback((g: any) => {
+    const gid = g.ID ?? g.id;
+    const gname = g.name ?? g.Name ?? '';
+    Modal.confirm({
+      title: t.settings.groups.deleteGroup,
+      content: t.settings.groups.confirmDelete.replace('{name}', gname),
+      okButtonProps: { danger: true },
+      onOk: async () => {
+        try {
+          await groupsAPI.delete(gid);
+          message.success(t.settings.groups.deleteSuccess);
+          refreshGroups();
+        } catch (error: any) {
+          message.error(error?.message || t.settings.groups.loadFailed);
+        }
+      },
+    });
+  }, [t, refreshGroups]);
+
+  const groupColumns: ColumnsType<any> = [
+    { title: t.settings.groups.groupName, key: 'name', render: (_: unknown, r: any) => <Tag icon={<TeamOutlined />}>{r.name ?? r.Name}</Tag> },
+    { title: t.settings.groups.permissionCount, key: 'permCount', width: 100, align: 'center' as const, render: (_: unknown, r: any) => (r.permissions ?? r.Permissions ?? []).length },
+    {
+      title: t.settings.groups.actions,
+      key: 'actions',
+      width: 160,
+      render: (_: unknown, r: any) => (
+        <Space size={4}>
+          <Button type="link" size="small" icon={<EditOutlined />} onClick={() => openEditGroup(r)}>{t.settings.groups.editGroup}</Button>
+          <Button type="link" size="small" danger icon={<DeleteOutlined />} onClick={() => handleDeleteGroup(r)}>{t.settings.groups.deleteGroup}</Button>
+        </Space>
+      ),
+    },
+  ];
 
   const { loading: loadingConnection, refresh: refreshConnectionSettings } = useRequest(
     async () => loadConnectionSettingsData(),
@@ -505,6 +602,68 @@ export default function Settings() {
                       </Card>
                     </div>
                   )}
+                </Space>
+              ),
+            },
+            {
+              key: 'groups',
+              label: t.settings.tabs.groups,
+              children: (
+                <Space direction="vertical" size={16} className="w-full">
+                  <SectionCard
+                    title={t.settings.groups.title}
+                    description={t.settings.groups.description}
+                    actions={
+                      <Button type="primary" size="small" icon={<PlusOutlined />} onClick={openCreateGroup}>
+                        {t.settings.groups.addGroup}
+                      </Button>
+                    }
+                  >
+                    <Table
+                      rowKey={(r: any) => r.ID ?? r.id}
+                      columns={groupColumns}
+                      dataSource={groupRows}
+                      loading={loadingGroups}
+                      size="small"
+                      pagination={false}
+                      locale={{ emptyText: t.settings.groups.noGroups }}
+                    />
+                  </SectionCard>
+
+                  {/* Group create/edit modal */}
+                  <Modal
+                    open={groupModalOpen}
+                    title={editingGroup ? t.settings.groups.editGroup : t.settings.groups.addGroup}
+                    onCancel={() => setGroupModalOpen(false)}
+                    onOk={handleSaveGroup}
+                    confirmLoading={savingGroup}
+                    width={520}
+                    destroyOnClose
+                  >
+                    <Space direction="vertical" className="w-full" size={12}>
+                      <FieldRow label={t.settings.groups.groupNameLabel}>
+                        <Input
+                          value={groupForm.name}
+                          onChange={(e) => setGroupForm({ ...groupForm, name: e.target.value })}
+                          placeholder={t.settings.groups.groupNamePlaceholder}
+                        />
+                      </FieldRow>
+                      <FieldRow label={t.settings.groups.permissionsLabel}>
+                        <Select
+                          mode="multiple"
+                          value={groupForm.permission_ids}
+                          onChange={(v) => setGroupForm({ ...groupForm, permission_ids: v })}
+                          placeholder={t.settings.groups.permissionsPlaceholder}
+                          style={{ width: '100%' }}
+                          options={allPermissions.map((p) => ({ label: p.name || p.code, value: p.id }))}
+                          filterOption={(input, option) =>
+                            (option?.label?.toString() ?? '').toLowerCase().includes(input.toLowerCase())
+                          }
+                          maxTagCount="responsive"
+                        />
+                      </FieldRow>
+                    </Space>
+                  </Modal>
                 </Space>
               ),
             },

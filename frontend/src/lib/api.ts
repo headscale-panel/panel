@@ -11,6 +11,7 @@ import {
   headscaleConfigApi,
   headscaleUserApi,
   metricsApi,
+  panelAccountApi,
   panelSettingsApi,
   publicAuthApi,
   resourceApi,
@@ -27,6 +28,8 @@ export const authAPI = {
   getUserInfo: () => authApi.getUserInfo(),
   oidcLogin: () => authApi.oidcLogin(),
   oidcCallback: (code: string, state: string) => authApi.oidcCallback({ code, state }),
+  generateTOTP: () => authApi.generateTOTP(),
+  enableTOTP: (code: string) => authApi.enableTOTP({ code }),
 };
 
 export const publicAuthAPI = {
@@ -170,6 +173,21 @@ export const dnsAPI = {
   sync: () => dnsApi.sync(),
   import: () => dnsApi.import(),
   getFile: () => dnsApi.getFile(),
+};
+
+export const panelAccountsAPI = {
+  list: panelAccountApi.list,
+  getDetail: panelAccountApi.getDetail,
+  create: panelAccountApi.create,
+  update: panelAccountApi.update,
+  setStatus: panelAccountApi.setStatus,
+  delete: panelAccountApi.delete,
+  getLoginIdentities: panelAccountApi.getLoginIdentities,
+  getNetworkBindings: panelAccountApi.getNetworkBindings,
+  updateNetworkBindings: panelAccountApi.updateNetworkBindings,
+  setPrimaryBinding: panelAccountApi.setPrimaryBinding,
+  listAvailableNetworkIdentities: panelAccountApi.listAvailableNetworkIdentities,
+  resetTOTP: panelAccountApi.resetTOTP,
 };
 
 class WebSocketManager {

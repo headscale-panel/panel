@@ -194,6 +194,21 @@ func InitRouter() *gin.Engine {
 			auth.POST("/dns/sync", middleware.PermissionMiddleware("dns:sync"), dnsController.Sync)
 			auth.POST("/dns/import", middleware.PermissionMiddleware("dns:import"), dnsController.Import)
 			auth.GET("/dns/file", middleware.PermissionMiddleware("dns:file:get"), dnsController.GetFile)
+
+			// Panel Account management
+			panelAccountCtrl := controllers.NewPanelAccountController()
+			auth.GET("/panel-accounts", middleware.PermissionMiddleware("panel:account:list"), panelAccountCtrl.List)
+			auth.GET("/panel-accounts/:id", middleware.PermissionMiddleware("panel:account:list"), panelAccountCtrl.GetDetail)
+			auth.POST("/panel-accounts", middleware.PermissionMiddleware("panel:account:create"), panelAccountCtrl.Create)
+			auth.PUT("/panel-accounts/:id", middleware.PermissionMiddleware("panel:account:update"), panelAccountCtrl.Update)
+			auth.PUT("/panel-accounts/:id/status", middleware.PermissionMiddleware("panel:account:update"), panelAccountCtrl.SetStatus)
+			auth.PUT("/panel-accounts/:id/reset-totp", middleware.PermissionMiddleware("panel:account:update"), panelAccountCtrl.ResetTOTP)
+			auth.DELETE("/panel-accounts/:id", middleware.PermissionMiddleware("panel:account:delete"), panelAccountCtrl.Delete)
+			auth.GET("/panel-accounts/:id/login-identities", middleware.PermissionMiddleware("panel:account:list"), panelAccountCtrl.GetLoginIdentities)
+			auth.GET("/panel-accounts/:id/network-bindings", middleware.PermissionMiddleware("panel:account:list"), panelAccountCtrl.GetNetworkBindings)
+			auth.PUT("/panel-accounts/:id/network-bindings", middleware.PermissionMiddleware("panel:account:bindding"), panelAccountCtrl.UpdateNetworkBindings)
+			auth.PUT("/panel-accounts/:id/primary-binding", middleware.PermissionMiddleware("panel:account:bindding"), panelAccountCtrl.SetPrimaryBinding)
+			auth.GET("/network-identities/available", middleware.PermissionMiddleware("panel:account:list"), panelAccountCtrl.ListAvailableNetworkIdentities)
 		}
 	}
 
