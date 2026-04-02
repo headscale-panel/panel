@@ -58,15 +58,15 @@ export default function Devices() {
 
   const { data: listData, loading, refresh } = useRequest(
     async () => {
-      if (!owner || !canListDevices) {
+      if (!canListDevices) {
         return { list: [] };
       }
-      const devicesRes = await devicesAPI.list({ all: true, userId: owner });
+      const devicesRes = await devicesAPI.list({ all: true });
       const { list } = normalizeDeviceListResponse(devicesRes);
       return { list };
     },
     {
-      refreshDeps: [owner, canListDevices],
+      refreshDeps: [canListDevices],
       onError: (error: any) => {
         message.error(t.devices.loadFailed + (error.message ? `: ${error.message}` : ''));
       },

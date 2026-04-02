@@ -57,12 +57,12 @@ func (s *derpService) getDERPMap() (*DERPMapFile, error) {
 				Regions: make(map[int]*DERPRegion),
 			}, nil
 		}
-		return nil, fmt.Errorf("读取 DERP map 文件失败: %w", err)
+		return nil, fmt.Errorf("failed to read DERP map file: %w", err)
 	}
 
 	var derpMap DERPMapFile
 	if err := yaml.Unmarshal(data, &derpMap); err != nil {
-		return nil, fmt.Errorf("DERP map YAML 解析失败: %w", err)
+		return nil, fmt.Errorf("failed to parse DERP map YAML: %w", err)
 	}
 
 	if derpMap.Regions == nil {
@@ -86,16 +86,16 @@ func (s *derpService) saveDERPMap(derpMap *DERPMapFile) error {
 
 	dir := filepath.Dir(filePath)
 	if err := os.MkdirAll(dir, 0755); err != nil {
-		return fmt.Errorf("创建目录失败: %w", err)
+		return fmt.Errorf("failed to create directory: %w", err)
 	}
 
 	data, err := yaml.Marshal(derpMap)
 	if err != nil {
-		return fmt.Errorf("DERP map YAML 序列化失败: %w", err)
+		return fmt.Errorf("failed to marshal DERP map YAML: %w", err)
 	}
 
 	if err := os.WriteFile(filePath, data, 0600); err != nil {
-		return fmt.Errorf("写入 DERP map 文件失败: %w", err)
+		return fmt.Errorf("failed to write DERP map file: %w", err)
 	}
 
 	return nil
@@ -126,17 +126,17 @@ func (s *derpService) AddRegion(actorUserID uint, region *DERPRegion) error {
 
 	derpMap, err := s.getDERPMap()
 	if err != nil {
-		return fmt.Errorf("读取 DERP map 失败: %w", err)
+		return fmt.Errorf("failed to read DERP map: %w", err)
 	}
 
 	if _, exists := derpMap.Regions[region.RegionID]; exists {
-		return fmt.Errorf("区域 ID %d 已存在", region.RegionID)
+		return fmt.Errorf("region ID %d already exists", region.RegionID)
 	}
 
 	derpMap.Regions[region.RegionID] = region
 
 	if err := s.saveDERPMap(derpMap); err != nil {
-		return fmt.Errorf("保存 DERP map 失败: %w", err)
+		return fmt.Errorf("failed to save DERP map: %w", err)
 	}
 
 	return nil
@@ -150,11 +150,11 @@ func (s *derpService) UpdateRegion(actorUserID uint, regionID int, region *DERPR
 
 	derpMap, err := s.getDERPMap()
 	if err != nil {
-		return fmt.Errorf("读取 DERP map 失败: %w", err)
+		return fmt.Errorf("failed to read DERP map: %w", err)
 	}
 
 	if _, exists := derpMap.Regions[regionID]; !exists {
-		return fmt.Errorf("区域 ID %d 不存在", regionID)
+		return fmt.Errorf("region ID %d does not exist", regionID)
 	}
 
 	// If the region ID changed, remove the old entry
@@ -165,7 +165,7 @@ func (s *derpService) UpdateRegion(actorUserID uint, regionID int, region *DERPR
 	derpMap.Regions[region.RegionID] = region
 
 	if err := s.saveDERPMap(derpMap); err != nil {
-		return fmt.Errorf("保存 DERP map 失败: %w", err)
+		return fmt.Errorf("failed to save DERP map: %w", err)
 	}
 
 	return nil
@@ -179,17 +179,17 @@ func (s *derpService) DeleteRegion(actorUserID uint, regionID int) error {
 
 	derpMap, err := s.getDERPMap()
 	if err != nil {
-		return fmt.Errorf("读取 DERP map 失败: %w", err)
+		return fmt.Errorf("failed to read DERP map: %w", err)
 	}
 
 	if _, exists := derpMap.Regions[regionID]; !exists {
-		return fmt.Errorf("区域 ID %d 不存在", regionID)
+		return fmt.Errorf("region ID %d does not exist", regionID)
 	}
 
 	delete(derpMap.Regions, regionID)
 
 	if err := s.saveDERPMap(derpMap); err != nil {
-		return fmt.Errorf("保存 DERP map 失败: %w", err)
+		return fmt.Errorf("failed to save DERP map: %w", err)
 	}
 
 	return nil
@@ -203,19 +203,19 @@ func (s *derpService) AddNode(actorUserID uint, regionID int, node DERPNode) err
 
 	derpMap, err := s.getDERPMap()
 	if err != nil {
-		return fmt.Errorf("读取 DERP map 失败: %w", err)
+		return fmt.Errorf("failed to read DERP map: %w", err)
 	}
 
 	region, exists := derpMap.Regions[regionID]
 	if !exists {
-		return fmt.Errorf("区域 ID %d 不存在", regionID)
+		return fmt.Errorf("region ID %d does not exist", regionID)
 	}
 
 	node.RegionID = regionID
 	region.Nodes = append(region.Nodes, node)
 
 	if err := s.saveDERPMap(derpMap); err != nil {
-		return fmt.Errorf("保存 DERP map 失败: %w", err)
+		return fmt.Errorf("failed to save DERP map: %w", err)
 	}
 
 	return nil
@@ -229,23 +229,23 @@ func (s *derpService) UpdateNode(actorUserID uint, regionID int, nodeIndex int, 
 
 	derpMap, err := s.getDERPMap()
 	if err != nil {
-		return fmt.Errorf("读取 DERP map 失败: %w", err)
+		return fmt.Errorf("failed to read DERP map: %w", err)
 	}
 
 	region, exists := derpMap.Regions[regionID]
 	if !exists {
-		return fmt.Errorf("区域 ID %d 不存在", regionID)
+		return fmt.Errorf("region ID %d does not exist", regionID)
 	}
 
 	if nodeIndex < 0 || nodeIndex >= len(region.Nodes) {
-		return fmt.Errorf("节点索引 %d 超出范围（共 %d 个节点）", nodeIndex, len(region.Nodes))
+		return fmt.Errorf("node index %d out of range (total %d nodes)", nodeIndex, len(region.Nodes))
 	}
 
 	node.RegionID = regionID
 	region.Nodes[nodeIndex] = node
 
 	if err := s.saveDERPMap(derpMap); err != nil {
-		return fmt.Errorf("保存 DERP map 失败: %w", err)
+		return fmt.Errorf("failed to save DERP map: %w", err)
 	}
 
 	return nil
@@ -259,22 +259,22 @@ func (s *derpService) DeleteNode(actorUserID uint, regionID int, nodeIndex int) 
 
 	derpMap, err := s.getDERPMap()
 	if err != nil {
-		return fmt.Errorf("读取 DERP map 失败: %w", err)
+		return fmt.Errorf("failed to read DERP map: %w", err)
 	}
 
 	region, exists := derpMap.Regions[regionID]
 	if !exists {
-		return fmt.Errorf("区域 ID %d 不存在", regionID)
+		return fmt.Errorf("region ID %d does not exist", regionID)
 	}
 
 	if nodeIndex < 0 || nodeIndex >= len(region.Nodes) {
-		return fmt.Errorf("节点索引 %d 超出范围（共 %d 个节点）", nodeIndex, len(region.Nodes))
+		return fmt.Errorf("node index %d out of range (total %d nodes)", nodeIndex, len(region.Nodes))
 	}
 
 	region.Nodes = append(region.Nodes[:nodeIndex], region.Nodes[nodeIndex+1:]...)
 
 	if err := s.saveDERPMap(derpMap); err != nil {
-		return fmt.Errorf("保存 DERP map 失败: %w", err)
+		return fmt.Errorf("failed to save DERP map: %w", err)
 	}
 
 	return nil

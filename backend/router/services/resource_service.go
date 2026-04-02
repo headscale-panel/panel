@@ -1,6 +1,7 @@
 package services
 
 import (
+	"context"
 	"headscale-panel/model"
 	"headscale-panel/pkg/utils/serializer"
 	"net/netip"
@@ -39,25 +40,25 @@ func (s *resourceService) Create(userID uint, req *CreateResourceRequest) error 
 
 	name := strings.TrimSpace(req.Name)
 	if name == "" {
-		return serializer.NewError(serializer.CodeParamErr, "资源名称不能为空", nil)
+		return serializer.NewError(serializer.CodeParamErr, "resource name is required", nil)
 	}
 	if len(name) > 64 {
-		return serializer.NewError(serializer.CodeParamErr, "资源名称长度不能超过64", nil)
+		return serializer.NewError(serializer.CodeParamErr, "resource name exceeds 64 characters", nil)
 	}
 
 	ipAddress, err := normalizeIPAddress(req.IPAddress)
 	if err != nil {
-		return serializer.NewError(serializer.CodeParamErr, "IP地址格式不正确", err)
+		return serializer.NewError(serializer.CodeParamErr, "invalid IP address format", err)
 	}
 
 	port := strings.TrimSpace(req.Port)
 	if err := validatePortSpec(port); err != nil {
-		return serializer.NewError(serializer.CodeParamErr, "端口格式不正确", err)
+		return serializer.NewError(serializer.CodeParamErr, "invalid port format", err)
 	}
 
 	description := strings.TrimSpace(req.Description)
 	if len(description) > 500 {
-		return serializer.NewError(serializer.CodeParamErr, "资源描述长度不能超过500", nil)
+		return serializer.NewError(serializer.CodeParamErr, "resource description exceeds 500 characters", nil)
 	}
 
 	resource := model.Resource{
@@ -88,16 +89,54 @@ func (s *resourceService) List(userID uint, req *ListResourceRequest) ([]model.R
 		query = query.Where("name LIKE ? OR ip_address LIKE ?", "%"+kw+"%", "%"+kw+"%")
 	}
 
-	if err := query.Count(&total).Error; err != nil {
+	// Fetch all matching resources for ACL filtering
+	var allResources []model.Resource
+	if err := query.Order("created_at DESC").Find(&allResources).Error; err != nil {
 		return nil, 0, serializer.ErrDatabase.WithError(err)
 	}
 
-	offset := (req.Page - 1) * req.PageSize
-	if err := query.Offset(offset).Limit(req.PageSize).Order("created_at DESC").Find(&resources).Error; err != nil {
-		return nil, 0, serializer.ErrDatabase.WithError(err)
+	// Apply ACL-based filtering for non-admin users
+	filtered, err := FilterResourcesByACL(context.Background(), userID, allResources)
+	if err != nil {
+		return nil, 0, err
 	}
+
+	total = int64(len(filtered))
+
+	// Apply pagination on filtered results
+	offset := (req.Page - 1) * req.PageSize
+	if offset >= int(total) {
+		return []model.Resource{}, total, nil
+	}
+	end := offset + req.PageSize
+	if end > int(total) {
+		end = int(total)
+	}
+	resources = filtered[offset:end]
 
 	return resources, total, nil
+}
+
+// Get returns a single resource if the actor can access it via ACL.
+func (s *resourceService) Get(userID uint, id uint) (*model.Resource, error) {
+	if err := RequirePermission(userID, "resource:list"); err != nil {
+		return nil, err
+	}
+
+	var resource model.Resource
+	if err := model.DB.First(&resource, id).Error; err != nil {
+		return nil, serializer.NewError(serializer.CodeNotFound, "resource not found", err)
+	}
+
+	allowed, err := CanActorAccessIP(context.Background(), userID, resource.IPAddress)
+	if err != nil {
+		return nil, err
+	}
+	if !allowed {
+		return nil, serializer.ErrPermissionDenied
+	}
+
+	return &resource, nil
 }
 
 func (s *resourceService) Update(userID uint, req *UpdateResourceRequest) error {
@@ -107,7 +146,7 @@ func (s *resourceService) Update(userID uint, req *UpdateResourceRequest) error 
 
 	var resource model.Resource
 	if err := model.DB.First(&resource, req.ID).Error; err != nil {
-		return serializer.NewError(serializer.CodeNotFound, "资源不存在", err)
+		return serializer.NewError(serializer.CodeNotFound, "resource not found", err)
 	}
 
 	allowed, err := canManageResource(userID, &resource)
@@ -121,10 +160,10 @@ func (s *resourceService) Update(userID uint, req *UpdateResourceRequest) error 
 	if req.Name != "" {
 		name := strings.TrimSpace(req.Name)
 		if name == "" {
-			return serializer.NewError(serializer.CodeParamErr, "资源名称不能为空", nil)
+			return serializer.NewError(serializer.CodeParamErr, "resource name is required", nil)
 		}
 		if len(name) > 64 {
-			return serializer.NewError(serializer.CodeParamErr, "资源名称长度不能超过64", nil)
+			return serializer.NewError(serializer.CodeParamErr, "resource name exceeds 64 characters", nil)
 		}
 		resource.Name = name
 	}
@@ -132,20 +171,20 @@ func (s *resourceService) Update(userID uint, req *UpdateResourceRequest) error 
 	if req.IPAddress != "" {
 		ipAddress, err := normalizeIPAddress(req.IPAddress)
 		if err != nil {
-			return serializer.NewError(serializer.CodeParamErr, "IP地址格式不正确", err)
+			return serializer.NewError(serializer.CodeParamErr, "invalid IP address format", err)
 		}
 		resource.IPAddress = ipAddress
 	}
 
 	port := strings.TrimSpace(req.Port)
 	if err := validatePortSpec(port); err != nil {
-		return serializer.NewError(serializer.CodeParamErr, "端口格式不正确", err)
+		return serializer.NewError(serializer.CodeParamErr, "invalid port format", err)
 	}
 	resource.Port = port
 
 	description := strings.TrimSpace(req.Description)
 	if len(description) > 500 {
-		return serializer.NewError(serializer.CodeParamErr, "资源描述长度不能超过500", nil)
+		return serializer.NewError(serializer.CodeParamErr, "resource description exceeds 500 characters", nil)
 	}
 	resource.Description = description
 
@@ -162,7 +201,7 @@ func (s *resourceService) Delete(userID uint, id uint) error {
 
 	var resource model.Resource
 	if err := model.DB.First(&resource, id).Error; err != nil {
-		return serializer.NewError(serializer.CodeNotFound, "资源不存在", err)
+		return serializer.NewError(serializer.CodeNotFound, "resource not found", err)
 	}
 
 	allowed, err := canManageResource(userID, &resource)
@@ -200,7 +239,7 @@ func canManageResource(userID uint, resource *model.Resource) (bool, error) {
 
 	var user model.User
 	if err := model.DB.Preload("Group").First(&user, userID).Error; err != nil {
-		return false, serializer.NewError(serializer.CodeUserNotFound, "用户不存在", err)
+		return false, serializer.NewError(serializer.CodeUserNotFound, "user not found", err)
 	}
 
 	if strings.EqualFold(strings.TrimSpace(user.Group.Name), "admin") {
@@ -212,20 +251,20 @@ func canManageResource(userID uint, resource *model.Resource) (bool, error) {
 func normalizeIPAddress(input string) (string, error) {
 	raw := strings.TrimSpace(input)
 	if raw == "" {
-		return "", serializer.NewError(serializer.CodeParamErr, "IP地址不能为空", nil)
+		return "", serializer.NewError(serializer.CodeParamErr, "IP address is required", nil)
 	}
 
 	if strings.Contains(raw, "/") {
 		prefix, err := netip.ParsePrefix(raw)
 		if err != nil {
-			return "", serializer.NewError(serializer.CodeParamErr, "IP/CIDR格式不正确", err)
+			return "", serializer.NewError(serializer.CodeParamErr, "invalid IP/CIDR format", err)
 		}
 		return prefix.Masked().String(), nil
 	}
 
 	ip, err := netip.ParseAddr(raw)
 	if err != nil {
-		return "", serializer.NewError(serializer.CodeParamErr, "IP格式不正确", err)
+		return "", serializer.NewError(serializer.CodeParamErr, "invalid IP format", err)
 	}
 
 	bits := 32
@@ -244,31 +283,31 @@ func validatePortSpec(portSpec string) error {
 	for _, part := range parts {
 		item := strings.TrimSpace(part)
 		if item == "" {
-			return serializer.NewError(serializer.CodeParamErr, "端口格式不正确", nil)
+			return serializer.NewError(serializer.CodeParamErr, "invalid port format", nil)
 		}
 
 		if strings.Contains(item, "-") {
 			rangeParts := strings.Split(item, "-")
 			if len(rangeParts) != 2 {
-				return serializer.NewError(serializer.CodeParamErr, "端口范围格式不正确", nil)
+				return serializer.NewError(serializer.CodeParamErr, "invalid port range format", nil)
 			}
 			start, err := strconv.Atoi(strings.TrimSpace(rangeParts[0]))
 			if err != nil || start < 1 || start > 65535 {
-				return serializer.NewError(serializer.CodeParamErr, "端口范围起始值不合法", nil)
+				return serializer.NewError(serializer.CodeParamErr, "invalid port range start value", nil)
 			}
 			end, err := strconv.Atoi(strings.TrimSpace(rangeParts[1]))
 			if err != nil || end < 1 || end > 65535 {
-				return serializer.NewError(serializer.CodeParamErr, "端口范围结束值不合法", nil)
+				return serializer.NewError(serializer.CodeParamErr, "invalid port range end value", nil)
 			}
 			if start > end {
-				return serializer.NewError(serializer.CodeParamErr, "端口范围起始值不能大于结束值", nil)
+				return serializer.NewError(serializer.CodeParamErr, "port range start must not exceed end", nil)
 			}
 			continue
 		}
 
 		p, err := strconv.Atoi(item)
 		if err != nil || p < 1 || p > 65535 {
-			return serializer.NewError(serializer.CodeParamErr, "端口值不合法", nil)
+			return serializer.NewError(serializer.CodeParamErr, "invalid port value", nil)
 		}
 	}
 

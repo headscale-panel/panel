@@ -137,7 +137,7 @@ func ensureActorCanAccessHeadscaleUserID(ctx context.Context, actorUserID uint, 
 func resolvePanelUserHeadscaleName(userID uint) (string, error) {
 	var user model.User
 	if err := model.DB.First(&user, userID).Error; err != nil {
-		return "", serializer.NewError(serializer.CodeUserNotFound, "用户不存在", err)
+		return "", serializer.NewError(serializer.CodeUserNotFound, "user not found", err)
 	}
 
 	headscaleName := strings.TrimSpace(user.HeadscaleName)
@@ -145,7 +145,7 @@ func resolvePanelUserHeadscaleName(userID uint) (string, error) {
 		headscaleName = strings.TrimSpace(user.Username)
 	}
 	if headscaleName == "" {
-		return "", serializer.NewError(serializer.CodeParamErr, "目标用户缺少 Headscale 标识", nil)
+		return "", serializer.NewError(serializer.CodeParamErr, "target user has no Headscale identity", nil)
 	}
 	return headscaleName, nil
 }

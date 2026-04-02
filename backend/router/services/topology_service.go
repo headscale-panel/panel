@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"headscale-panel/model"
+	"headscale-panel/pkg/acl"
 	v1 "headscale-panel/pkg/proto/headscale/v1"
 	"strings"
 	"time"
@@ -229,19 +231,7 @@ func (s *topologyService) GetTopologyWithACLContext(ctx context.Context, actorUs
 		return topology, nil
 	}
 
-	var policy struct {
-		Groups map[string][]string `json:"groups"`
-		Hosts  map[string]string   `json:"hosts"`
-		ACLs   []struct {
-			HAMeta *struct {
-				Name string `json:"name"`
-				Open bool   `json:"open"`
-			} `json:"#ha-meta,omitempty"`
-			Action string   `json:"action"`
-			Src    []string `json:"src"`
-			Dst    []string `json:"dst"`
-		} `json:"acls"`
-	}
+	var policy model.ACLPolicyStructure
 
 	if err := json.Unmarshal([]byte(policyResp.Policy), &policy); err != nil {
 		return topology, nil
@@ -269,52 +259,13 @@ func (s *topologyService) GetTopologyWithACLContext(ctx context.Context, actorUs
 		}
 	}
 
-	// Helper: Check if a user matches a group member pattern
-	// Member patterns can be: "user@", "user@domain.com", "email@domain.com", "user-local@"
-	// User names from Headscale are like: "user", "gggxbbb", etc.
-	matchUserToMember := func(userName string, member string) bool {
-		// Normalize: remove trailing @ and get base name
-		memberClean := strings.TrimSuffix(member, "@")
-		memberBase := strings.Split(memberClean, "@")[0]
-		userNameLower := strings.ToLower(userName)
-		memberBaseLower := strings.ToLower(memberBase)
-
-		// Direct match
-		if userNameLower == memberBaseLower {
-			return true
-		}
-
-		// e.g. "user-local" matches "user"
-		if strings.HasPrefix(memberBaseLower, userNameLower+"-") || strings.HasPrefix(memberBaseLower, userNameLower+"_") {
-			return true
-		}
-
-		// Looser substring match
-		// e.g., "user-local" contains "user"
-		if strings.Contains(memberBaseLower, userNameLower) && len(userNameLower) >= 3 {
-			return true
-		}
-
-		// Reverse substring match
-		// e.g., user "gggxbbb" should match member "gggxbbb@foxmail.com"
-		if strings.Contains(userNameLower, memberBaseLower) && len(memberBaseLower) >= 3 {
-			return true
-		}
-
-		return false
-	}
-
-	// Helper: Get all devices belonging to users in a group
+	// Get all devices belonging to users in a group
 	getGroupDevices := func(groupName string) []TopologyDevice {
 		var devices []TopologyDevice
-		members, ok := policy.Groups[groupName]
-		if !ok {
-			return devices
-		}
-
+		members := acl.GetGroupMembers(&policy, groupName)
 		for _, member := range members {
 			for userName, userDevices := range userToDevices {
-				if matchUserToMember(userName, member) {
+				if acl.MatchUserToMember(userName, member) {
 					devices = append(devices, userDevices...)
 				}
 			}
@@ -423,17 +374,10 @@ func (s *topologyService) GetTopologyWithACLContext(ctx context.Context, actorUs
 			} else if strings.HasPrefix(src, "group:") {
 				srcDevices = append(srcDevices, getGroupDevices(src)...)
 			} else {
-				// Might be a user pattern like "user@"
-				userPattern := strings.TrimSuffix(src, "@")
-				userPattern = strings.Split(userPattern, "@")[0]
 				for userName, devices := range userToDevices {
-					if matchUserToMember(userName, src) {
+					if acl.MatchUserToMember(userName, src) {
 						srcDevices = append(srcDevices, devices...)
 					}
-				}
-				// Also try direct username match
-				if devices, ok := userToDevices[userPattern]; ok {
-					srcDevices = append(srcDevices, devices...)
 				}
 			}
 		}

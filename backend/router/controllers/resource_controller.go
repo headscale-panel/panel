@@ -3,6 +3,7 @@ package controllers
 import (
 	"headscale-panel/pkg/utils/serializer"
 	"headscale-panel/router/services"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 )
@@ -37,6 +38,32 @@ func (r *ResourceController) Create(c *gin.Context) {
 	}
 
 	serializer.Success(c, nil)
+}
+
+// Get godoc
+// @Summary Get a single resource
+// @Tags resources
+// @Produce json
+// @Param id query int true "Resource ID"
+// @Success 200 {object} serializer.Response{data=model.Resource}
+// @Security BearerAuth
+// @Router /resources/detail [get]
+func (r *ResourceController) Get(c *gin.Context) {
+	idStr := c.Query("id")
+	id, err := strconv.ParseUint(idStr, 10, 64)
+	if err != nil || id == 0 {
+		serializer.FailWithCode(c, serializer.CodeParamErr, "invalid resource ID")
+		return
+	}
+
+	userID := c.GetUint("userID")
+	resource, err := services.ResourceService.Get(userID, uint(id))
+	if err != nil {
+		serializer.Fail(c, err)
+		return
+	}
+
+	serializer.Success(c, resource)
 }
 
 // List godoc
@@ -111,7 +138,7 @@ type DeleteResourceQuery struct {
 func (r *ResourceController) Delete(c *gin.Context) {
 	var q DeleteResourceQuery
 	if err := c.ShouldBindQuery(&q); err != nil {
-		serializer.FailWithCode(c, serializer.CodeParamErr, "无效的 ID")
+		serializer.FailWithCode(c, serializer.CodeParamErr, "invalid ID")
 		return
 	}
 

@@ -83,6 +83,7 @@ func InitRouter() *gin.Engine {
 
 			resourceController := controllers.NewResourceController()
 			auth.GET("/resources", middleware.PermissionMiddleware("resource:list"), resourceController.List)
+			auth.GET("/resources/detail", middleware.PermissionMiddleware("resource:list"), resourceController.Get)
 			auth.POST("/resources", middleware.PermissionMiddleware("resource:create"), resourceController.Create)
 			auth.PUT("/resources", middleware.PermissionMiddleware("resource:update"), resourceController.Update)
 			auth.DELETE("/resources", middleware.PermissionMiddleware("resource:delete"), resourceController.Delete)

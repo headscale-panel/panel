@@ -44,7 +44,7 @@ type ListDNSRecordRequest struct {
 	Type    string `form:"type"`
 }
 
-// ExtraRecord 表示 Headscale extra-records.json 的记录格式
+// ExtraRecord represents a Headscale extra-records.json entry
 type ExtraRecord struct {
 	Name  string `json:"name"`
 	Type  string `json:"type"`
@@ -67,7 +67,7 @@ func (s *dnsService) Create(actorUserID uint, req *CreateDNSRecordRequest) (*mod
 		return nil, serializer.ErrDatabase.WithError(err)
 	}
 
-	// 同步到文件
+	// Sync to file
 	if err := s.SyncToFile(actorUserID); err != nil {
 		return &record, err
 	}
@@ -143,12 +143,12 @@ func (s *dnsService) Update(actorUserID uint, req *UpdateDNSRecordRequest) (*mod
 		}
 	}
 
-	// 重新获取更新后的记录
+	// Re-fetch the updated record
 	if err := model.DB.First(&record, req.ID).Error; err != nil {
 		return nil, serializer.ErrDatabase.WithError(err)
 	}
 
-	// 同步到文件
+	// Sync to file
 	if err := s.SyncToFile(actorUserID); err != nil {
 		return &record, err
 	}
@@ -165,7 +165,7 @@ func (s *dnsService) Delete(actorUserID uint, id uint) error {
 		return serializer.ErrDatabase.WithError(err)
 	}
 
-	// 同步到文件
+	// Sync to file
 	return s.SyncToFile(actorUserID)
 }
 
@@ -181,7 +181,7 @@ func (s *dnsService) Get(actorUserID uint, id uint) (*model.DNSRecord, error) {
 	return &record, nil
 }
 
-// SyncToFile 将所有 DNS 记录同步到 extra-records.json 文件
+// SyncToFile synchronizes all DNS records to the extra-records.json file
 func (s *dnsService) SyncToFile(actorUserID uint) error {
 	if err := RequirePermission(actorUserID, "dns:sync"); err != nil {
 		return err
@@ -203,26 +203,26 @@ func (s *dnsService) SyncToFile(actorUserID uint) error {
 
 	filePath := s.getExtraRecordsPath()
 
-	// 确保目录存在
+	// Ensure directory exists
 	dir := filepath.Dir(filePath)
 	if err := os.MkdirAll(dir, 0755); err != nil {
-		return fmt.Errorf("创建目录失败: %w", err)
+		return fmt.Errorf("failed to create directory: %w", err)
 	}
 
-	// 写入文件
+	// Write file
 	data, err := json.MarshalIndent(extraRecords, "", "  ")
 	if err != nil {
-		return fmt.Errorf("JSON 序列化失败: %w", err)
+		return fmt.Errorf("JSON marshal failed: %w", err)
 	}
 
 	if err := os.WriteFile(filePath, data, 0600); err != nil {
-		return fmt.Errorf("写入文件失败: %w", err)
+		return fmt.Errorf("failed to write file: %w", err)
 	}
 
 	return nil
 }
 
-// GetExtraRecordsFromFile 从文件读取 DNS 记录
+// GetExtraRecordsFromFile reads DNS records from the file
 func (s *dnsService) GetExtraRecordsFromFile(actorUserID uint) ([]ExtraRecord, error) {
 	if err := RequirePermission(actorUserID, "dns:file:get"); err != nil {
 		return nil, err
@@ -232,14 +232,14 @@ func (s *dnsService) GetExtraRecordsFromFile(actorUserID uint) ([]ExtraRecord, e
 }
 
 func (s *dnsService) getExtraRecordsPath() string {
-	// 优先从配置读取，否则使用默认路径
+	// Prefer configured path, fallback to default
 	if conf.Conf.Headscale.ExtraRecordsPath != "" {
 		return conf.Conf.Headscale.ExtraRecordsPath
 	}
 	return "./headscale/extra-records.json"
 }
 
-// ImportFromFile 从文件导入 DNS 记录到数据库
+// ImportFromFile imports DNS records from the file into the database
 func (s *dnsService) ImportFromFile(actorUserID uint) (int, error) {
 	if err := RequirePermission(actorUserID, "dns:import"); err != nil {
 		return 0, err
@@ -283,12 +283,12 @@ func (s *dnsService) readExtraRecordsFromFile() ([]ExtraRecord, error) {
 		if os.IsNotExist(err) {
 			return []ExtraRecord{}, nil
 		}
-		return nil, fmt.Errorf("读取文件失败: %w", err)
+		return nil, fmt.Errorf("failed to read file: %w", err)
 	}
 
 	var records []ExtraRecord
 	if err := json.Unmarshal(data, &records); err != nil {
-		return nil, fmt.Errorf("JSON 解析失败: %w", err)
+		return nil, fmt.Errorf("JSON parse failed: %w", err)
 	}
 
 	return records, nil
@@ -309,16 +309,16 @@ func (s *dnsService) syncFileRecordsToDB() (int, error) {
 		}
 
 		if r.Name == "" || r.Type == "" || r.Value == "" {
-			return imported, fmt.Errorf("extra-records.json 包含无效记录: name/type/value 不能为空")
+			return imported, fmt.Errorf("extra-records.json contains invalid record: name/type/value must not be empty")
 		}
 		if r.Type != "A" && r.Type != "AAAA" {
-			return imported, fmt.Errorf("extra-records.json 包含无效记录类型: %s", r.Type)
+			return imported, fmt.Errorf("extra-records.json contains invalid record type: %s", r.Type)
 		}
 
 		var existing model.DNSRecord
 		result := model.DB.Where("name = ? AND type = ?", r.Name, r.Type).First(&existing)
 		if result.Error == nil {
-			// 已存在，更新
+			// Already exists, update
 			if existing.Value != r.Value {
 				existing.Value = r.Value
 				if err := model.DB.Save(&existing).Error; err != nil {
@@ -331,7 +331,7 @@ func (s *dnsService) syncFileRecordsToDB() (int, error) {
 				return imported, serializer.ErrDatabase.WithError(result.Error)
 			}
 
-			// 不存在，创建
+			// Does not exist, create
 			newRecord := model.DNSRecord{
 				Name:  r.Name,
 				Type:  r.Type,
