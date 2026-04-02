@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"headscale-panel/model"
 	v1 "headscale-panel/pkg/proto/headscale/v1"
 	"headscale-panel/pkg/utils/serializer"
+	"strconv"
 	"strings"
 	"sync"
 )
@@ -91,6 +93,10 @@ func (s *aclService) UpdatePolicyWithContext(ctx context.Context, actorUserID ui
 		return err
 	}
 
+	if err := normalizeACLPolicyStructure(policy); err != nil {
+		return err
+	}
+
 	client, err := headscaleServiceClient()
 	if err != nil {
 		return err
@@ -107,7 +113,7 @@ func (s *aclService) UpdatePolicyWithContext(ctx context.Context, actorUserID ui
 	_, err = client.SetPolicy(queryCtx, &v1.SetPolicyRequest{
 		Policy: string(policyBytes),
 	})
-	return err
+	return wrapACLPolicyApplyError(err)
 }
 
 // SetPolicyRaw sets the ACL policy from raw JSON string
@@ -120,6 +126,11 @@ func (s *aclService) SetPolicyRawWithContext(ctx context.Context, actorUserID ui
 		return err
 	}
 
+	normalizedPolicyJSON, err := normalizeRawACLPolicyJSON(policyJSON)
+	if err != nil {
+		return err
+	}
+
 	client, err := headscaleServiceClient()
 	if err != nil {
 		return err
@@ -129,9 +140,250 @@ func (s *aclService) SetPolicyRawWithContext(ctx context.Context, actorUserID ui
 	defer cancel()
 
 	_, err = client.SetPolicy(queryCtx, &v1.SetPolicyRequest{
-		Policy: policyJSON,
+		Policy: normalizedPolicyJSON,
 	})
-	return err
+	return wrapACLPolicyApplyError(err)
+}
+
+func normalizeACLPolicyStructure(policy *model.ACLPolicyStructure) error {
+	if policy == nil {
+		return serializer.NewError(serializer.CodeParamErr, "ACL 策略不能为空", nil)
+	}
+
+	for ruleIndex := range policy.ACLs {
+		sources := make([]string, 0, len(policy.ACLs[ruleIndex].Src))
+		for _, source := range policy.ACLs[ruleIndex].Src {
+			trimmed := strings.TrimSpace(source)
+			if trimmed == "" {
+				return serializer.NewError(
+					serializer.CodeParamErr,
+					fmt.Sprintf("ACL 规则第 %d 条包含空的来源标识", ruleIndex+1),
+					nil,
+				)
+			}
+			sources = append(sources, trimmed)
+		}
+		policy.ACLs[ruleIndex].Src = sources
+
+		destinations := make([]string, 0, len(policy.ACLs[ruleIndex].Dst))
+		for _, destination := range policy.ACLs[ruleIndex].Dst {
+			normalizedDestination, err := normalizeACLDestination(destination)
+			if err != nil {
+				return serializer.NewError(
+					serializer.CodeParamErr,
+					fmt.Sprintf("ACL 规则第 %d 条的目标 %q 格式不正确", ruleIndex+1, strings.TrimSpace(destination)),
+					err,
+				)
+			}
+			destinations = append(destinations, normalizedDestination)
+		}
+		policy.ACLs[ruleIndex].Dst = destinations
+	}
+
+	return nil
+}
+
+func normalizeRawACLPolicyJSON(policyJSON string) (string, error) {
+	trimmed := strings.TrimSpace(policyJSON)
+	if trimmed == "" {
+		return "", serializer.NewError(serializer.CodeParamErr, "ACL 策略不能为空", nil)
+	}
+
+	var raw map[string]any
+	if err := json.Unmarshal([]byte(trimmed), &raw); err != nil {
+		return "", serializer.NewError(serializer.CodeParamErr, "ACL 策略不是合法的 JSON", err)
+	}
+
+	if err := normalizeRawACLRules(raw); err != nil {
+		return "", err
+	}
+
+	normalized, err := json.MarshalIndent(raw, "", "  ")
+	if err != nil {
+		return "", serializer.NewError(serializer.CodeParamErr, "ACL 策略序列化失败", err)
+	}
+
+	return string(normalized), nil
+}
+
+func normalizeRawACLRules(raw map[string]any) error {
+	aclsRaw, ok := raw["acls"]
+	if !ok {
+		return nil
+	}
+
+	acls, ok := aclsRaw.([]any)
+	if !ok {
+		return serializer.NewError(serializer.CodeParamErr, "`acls` 必须是数组", nil)
+	}
+
+	for ruleIndex, aclRaw := range acls {
+		aclRule, ok := aclRaw.(map[string]any)
+		if !ok {
+			return serializer.NewError(
+				serializer.CodeParamErr,
+				fmt.Sprintf("ACL 规则第 %d 条格式不正确", ruleIndex+1),
+				nil,
+			)
+		}
+
+		sourcesRaw, hasSources := aclRule["src"]
+		if hasSources {
+			sources, ok := sourcesRaw.([]any)
+			if !ok {
+				return serializer.NewError(
+					serializer.CodeParamErr,
+					fmt.Sprintf("ACL 规则第 %d 条的 `src` 必须是字符串数组", ruleIndex+1),
+					nil,
+				)
+			}
+
+			normalizedSources := make([]any, 0, len(sources))
+			for _, sourceRaw := range sources {
+				source, ok := sourceRaw.(string)
+				if !ok {
+					return serializer.NewError(
+						serializer.CodeParamErr,
+						fmt.Sprintf("ACL 规则第 %d 条的 `src` 必须全部为字符串", ruleIndex+1),
+						nil,
+					)
+				}
+
+				trimmed := strings.TrimSpace(source)
+				if trimmed == "" {
+					return serializer.NewError(
+						serializer.CodeParamErr,
+						fmt.Sprintf("ACL 规则第 %d 条包含空的来源标识", ruleIndex+1),
+						nil,
+					)
+				}
+				normalizedSources = append(normalizedSources, trimmed)
+			}
+			aclRule["src"] = normalizedSources
+		}
+
+		destinationsRaw, hasDestinations := aclRule["dst"]
+		if !hasDestinations {
+			continue
+		}
+
+		destinations, ok := destinationsRaw.([]any)
+		if !ok {
+			return serializer.NewError(
+				serializer.CodeParamErr,
+				fmt.Sprintf("ACL 规则第 %d 条的 `dst` 必须是字符串数组", ruleIndex+1),
+				nil,
+			)
+		}
+
+		normalizedDestinations := make([]any, 0, len(destinations))
+		for _, destinationRaw := range destinations {
+			destination, ok := destinationRaw.(string)
+			if !ok {
+				return serializer.NewError(
+					serializer.CodeParamErr,
+					fmt.Sprintf("ACL 规则第 %d 条的 `dst` 必须全部为字符串", ruleIndex+1),
+					nil,
+				)
+			}
+
+			normalizedDestination, err := normalizeACLDestination(destination)
+			if err != nil {
+				return serializer.NewError(
+					serializer.CodeParamErr,
+					fmt.Sprintf("ACL 规则第 %d 条的目标 %q 格式不正确", ruleIndex+1, strings.TrimSpace(destination)),
+					err,
+				)
+			}
+			normalizedDestinations = append(normalizedDestinations, normalizedDestination)
+		}
+		aclRule["dst"] = normalizedDestinations
+	}
+
+	return nil
+}
+
+func normalizeACLDestination(destination string) (string, error) {
+	trimmed := strings.TrimSpace(destination)
+	if trimmed == "" {
+		return "", errors.New("目标不能为空")
+	}
+
+	switch {
+	case strings.HasPrefix(trimmed, "["):
+		if strings.Contains(trimmed, "]:") {
+			return trimmed, nil
+		}
+		return trimmed + ":*", nil
+	case strings.HasPrefix(trimmed, "group:"),
+		strings.HasPrefix(trimmed, "tag:"),
+		strings.HasPrefix(trimmed, "autogroup:"):
+		if hasExplicitACLPort(trimmed) {
+			return trimmed, nil
+		}
+		return trimmed + ":*", nil
+	case strings.Count(trimmed, ":") == 0:
+		return trimmed + ":*", nil
+	default:
+		return trimmed, nil
+	}
+}
+
+func hasExplicitACLPort(destination string) bool {
+	lastColon := strings.LastIndex(destination, ":")
+	if lastColon == -1 || lastColon == len(destination)-1 {
+		return false
+	}
+
+	return isACLPortExpression(destination[lastColon+1:])
+}
+
+func isACLPortExpression(value string) bool {
+	part := strings.TrimSpace(value)
+	if part == "" {
+		return false
+	}
+	if part == "*" {
+		return true
+	}
+	if strings.Contains(part, ",") {
+		segments := strings.Split(part, ",")
+		if len(segments) == 0 {
+			return false
+		}
+		for _, segment := range segments {
+			if !isACLPortExpression(segment) {
+				return false
+			}
+		}
+		return true
+	}
+	if strings.Contains(part, "-") {
+		bounds := strings.Split(part, "-")
+		if len(bounds) != 2 {
+			return false
+		}
+		start, err := strconv.Atoi(strings.TrimSpace(bounds[0]))
+		if err != nil || start < 0 || start > 65535 {
+			return false
+		}
+		end, err := strconv.Atoi(strings.TrimSpace(bounds[1]))
+		if err != nil || end < 0 || end > 65535 || end < start {
+			return false
+		}
+		return true
+	}
+
+	port, err := strconv.Atoi(part)
+	return err == nil && port >= 0 && port <= 65535
+}
+
+func wrapACLPolicyApplyError(err error) error {
+	if err == nil {
+		return nil
+	}
+
+	return serializer.NewError(serializer.CodeParamErr, "ACL 策略格式不合法，请检查目标地址是否包含端口，例如 group:admin:*", err)
 }
 
 // GetParsedRules returns ACL rules with resolved groups and hosts for frontend display
