@@ -103,6 +103,10 @@ func (s *resourceService) List(userID uint, req *ListResourceRequest) ([]model.R
 
 	total = int64(len(filtered))
 
+	if req.PageSize <= 0 {
+		return filtered, total, nil
+	}
+
 	// Apply pagination on filtered results
 	offset := (req.Page - 1) * req.PageSize
 	if offset >= int(total) {
