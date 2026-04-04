@@ -182,13 +182,14 @@ export default function Dashboard() {
             {isConnected && (
               <Tag icon={<WifiOutlined />} color="success">{t.dashboard.realtime}</Tag>
             )}
-            <Button icon={<ReloadOutlined spin={refreshing} />} onClick={handleRefresh} loading={refreshing}>
+            <Button data-tour-id="dashboard-refresh" icon={<ReloadOutlined spin={refreshing} />} onClick={handleRefresh} loading={refreshing}>
               {t.dashboard.refresh}
             </Button>
           </div>
         </div>
 
         {/* Stats Cards */}
+        <div data-tour-id="dashboard-stats">
         <PageHeaderStatCards
           items={[
             { label: t.dashboard.onlineDevices, value: stats.onlineDevices, subText: t.dashboard.totalDevices.replace('{count}', String(stats.totalDevices)), icon: <DashboardOutlined className="stat-icon-primary" />, watermark: 'LIVE' },
@@ -198,9 +199,10 @@ export default function Dashboard() {
             { label: t.dashboard.dnsCount, value: stats.dnsRecordCount, subText: t.dashboard.dnsSubtitle, icon: <GlobalOutlined className="stat-icon-cyan" />, watermark: 'DNS' },
           ]}
         />
+        </div>
 
         {/* Network Topology */}
-        <div>
+        <div data-tour-id="dashboard-topology">
           <Typography.Title level={5} className="mb-4">
             {t.dashboard.networkTopology}
           </Typography.Title>

@@ -16,11 +16,12 @@ import {
   CheckCircleOutlined,
   CopyOutlined,
   LockOutlined,
+  QuestionCircleOutlined,
   SafetyCertificateOutlined,
   UserOutlined,
 } from '@ant-design/icons';
 import { QRCodeSVG } from 'qrcode.react';
-import { useAuthStore } from '@/lib/store';
+import { useAuthStore, useUIStore } from '@/lib/store';
 import { authAPI } from '@/lib/api';
 import { useTranslation } from '@/i18n/index';
 import DashboardLayout from '@/components/DashboardLayout';
@@ -31,6 +32,7 @@ export default function Profile() {
   const t = useTranslation();
   const pr = t.profile;
   const { user } = useAuthStore();
+  const { setGuideTourOpen } = useUIStore();
 
   // TOTP setup state
   const [totpModalOpen, setTotpModalOpen] = useState(false);
@@ -104,7 +106,7 @@ export default function Profile() {
             <LockOutlined />
             <Text strong>{pr.security}</Text>
           </div>
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between" data-tour-id="profile-totp">
             <div>
               <div className="flex items-center gap-8px">
                 <SafetyCertificateOutlined />
@@ -124,6 +126,24 @@ export default function Profile() {
                 {pr.totp.setup}
               </Button>
             )}
+          </div>
+        </Card>
+
+        {/* Guide Tour */}
+        <Card className="mt-16px" data-tour-id="profile-guide">
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="flex items-center gap-8px">
+                <QuestionCircleOutlined />
+                <Text strong>{pr.guideTour.restartTitle}</Text>
+              </div>
+              <Text type="secondary" className="text-12px block mt-4px ml-22px">
+                {pr.guideTour.restartDesc}
+              </Text>
+            </div>
+            <Button onClick={() => setGuideTourOpen(true)}>
+              {pr.guideTour.restartBtn}
+            </Button>
           </div>
         </Card>
       </div>

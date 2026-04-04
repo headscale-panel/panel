@@ -760,7 +760,7 @@ export default function UsersPage() {
             <Title level={4} className="page-title">{t.users.title}</Title>
             <Text type="secondary">{t.users.description}</Text>
           </div>
-          <Space>
+          <Space data-tour-id="users-actions">
             <Tooltip title={t.common.actions.refresh}>
               <Button icon={<ReloadOutlined spin={loading} />} onClick={loadData} disabled={loading} />
             </Tooltip>
@@ -773,7 +773,7 @@ export default function UsersPage() {
                 ],
               }}
             >
-              <Button type="primary" icon={<PlusOutlined />}>{t.users.new}</Button>
+              <Button type="primary" icon={<PlusOutlined />} data-tour-id="users-create">{t.users.new}</Button>
             </Dropdown>
           </Space>
         </div>
@@ -793,7 +793,7 @@ export default function UsersPage() {
         {/* Two-panel layout */}
         <div className="grid gap-4" style={{ gridTemplateColumns: '280px 1fr' }}>
           {/* Left: Tree sidebar */}
-          <Card styles={{ body: { padding: 0 } }}>
+          <Card data-tour-id="users-tree" styles={{ body: { padding: 0 } }}>
             <div className="flex items-center px-5 py-3.5" style={{ borderBottom: `1px solid ${token.colorBorderSecondary}` }}>
               <Text strong className="text-15px">{t.users.treeTitle}</Text>
             </div>

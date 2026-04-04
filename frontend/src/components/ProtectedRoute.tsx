@@ -23,7 +23,7 @@ export default function ProtectedRoute({
   const fetched = useRef(false);
   const pendingProfile =
     isAuthenticated &&
-    (!user || !isArray(user.permissions) || !user.headscale_name);
+    (!user || !isArray(user.permissions) || !user.headscale_name || typeof user.guide_tour_seen_at === 'undefined');
 
   // Fetch fresh user info only when auth state lacks a persisted user profile.
   useEffect(() => {
@@ -43,6 +43,7 @@ export default function ProtectedRoute({
             avatar: u.profile_pic_url,
             permissions: data.permissions,
             totp_enabled: u.totp_enabled,
+            guide_tour_seen_at: u.guide_tour_seen_at ?? null,
           });
         }
       }).catch(() => {

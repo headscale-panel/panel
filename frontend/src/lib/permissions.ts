@@ -37,6 +37,8 @@ export type AppSectionKey =
   | 'panelAccounts'
   | 'settings';
 
+export type TourSectionKey = AppSectionKey | 'profile';
+
 function getPermissionSet(user: User | null | undefined): Set<string> {
   return new Set(user?.permissions || []);
 }
@@ -94,6 +96,13 @@ export function canAccessSection(user: User | null | undefined, section: AppSect
     default:
       return false;
   }
+}
+
+export function canAccessTourSection(user: User | null | undefined, section: TourSectionKey): boolean {
+  if (section === 'profile') {
+    return Boolean(user);
+  }
+  return canAccessSection(user, section);
 }
 
 export function getDefaultRouteForUser(user: User | null | undefined): string {

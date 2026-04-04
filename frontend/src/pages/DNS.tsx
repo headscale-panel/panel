@@ -159,8 +159,8 @@ export default function DNS() {
           <Space wrap className="header-actions-wrap">
             <Button icon={<UploadOutlined />} onClick={() => handleImportFromFile(false)} loading={importing}>{importing ? t.dns.importing : t.dns.importFromFile}</Button>
             <Button icon={<DownloadOutlined />} onClick={handleExportJson}>{t.dns.exportJson}</Button>
-            <Button icon={<SaveOutlined />} onClick={handleApply}>{t.dns.applyConfig}</Button>
-            <Button type="primary" icon={<PlusOutlined />} onClick={handleCreate}>{t.dns.addRecord}</Button>
+            <Button data-tour-id="dns-apply" icon={<SaveOutlined />} onClick={handleApply}>{t.dns.applyConfig}</Button>
+            <Button type="primary" icon={<PlusOutlined />} onClick={handleCreate} data-tour-id="dns-add-record">{t.dns.addRecord}</Button>
           </Space>
         </div>
 
@@ -175,7 +175,7 @@ export default function DNS() {
 
         {/* Records Table */}
         <Card title={t.dns.recordListTitle} extra={<Text type="secondary">{t.dns.recordListDesc}</Text>}>
-          <div className="table-filter-row">
+          <div className="table-filter-row" data-tour-id="dns-filters">
             <Input prefix={<SearchOutlined />} placeholder={t.dns.searchPlaceholder} value={keyword} onChange={(e) => setKeyword(e.target.value)} className="table-search-input" allowClear />
             <Select value={typeFilter || 'all'} onChange={(v) => setTypeFilter(v === 'all' ? '' : v)} className="select-fixed-sm"
               options={[{ value: 'all', label: t.dns.allTypes }, { value: 'A', label: 'A' }, { value: 'AAAA', label: 'AAAA' }]}

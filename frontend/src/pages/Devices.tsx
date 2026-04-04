@@ -149,7 +149,7 @@ export default function Devices() {
               {t.common.actions.refresh}
             </Button>
             {(canCreatePreAuthKey || canRegisterNode) && (
-              <Button type="primary" icon={<PlusOutlined />} onClick={openAddDeviceDialog}>
+              <Button data-tour-id="devices-add" type="primary" icon={<PlusOutlined />} onClick={openAddDeviceDialog}>
                 {t.devices.addDevice}
               </Button>
             )}
@@ -166,9 +166,10 @@ export default function Devices() {
           ]}
         />
 
-        <Card>
+        <Card data-tour-id="devices-list">
           <div className="flex gap-3 flex-wrap mb-4">
             <Input
+              data-tour-id="devices-search"
               placeholder={t.devices.searchPlaceholder}
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}

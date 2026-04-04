@@ -102,7 +102,7 @@ export default function Metrics() {
             <Title level={4} className="m-0">{t.metrics.title}</Title>
             <Text type="secondary">{t.metrics.description}</Text>
           </div>
-          <Select value={timeRange} onChange={setTimeRange} className="w-45"
+          <Select value={timeRange} onChange={setTimeRange} className="w-45" data-tour-id="metrics-range"
             options={[
               { value: '7d', label: t.metrics.last7Days },
               { value: '30d', label: t.metrics.last30Days },
@@ -140,7 +140,7 @@ export default function Metrics() {
         />
 
         {/* Charts */}
-        <div className="metric-chart-grid">
+        <div className="metric-chart-grid" data-tour-id="metrics-charts">
           {/* Device Activity Bar Chart */}
           <Card title={t.metrics.activeDevicesRanking}>
             <div className="chart-box">

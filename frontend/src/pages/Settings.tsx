@@ -26,7 +26,9 @@ import {
   defaultOIDCFormValues,
   type OIDCFormValues,
 } from '@/lib/normalizers';
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
+
+const SETTINGS_TOUR_TAB_EVENT = 'guide-tour:settings-tab';
 
 const { Title, Text } = Typography;
 
@@ -137,6 +139,7 @@ export default function Settings() {
   const [savingOidc, setSavingOidc] = useState(false);
   const [testingConnection, setTestingConnection] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [activeTabKey, setActiveTabKey] = useState('grpc');
 
   const [previewCopied, setPreviewCopied] = useState(false);
 
@@ -405,6 +408,20 @@ export default function Settings() {
     setTimeout(() => setPreviewCopied(false), 2000);
   };
 
+  useEffect(() => {
+    const handleTourTabSwitch = (event: Event) => {
+      const detail = (event as CustomEvent<string>).detail;
+      if (detail === 'grpc' || detail === 'oidc' || detail === 'groups') {
+        setActiveTabKey(detail);
+      }
+    };
+
+    window.addEventListener(SETTINGS_TOUR_TAB_EVENT, handleTourTabSwitch);
+    return () => {
+      window.removeEventListener(SETTINGS_TOUR_TAB_EVENT, handleTourTabSwitch);
+    };
+  }, []);
+
   const loading = loadingConnection || loadingConfig;
 
   if (loading) {
@@ -426,7 +443,9 @@ export default function Settings() {
         </div>
 
         <Tabs
-          defaultActiveKey="grpc"
+          activeKey={activeTabKey}
+          onChange={setActiveTabKey}
+          data-tour-id="settings-tabs"
           items={[
             {
               key: 'grpc',
@@ -479,7 +498,13 @@ export default function Settings() {
                       <Button onClick={handleTestConnection} loading={testingConnection}>
                         {t.settings.headscaleConnection.testConnection}
                       </Button>
-                      <Button type="primary" onClick={handleSaveGrpc} loading={savingGrpc} icon={<SaveOutlined />}>
+                      <Button
+                        type="primary"
+                        onClick={handleSaveGrpc}
+                        loading={savingGrpc}
+                        icon={<SaveOutlined />}
+                        data-tour-id="settings-grpc-save"
+                      >
                         {t.settings.headscaleConnection.saveSettings}
                       </Button>
                     </Space>
@@ -571,7 +596,14 @@ export default function Settings() {
                           </FieldRow>
 
                           <div style={{ borderTop: `1px solid ${token.colorBorderSecondary}`, paddingTop: 16 }}>
-                            <Button type="primary" block onClick={handleSaveOidc} loading={savingOidc} icon={<SaveOutlined />}>
+                            <Button
+                              type="primary"
+                              block
+                              onClick={handleSaveOidc}
+                              loading={savingOidc}
+                              icon={<SaveOutlined />}
+                              data-tour-id="settings-oidc-save"
+                            >
                               {t.settings.oidcConfig.saveOidcSettings}
                             </Button>
                           </div>

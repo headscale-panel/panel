@@ -73,6 +73,7 @@ export default function Login() {
       headscale_name: u.headscale_name || u.username,
       display_name: u.display_name,
       permissions: data.permissions,
+      guide_tour_seen_at: u.guide_tour_seen_at ?? null,
     };
     setAuth(data.token, nextUser);
     return nextUser;

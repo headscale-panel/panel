@@ -9,6 +9,7 @@ export interface LoginReq {
 export interface LoginRes {
   token: string;
   user: User;
+  permissions?: string[];
 }
 
 export interface RegisterReq {
@@ -24,6 +25,8 @@ export interface RegisterRes {
 
 export interface UserInfoReq {}
 export type UserInfoRes = User;
+export interface MarkGuideTourSeenReq {}
+export interface MarkGuideTourSeenRes {}
 
 export interface GenerateTOTPReq {}
 export interface GenerateTOTPRes {
@@ -44,6 +47,7 @@ export interface OidcCallbackReq {
 export interface OidcCallbackRes {
   token?: string;
   user?: User;
+  permissions?: string[];
 }
 
 export interface OidcStatusReq {}
@@ -59,4 +63,3 @@ export interface OidcLoginReq {}
 export interface OidcLoginRes {
   redirect_url: string;
 }
-

@@ -1,6 +1,7 @@
 import NotFound from "@/pages/NotFound";
 import { Route, Switch, Router as WouterRouter, useLocation } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
+import GuideTour from "./components/GuideTour";
 import ProtectedRoute from "./components/ProtectedRoute";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import { ThemeMode } from "./lib/enums";
@@ -145,6 +146,7 @@ function App() {
           <WouterRouter base={BASE}>
             <SetupGuard>
               <AppRoutes />
+              <GuideTour />
             </SetupGuard>
           </WouterRouter>
         </ThemedApp>

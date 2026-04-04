@@ -158,9 +158,9 @@ export default function Routes() {
         />
 
         {/* Table Card */}
-        <Card>
+        <Card data-tour-id="routes-table">
           {/* Filters */}
-          <div className="flex flex-wrap gap-3 mb-4">
+          <div className="flex flex-wrap gap-3 mb-4" data-tour-id="routes-filters">
             <Input
               placeholder={t.routes.searchPlaceholder}
               prefix={<SearchOutlined />}

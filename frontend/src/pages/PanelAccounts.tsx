@@ -202,7 +202,7 @@ export default function PanelAccounts() {
         </div>
         <Space>
           <Button icon={<ReloadOutlined />} onClick={loadList} />
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)} data-tour-id="panel-accounts-create">
             {pa.newAccount}
           </Button>
         </Space>
@@ -212,7 +212,7 @@ export default function PanelAccounts() {
       <PageHeaderStatCards items={statCards} />
 
       {/* Filters */}
-      <div className="flex items-center gap-12px mt-16px mb-12px flex-wrap">
+      <div className="flex items-center gap-12px mt-16px mb-12px flex-wrap" data-tour-id="panel-accounts-filters">
         <Input
           prefix={<SearchOutlined />}
           placeholder={pa.searchPlaceholder}
@@ -251,23 +251,25 @@ export default function PanelAccounts() {
       </div>
 
       {/* Table */}
-      <Table<PanelAccountListItem>
-        rowKey="id"
-        columns={columns}
-        dataSource={list}
-        loading={listLoading}
-        size="middle"
-        pagination={{
-          current: page,
-          pageSize,
-          total,
-          showSizeChanger: true,
-          onChange: (p, ps) => {
-            setPage(p);
-            setPageSize(ps);
-          },
-        }}
-      />
+      <div data-tour-id="panel-accounts-table">
+        <Table<PanelAccountListItem>
+          rowKey="id"
+          columns={columns}
+          dataSource={list}
+          loading={listLoading}
+          size="middle"
+          pagination={{
+            current: page,
+            pageSize,
+            total,
+            showSizeChanger: true,
+            onChange: (p, ps) => {
+              setPage(p);
+              setPageSize(ps);
+            },
+          }}
+        />
+      </div>
 
       {/* Detail Drawer */}
       <AccountDetailDrawer

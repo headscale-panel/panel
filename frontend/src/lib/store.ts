@@ -12,6 +12,7 @@ export interface User {
   avatar?: string;
   permissions?: string[];
   totp_enabled?: boolean;
+  guide_tour_seen_at?: string | null;
 }
 
 export interface AuthSnapshot {
@@ -51,6 +52,8 @@ export const useAuthStore = create<AuthState>()(
 interface UIState {
   sidebarCollapsed: boolean;
   setSidebarCollapsed: (collapsed: boolean) => void;
+  guideTourOpen: boolean;
+  setGuideTourOpen: (open: boolean) => void;
 }
 
 export const useUIStore = create<UIState>()(
@@ -58,6 +61,8 @@ export const useUIStore = create<UIState>()(
     (set) => ({
       sidebarCollapsed: false,
       setSidebarCollapsed: (collapsed) => set({ sidebarCollapsed: collapsed }),
+      guideTourOpen: false,
+      setGuideTourOpen: (open) => set({ guideTourOpen: open }),
     }),
     {
       name: 'ui-storage',

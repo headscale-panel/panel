@@ -132,6 +132,7 @@ export default function Sidebar({
       </div>
 
       <Menu
+        data-tour-id="sidebar-menu"
         mode="inline"
         selectedKeys={[selectedKey]}
         items={menuItems}
@@ -139,7 +140,9 @@ export default function Sidebar({
         className="border-r-0 flex-1 overflow-auto bg-transparent"
       />
 
-      <div style={{
+      <div
+        data-tour-id="sidebar-profile"
+        style={{
         borderTop: `1px solid ${themeToken.colorBorderSecondary}`,
         padding: collapsed ? '12px 8px' : '12px 16px',
         flexShrink: 0,

@@ -296,9 +296,9 @@ export default function ACL() {
             <Tooltip title={t.common.actions.refresh}>
               <Button icon={<ReloadOutlined spin={saving} />} onClick={loadData} disabled={saving} />
             </Tooltip>
-            <Button icon={<DatabaseOutlined />} onClick={handleSyncResources} disabled={saving}>{t.acl.syncResources}</Button>
-            <Button icon={<CodeOutlined />} onClick={handleExportJson}>{t.acl.jsonEditor}</Button>
-            <Button type="primary" icon={<PlusOutlined />} onClick={() => {
+            <Button data-tour-id="acl-sync" icon={<DatabaseOutlined />} onClick={handleSyncResources} disabled={saving}>{t.acl.syncResources}</Button>
+            <Button data-tour-id="acl-json" icon={<CodeOutlined />} onClick={handleExportJson}>{t.acl.jsonEditor}</Button>
+            <Button type="primary" icon={<PlusOutlined />} data-tour-id="acl-add-rule" onClick={() => {
               setEditingRule(null);
               setEditingIndex(-1);
               setShowAddDialog(true);

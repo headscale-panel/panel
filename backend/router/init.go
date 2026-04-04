@@ -78,6 +78,7 @@ func InitRouter() *gin.Engine {
 		auth.Use(middleware.AuthMiddleware())
 		{
 			auth.GET("/user/info", userController.GetInfo)
+			auth.POST("/user/guide-tour/seen", userController.MarkGuideTourSeen)
 			auth.POST("/user/totp/generate", userController.GenerateTOTP)
 			auth.POST("/user/totp/enable", userController.EnableTOTP)
 

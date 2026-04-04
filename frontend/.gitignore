@@ -39,3 +39,6 @@ coverage/
 *.swp
 *.swo
 *~
+
+# llm files
+llms-full.txt

@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"headscale-panel/model"
 	"headscale-panel/pkg/utils/serializer"
 	"headscale-panel/router/services"
 
@@ -11,6 +12,18 @@ type UserController struct{}
 
 func NewUserController() *UserController {
 	return &UserController{}
+}
+
+func buildUserAuthPayload(user *model.User, role string) gin.H {
+	return gin.H{
+		"id":                 user.ID,
+		"username":           user.Username,
+		"email":              user.Email,
+		"role":               role,
+		"display_name":       user.DisplayName,
+		"avatar":             user.ProfilePicURL,
+		"guide_tour_seen_at": user.GuideTourSeenAt,
+	}
 }
 
 // Register godoc
@@ -69,15 +82,8 @@ func (u *UserController) Login(c *gin.Context) {
 	permissions, _ := services.UserService.GetUserPermissions(user.ID)
 
 	serializer.Success(c, gin.H{
-		"token": token,
-		"user": gin.H{
-			"id":           user.ID,
-			"username":     user.Username,
-			"email":        user.Email,
-			"role":         role,
-			"display_name": user.DisplayName,
-			"avatar":       user.ProfilePicURL,
-		},
+		"token":       token,
+		"user":        buildUserAuthPayload(user, role),
 		"permissions": permissions,
 	})
 }
@@ -111,6 +117,28 @@ func (u *UserController) GetInfo(c *gin.Context) {
 		"user":        user,
 		"permissions": permissions,
 	})
+}
+
+// MarkGuideTourSeen godoc
+// @Summary Mark the guide tour as seen for the current user
+// @Tags auth
+// @Produce json
+// @Success 200 {object} serializer.Response
+// @Security BearerAuth
+// @Router /user/guide-tour/seen [post]
+func (u *UserController) MarkGuideTourSeen(c *gin.Context) {
+	userID := c.GetUint("userID")
+	if userID == 0 {
+		serializer.Fail(c, serializer.ErrInvalidToken)
+		return
+	}
+
+	if err := services.UserService.MarkGuideTourSeen(userID); err != nil {
+		serializer.Fail(c, err)
+		return
+	}
+
+	serializer.Success(c, nil)
 }
 
 // GenerateTOTP godoc

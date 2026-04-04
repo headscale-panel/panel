@@ -32,6 +32,7 @@ export interface User {
   provider?: string;
   provider_id?: string;
   profile_pic_url?: string;
+  guide_tour_seen_at?: string | null;
   group_id?: number;
   group?: Group;
   totp_enabled?: boolean;

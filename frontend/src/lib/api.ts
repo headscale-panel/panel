@@ -26,6 +26,7 @@ export const authAPI = {
   login: (username: string, password: string) => authApi.login({ username, password }),
   register: (username: string, password: string, email: string) => authApi.register({ username, password, email }),
   getUserInfo: () => authApi.getUserInfo(),
+  markGuideTourSeen: () => authApi.markGuideTourSeen(),
   oidcLogin: () => authApi.oidcLogin(),
   oidcCallback: (code: string, state: string) => authApi.oidcCallback({ code, state }),
   generateTOTP: () => authApi.generateTOTP(),

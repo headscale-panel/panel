@@ -284,12 +284,17 @@ func (a *AuthController) OIDCCallback(c *gin.Context) {
 	serializer.Success(c, gin.H{
 		"token": token,
 		"user": gin.H{
-			"id":           user.ID,
-			"username":     user.Username,
-			"email":        user.Email,
-			"display_name": user.DisplayName,
-			"group_id":     user.GroupID,
+			"id":                 user.ID,
+			"username":           user.Username,
+			"email":              user.Email,
+			"display_name":       user.DisplayName,
+			"group_id":           user.GroupID,
+			"guide_tour_seen_at": user.GuideTourSeenAt,
 		},
+		"permissions": func() []string {
+			permissions, _ := services.UserService.GetUserPermissions(user.ID)
+			return permissions
+		}(),
 	})
 }
 

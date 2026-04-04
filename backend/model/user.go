@@ -3,6 +3,7 @@ package model
 import (
 	"headscale-panel/pkg/utils/password"
 	"strings"
+	"time"
 
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
@@ -18,11 +19,12 @@ type User struct {
 	Group    Group  `json:"group"`
 
 	// Headscale fields
-	HeadscaleName string `json:"headscale_name" gorm:"uniqueIndex"` // Maps to Headscale User Name
-	DisplayName   string `json:"display_name"`
-	Provider      string `json:"provider"` // "local", "github", etc.
-	ProviderID    string `json:"provider_id"`
-	ProfilePicURL string `json:"profile_pic_url"`
+	HeadscaleName   string     `json:"headscale_name" gorm:"uniqueIndex"` // Maps to Headscale User Name
+	DisplayName     string     `json:"display_name"`
+	Provider        string     `json:"provider"` // "local", "github", etc.
+	ProviderID      string     `json:"provider_id"`
+	ProfilePicURL   string     `json:"profile_pic_url"`
+	GuideTourSeenAt *time.Time `json:"guide_tour_seen_at"`
 
 	// TOTP
 	TOTPSecret  string `json:"-"`

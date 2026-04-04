@@ -119,7 +119,7 @@ export default function Resources() {
           </div>
           <Space>
             <Button icon={<ReloadOutlined spin={loading} />} onClick={refresh} loading={loading}>{t.common.actions.refresh}</Button>
-            <Button type="primary" icon={<PlusOutlined />} onClick={openCreateDialog}>{t.resources.addResource}</Button>
+            <Button type="primary" icon={<PlusOutlined />} onClick={openCreateDialog} data-tour-id="resources-create">{t.resources.addResource}</Button>
           </Space>
         </div>
 
@@ -137,7 +137,7 @@ export default function Resources() {
         {/* Table */}
         <Card>
           <div className="mb-4">
-            <Input prefix={<SearchOutlined />} placeholder={t.resources.searchPlaceholder} value={searchQuery} onChange={(e) => { setSearchQuery(e.target.value); setPage(1); }} className="max-w-90" allowClear />
+            <Input data-tour-id="resources-search" prefix={<SearchOutlined />} placeholder={t.resources.searchPlaceholder} value={searchQuery} onChange={(e) => { setSearchQuery(e.target.value); setPage(1); }} className="max-w-90" allowClear />
           </div>
           <Table
             columns={columns}

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"headscale-panel/model"
 	"headscale-panel/pkg/utils/serializer"
@@ -104,5 +105,53 @@ func TestValidateSessionUserRejectsInactiveUser(t *testing.T) {
 	}
 	if appErr.ErrCode() != serializer.CodeInvalidToken {
 		t.Fatalf("unexpected error code: got %d want %d", appErr.ErrCode(), serializer.CodeInvalidToken)
+	}
+}
+
+func TestMarkGuideTourSeenIsIdempotent(t *testing.T) {
+	db := setupUserAuthStateTestDB(t)
+
+	group := model.Group{Name: "User"}
+	if err := db.Create(&group).Error; err != nil {
+		t.Fatalf("create group: %v", err)
+	}
+
+	user := model.User{
+		Username: "tour-user",
+		Password: "secret-pass",
+		GroupID:  group.ID,
+	}
+	if err := db.Create(&user).Error; err != nil {
+		t.Fatalf("create user: %v", err)
+	}
+
+	if err := UserService.MarkGuideTourSeen(user.ID); err != nil {
+		t.Fatalf("first mark guide tour seen: %v", err)
+	}
+
+	var marked model.User
+	if err := db.First(&marked, user.ID).Error; err != nil {
+		t.Fatalf("load marked user: %v", err)
+	}
+	if marked.GuideTourSeenAt == nil {
+		t.Fatal("expected guide_tour_seen_at to be set")
+	}
+
+	firstSeenAt := *marked.GuideTourSeenAt
+	time.Sleep(10 * time.Millisecond)
+
+	if err := UserService.MarkGuideTourSeen(user.ID); err != nil {
+		t.Fatalf("second mark guide tour seen: %v", err)
+	}
+
+	var markedAgain model.User
+	if err := db.First(&markedAgain, user.ID).Error; err != nil {
+		t.Fatalf("load user after second mark: %v", err)
+	}
+	if markedAgain.GuideTourSeenAt == nil {
+		t.Fatal("expected guide_tour_seen_at to stay set")
+	}
+	if !markedAgain.GuideTourSeenAt.Equal(firstSeenAt) {
+		t.Fatalf("expected guide_tour_seen_at to remain unchanged, got %v want %v", markedAgain.GuideTourSeenAt, firstSeenAt)
 	}
 }

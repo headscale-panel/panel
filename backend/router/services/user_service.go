@@ -8,6 +8,7 @@ import (
 	v1 "headscale-panel/pkg/proto/headscale/v1"
 	"headscale-panel/pkg/utils/jwt"
 	"headscale-panel/pkg/utils/serializer"
+	"time"
 
 	"github.com/pquerna/otp/totp"
 	"google.golang.org/grpc/codes"
@@ -190,6 +191,16 @@ func (s *userService) GetUserPermissions(userID uint) ([]string, error) {
 		codes = append(codes, p.Code)
 	}
 	return codes, nil
+}
+
+func (s *userService) MarkGuideTourSeen(userID uint) error {
+	now := time.Now()
+	if err := model.DB.Model(&model.User{}).
+		Where("id = ? AND guide_tour_seen_at IS NULL", userID).
+		Update("guide_tour_seen_at", now).Error; err != nil {
+		return serializer.ErrDatabase.WithError(err)
+	}
+	return nil
 }
 
 func (s *userService) GenerateTOTP(userID uint) (string, string, error) {
