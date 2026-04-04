@@ -46,12 +46,6 @@ func (s *SetupController) GetStatus(ctx *gin.Context) {
 		return
 	}
 
-	var count int64
-	if err := model.DB.Model(&model.User{}).Count(&count).Error; err != nil {
-		serializer.Fail(ctx, serializer.ErrDatabase.WithError(err))
-		return
-	}
-
 	now := time.Now()
 	windowOpen := services.SetupStateService.IsWindowOpen(state, now)
 	initialized := state.State == model.SetupStateInitialized
@@ -60,7 +54,6 @@ func (s *SetupController) GetStatus(ctx *gin.Context) {
 	resp := gin.H{
 		"initialized":           initialized,
 		"setup_state":           state.State,
-		"user_count":            count,
 		"setup_window_open":     windowOpen,
 		"setup_window_deadline": "",
 		"bootstrap_configured":  isSetupBootstrapConfigured(),

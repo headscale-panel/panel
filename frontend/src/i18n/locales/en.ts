@@ -759,6 +759,10 @@ const en: Translations = {
     oidcVerifyFailed: 'Verification failed',
     oidcRedirectFailed: 'Could not get OIDC login URL',
     oidcConfigError: 'Please check your OIDC configuration',
+    totpLabel: 'TOTP Code',
+    totpPlaceholder: 'Enter 6-digit code',
+    totpRequired: 'Please enter your TOTP code',
+    totpInvalid: 'Invalid TOTP code, please try again',
   },
 
   topology: {

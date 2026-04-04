@@ -23,6 +23,7 @@ func buildUserAuthPayload(user *model.User, role string) gin.H {
 		"display_name":       user.DisplayName,
 		"avatar":             user.ProfilePicURL,
 		"guide_tour_seen_at": user.GuideTourSeenAt,
+		"totp_enabled":       user.TOTPEnabled,
 	}
 }
 

@@ -23,7 +23,7 @@ export type { DNSRecord } from '@/api/dns.types';
 export default api;
 
 export const authAPI = {
-  login: (username: string, password: string) => authApi.login({ username, password }),
+  login: (username: string, password: string, totp_code?: string) => authApi.login({ username, password, totp_code }),
   register: (username: string, password: string, email: string) => authApi.register({ username, password, email }),
   getUserInfo: () => authApi.getUserInfo(),
   markGuideTourSeen: () => authApi.markGuideTourSeen(),

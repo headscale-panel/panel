@@ -71,6 +71,7 @@ interface AxiosCreateConfigCustom extends AxiosRequestConfig {
 }
 
 const AUTH_ERROR_CODES = new Set([401, 40011, 40012]);
+const SILENT_ERROR_CODES = new Set([40004]);
 
 let axiosInstance: AxiosInstance;
 let unauthorizedHandler: (() => void) | null = null;
@@ -165,6 +166,8 @@ export const createAxiosInstance = (options?: AxiosCreateConfigCustom): AxiosIns
         handleUnauthorized();
       } else if (code === 403) {
         message.error(t.common.errors.forbidden);
+      } else if (SILENT_ERROR_CODES.has(code ?? -1)) {
+        // Silently reject — let the caller handle it
       } else {
         message.error(messageText, code === 50000 ? 6 : undefined);
       }

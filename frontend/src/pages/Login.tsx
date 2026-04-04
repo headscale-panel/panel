@@ -23,6 +23,8 @@ export default function Login() {
 
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [totpRequired, setTotpRequired] = useState(false);
+  const [totpCode, setTotpCode] = useState('');
   const [oidcLoading, setOidcLoading] = useState(false);
   const [oidcStatus, setOidcStatus] = useState<{ enabled: boolean; provider_name: string } | null>(null);
 
@@ -51,8 +53,8 @@ export default function Login() {
   );
 
   const { runAsync: submitLogin, loading } = useRequest(
-    async (payload: { username: string; password: string }) =>
-      authAPI.login(payload.username, payload.password),
+    async (payload: { username: string; password: string; totp_code?: string }) =>
+      authAPI.login(payload.username, payload.password, payload.totp_code),
     { manual: true },
   );
 
@@ -74,6 +76,7 @@ export default function Login() {
       display_name: u.display_name,
       permissions: data.permissions,
       guide_tour_seen_at: u.guide_tour_seen_at ?? null,
+      totp_enabled: u.totp_enabled ?? false,
     };
     setAuth(data.token, nextUser);
     return nextUser;
@@ -103,8 +106,16 @@ export default function Login() {
       message.error(t.login.requiredFields);
       return;
     }
+    if (totpRequired && !totpCode.trim()) {
+      message.error(t.login.totpRequired);
+      return;
+    }
     try {
-      const data: any = await submitLogin({ username: username.trim(), password });
+      const data: any = await submitLogin({
+        username: username.trim(),
+        password,
+        totp_code: totpRequired ? totpCode.trim() : undefined,
+      });
       if (data?.token && data?.user) {
         const nextUser = parseUserAuth(data);
         message.success(t.login.loginSuccess);
@@ -112,8 +123,15 @@ export default function Login() {
         const returnUrl = normalizeLoginReturnUrl(params.get('return_url'));
         returnUrl ? window.location.assign(returnUrl) : setLocation(getDefaultRouteForUser(nextUser));
       }
-    } catch {
-      // handled by interceptor
+    } catch (err: any) {
+      const code = err?.response?.data?.code ?? err?.code;
+      if (code === 40004) {
+        if (!totpRequired) {
+          setTotpRequired(true);
+        } else {
+          message.error(t.login.totpInvalid);
+        }
+      }
     }
   };
 
@@ -204,6 +222,23 @@ export default function Login() {
                   iconRender={(visible) => visible ? <EyeTwoTone /> : <EyeInvisibleOutlined />}
                 />
               </div>
+
+              {totpRequired && (
+                <div>
+                  <Text className="form-label">{t.login.totpLabel}</Text>
+                  <Input
+                    prefix={<SafetyCertificateOutlined />}
+                    value={totpCode}
+                    onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    placeholder={t.login.totpPlaceholder}
+                    autoComplete="one-time-code"
+                    inputMode="numeric"
+                    maxLength={6}
+                    size="large"
+                    autoFocus
+                  />
+                </div>
+              )}
 
               <Button type="primary" htmlType="submit" block loading={loading} size="large">
                 {loading ? t.login.loggingIn : t.login.loginBtn}

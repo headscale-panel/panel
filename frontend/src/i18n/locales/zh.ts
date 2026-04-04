@@ -757,6 +757,10 @@ const zh = {
     oidcVerifyFailed: '验证失败',
     oidcRedirectFailed: '无法获取 OIDC 登录地址',
     oidcConfigError: '请检查 OIDC 配置',
+    totpLabel: 'TOTP 验证码',
+    totpPlaceholder: '请输入 6 位验证码',
+    totpRequired: '请输入 TOTP 验证码',
+    totpInvalid: 'TOTP 验证码无效，请重试',
   },
 
   topology: {
