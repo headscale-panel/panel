@@ -38,12 +38,8 @@ func (s *aclService) InitPolicyWithContext(ctx context.Context) error {
 		return nil
 	}
 
-	// Initialize a minimal policy once so subsequent reads are stable.
-	if _, setErr := client.SetPolicy(queryCtx, &v1.SetPolicyRequest{Policy: "{}"}); setErr != nil {
-		return err
-	}
-
-	_, err = client.GetPolicy(queryCtx, &v1.GetPolicyRequest{})
+	// Policy doesn't exist yet — initialize with an empty policy.
+	_, err = client.SetPolicy(queryCtx, &v1.SetPolicyRequest{Policy: "{}"})
 	return err
 }
 
@@ -408,7 +404,7 @@ func (s *aclService) GetParsedRulesWithContext(ctx context.Context, actorUserID 
 		resolvedSources := s.resolveSources(rule.Src, policy.Groups)
 
 		// Resolve destinations
-		resolvedDests := s.resolveDestinations(rule.Dst, policy.Hosts, policy.Groups)
+		resolvedDests := s.resolveDestinations(rule.Dst, policy.Hosts)
 
 		parsedRules = append(parsedRules, model.ParsedACLRule{
 			ID:              uint(i + 1),
@@ -443,7 +439,7 @@ func (s *aclService) resolveSources(sources []string, groups map[string][]string
 }
 
 // resolveDestinations resolves destination patterns to actual IP addresses
-func (s *aclService) resolveDestinations(destinations []string, hosts map[string]string, groups map[string][]string) []string {
+func (s *aclService) resolveDestinations(destinations []string, hosts map[string]string) []string {
 	var resolved []string
 	for _, dst := range destinations {
 		parts := strings.Split(dst, ":")

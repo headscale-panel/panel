@@ -2,7 +2,7 @@ package services
 
 import (
 	"fmt"
-	"headscale-panel/pkg/conf"
+	"headscale-panel/pkg/constants"
 	"os"
 	"path/filepath"
 	"strings"
@@ -23,6 +23,7 @@ type HeadscaleConfigFile struct {
 	MetricsListenAddr              string         `json:"metrics_listen_addr" yaml:"metrics_listen_addr"`
 	GRPCListenAddr                 string         `json:"grpc_listen_addr" yaml:"grpc_listen_addr"`
 	GRPCAllowInsecure              bool           `json:"grpc_allow_insecure" yaml:"grpc_allow_insecure"`
+	PrivateKeyPath                 string         `json:"private_key_path" yaml:"private_key_path"`
 	DisableCheckUpdates            bool           `json:"disable_check_updates" yaml:"disable_check_updates,omitempty"`
 	EphemeralNodeInactivityTimeout string         `json:"ephemeral_node_inactivity_timeout" yaml:"ephemeral_node_inactivity_timeout,omitempty"`
 	Noise                          NoiseConfig    `json:"noise" yaml:"noise"`
@@ -68,19 +69,19 @@ type PrefixesConfig struct {
 
 type DERPConfig struct {
 	Server            DERPServerConfig `json:"server" yaml:"server"`
-	URLs              []string         `json:"urls" yaml:"urls"`
+	URLs              []string         `json:"urls" yaml:"urls,omitempty"`
 	Paths             []string         `json:"paths" yaml:"paths,omitempty"`
-	AutoUpdateEnabled bool             `json:"auto_update_enabled" yaml:"auto_update_enabled"`
-	UpdateFrequency   string           `json:"update_frequency" yaml:"update_frequency"`
+	AutoUpdateEnabled bool             `json:"auto_update_enabled" yaml:"auto_update_enabled,omitempty"`
+	UpdateFrequency   string           `json:"update_frequency" yaml:"update_frequency,omitempty"`
 }
 
 type DERPServerConfig struct {
 	Enabled                            bool   `json:"enabled" yaml:"enabled"`
-	RegionID                           int    `json:"region_id" yaml:"region_id"`
-	RegionCode                         string `json:"region_code" yaml:"region_code"`
-	RegionName                         string `json:"region_name" yaml:"region_name"`
+	RegionID                           int    `json:"region_id" yaml:"region_id,omitempty"`
+	RegionCode                         string `json:"region_code" yaml:"region_code,omitempty"`
+	RegionName                         string `json:"region_name" yaml:"region_name,omitempty"`
 	VerifyClients                      bool   `json:"verify_clients" yaml:"verify_clients,omitempty"`
-	STUNAddr                           string `json:"stun_listen_addr" yaml:"stun_listen_addr"`
+	STUNAddr                           string `json:"stun_listen_addr" yaml:"stun_listen_addr,omitempty"`
 	PrivateKeyPath                     string `json:"private_key_path" yaml:"private_key_path,omitempty"`
 	AutomaticallyAddEmbeddedDERPRegion bool   `json:"automatically_add_embedded_derp_region" yaml:"automatically_add_embedded_derp_region,omitempty"`
 	IPv4                               string `json:"ipv4" yaml:"ipv4,omitempty"`
@@ -181,58 +182,82 @@ type TaildropConfig struct {
 	Enabled bool `json:"enabled" yaml:"enabled,omitempty"`
 }
 
-// GetConfig reads the Headscale config.yaml file and returns the parsed config
-func (s *headscaleConfigService) GetConfig() (*HeadscaleConfigFile, error) {
-	filePath := s.getConfigPath()
+// defaultConfig returns the preset minimal headscale configuration written to
+// config.yaml when the file is absent or empty.
+func (s *headscaleConfigService) defaultConfig() *HeadscaleConfigFile {
+	return &HeadscaleConfigFile{
+		ServerURL:         "https://vpn.example.com",
+		ListenAddr:        "0.0.0.0:8080",
+		MetricsListenAddr: "0.0.0.0:9090",
+		GRPCListenAddr:    "0.0.0.0:50443",
+		GRPCAllowInsecure: true,
+		PrivateKeyPath:    constants.HSPrivateKeyPath,
+		Noise: NoiseConfig{
+			PrivateKeyPath: constants.HSNoiseKeyPath,
+		},
+		Prefixes: PrefixesConfig{
+			V4:         "100.100.0.0/16",
+			Allocation: "sequential",
+		},
+		DERP: DERPConfig{
+			Server: DERPServerConfig{
+				Enabled: false,
+			},
+			Paths: []string{constants.HSDERPMapPath},
+		},
+		Database: DatabaseConfig{
+			Type: "sqlite",
+			SQLite: SQLiteConfig{
+				Path:          constants.HSDBPath,
+				WriteAheadLog: true,
+			},
+		},
+		DNS: DNSConfig{
+			MagicDNS:         true,
+			OverrideLocalDNS: true,
+			BaseDomain:       "example.net",
+			Nameservers: NameserversConfig{
+				Global: []string{"1.1.1.1", "1.0.0.1"},
+			},
+		},
+		Policy: PolicyConfig{
+			Mode: "database",
+		},
+	}
+}
 
-	data, err := os.ReadFile(filePath)
+// GetConfig reads and parses the config file.
+func (s *headscaleConfigService) GetConfig() (*HeadscaleConfigFile, error) {
+	path := constants.HeadscaleConfigFilePath
+	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			// Return default config if file does not exist
 			return s.defaultConfig(), nil
 		}
 		return nil, fmt.Errorf("读取配置文件失败: %w", err)
 	}
-
-	var config HeadscaleConfigFile
-	if err := yaml.Unmarshal(data, &config); err != nil {
+	var cfg HeadscaleConfigFile
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return nil, fmt.Errorf("YAML 解析失败: %w", err)
 	}
-
-	return &config, nil
+	return &cfg, nil
 }
 
-// SaveConfig writes the config to the Headscale config.yaml file
-func (s *headscaleConfigService) SaveConfig(config *HeadscaleConfigFile) error {
-	filePath := s.getConfigPath()
-
-	// Ensure directory exists
-	dir := filepath.Dir(filePath)
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return fmt.Errorf("创建目录失败: %w", err)
-	}
-
-	data, err := yaml.Marshal(config)
-	if err != nil {
-		return fmt.Errorf("YAML 序列化失败: %w", err)
-	}
-
-	if err := os.WriteFile(filePath, data, 0600); err != nil {
-		return fmt.Errorf("写入配置文件失败: %w", err)
-	}
-
-	return nil
+// SaveConfig writes the config to the file.
+func (s *headscaleConfigService) SaveConfig(cfg *HeadscaleConfigFile) error {
+	return s.writeConfig(cfg)
 }
 
-// PreviewConfig returns the YAML string representation of the config
-func (s *headscaleConfigService) PreviewConfig(config *HeadscaleConfigFile) (string, error) {
-	data, err := yaml.Marshal(config)
+// PreviewConfig returns the YAML string of the config.
+func (s *headscaleConfigService) PreviewConfig(cfg *HeadscaleConfigFile) (string, error) {
+	data, err := yaml.Marshal(cfg)
 	if err != nil {
 		return "", fmt.Errorf("YAML 序列化失败: %w", err)
 	}
 	return string(data), nil
 }
 
+// GetConfigWithAuth is GetConfig with permission check.
 func (s *headscaleConfigService) GetConfigWithAuth(actorUserID uint) (*HeadscaleConfigFile, error) {
 	if err := RequirePermission(actorUserID, "headscale:config:view"); err != nil {
 		return nil, err
@@ -240,65 +265,60 @@ func (s *headscaleConfigService) GetConfigWithAuth(actorUserID uint) (*Headscale
 	return s.GetConfig()
 }
 
-func (s *headscaleConfigService) SaveConfigWithAuth(actorUserID uint, config *HeadscaleConfigFile) error {
+// SaveConfigWithAuth is SaveConfig with permission check.
+func (s *headscaleConfigService) SaveConfigWithAuth(actorUserID uint, cfg *HeadscaleConfigFile) error {
 	if err := RequirePermission(actorUserID, "headscale:config:update"); err != nil {
 		return err
 	}
-	return s.SaveConfig(config)
+	return s.SaveConfig(cfg)
 }
 
-func (s *headscaleConfigService) PreviewConfigWithAuth(actorUserID uint, config *HeadscaleConfigFile) (string, error) {
-	if err := RequirePermission(actorUserID, "headscale:config:update"); err != nil {
+// PreviewConfigWithAuth is PreviewConfig with permission check.
+func (s *headscaleConfigService) PreviewConfigWithAuth(actorUserID uint, cfg *HeadscaleConfigFile) (string, error) {
+	if err := RequirePermission(actorUserID, "headscale:config:view"); err != nil {
 		return "", err
 	}
-	return s.PreviewConfig(config)
+	return s.PreviewConfig(cfg)
 }
 
-func (s *headscaleConfigService) getConfigPath() string {
-	if conf.Conf.Headscale.ConfigPath != "" {
-		return conf.Conf.Headscale.ConfigPath
-	}
-	return "./headscale/config.yaml"
-}
-
-func (s *headscaleConfigService) RedactSecrets(config *HeadscaleConfigFile) *HeadscaleConfigFile {
-	if config == nil {
+// RedactSecrets returns a copy of the config with sensitive fields masked.
+func (s *headscaleConfigService) RedactSecrets(cfg *HeadscaleConfigFile) *HeadscaleConfigFile {
+	if cfg == nil {
 		return nil
 	}
-
-	copyCfg := *config
-	if copyCfg.OIDC.ClientSecret != "" {
-		copyCfg.OIDC.ClientSecret = redactedSecretPlaceholder
+	copy := *cfg
+	if copy.OIDC.ClientSecret != "" {
+		copy.OIDC.ClientSecret = redactedSecretPlaceholder
 	}
-	if copyCfg.Database.Postgres.Pass != "" {
-		copyCfg.Database.Postgres.Pass = redactedSecretPlaceholder
+	if copy.Database.Postgres.Pass != "" {
+		copy.Database.Postgres.Pass = redactedSecretPlaceholder
 	}
-
-	return &copyCfg
+	return &copy
 }
 
+// MergePreservedSecrets prevents clients from overwriting secrets with the redacted placeholder.
 func (s *headscaleConfigService) MergePreservedSecrets(incoming, current *HeadscaleConfigFile) *HeadscaleConfigFile {
 	if incoming == nil {
 		return nil
 	}
-
 	merged := *incoming
 	if current == nil {
 		return &merged
 	}
-
 	if incoming.OIDC.ClientSecret == redactedSecretPlaceholder {
 		merged.OIDC.ClientSecret = current.OIDC.ClientSecret
 	}
 	if incoming.Database.Postgres.Pass == redactedSecretPlaceholder {
 		merged.Database.Postgres.Pass = current.Database.Postgres.Pass
 	}
-
 	return &merged
 }
 
-func (s *headscaleConfigService) IsOIDCAutoLinkAllowed(config *HeadscaleConfigFile, email string) bool {
-	if config == nil {
+// IsOIDCAutoLinkAllowed reports whether the given email is permitted by the
+// OIDC allowed_users / allowed_domains allowlist. Returns true when no
+// allowlist is configured (open enrollment).
+func (s *headscaleConfigService) IsOIDCAutoLinkAllowed(cfg *HeadscaleConfigFile, email string) bool {
+	if cfg == nil {
 		return true
 	}
 
@@ -307,8 +327,8 @@ func (s *headscaleConfigService) IsOIDCAutoLinkAllowed(config *HeadscaleConfigFi
 		return false
 	}
 
-	allowedUsers := normalizeOIDCAllowlist(config.OIDC.AllowedUsers)
-	allowedDomains := normalizeOIDCAllowlist(config.OIDC.AllowedDomains)
+	allowedUsers := normalizeOIDCAllowlist(cfg.OIDC.AllowedUsers)
+	allowedDomains := normalizeOIDCAllowlist(cfg.OIDC.AllowedDomains)
 	if len(allowedUsers) == 0 && len(allowedDomains) == 0 {
 		return true
 	}
@@ -325,17 +345,20 @@ func (s *headscaleConfigService) IsOIDCAutoLinkAllowed(config *HeadscaleConfigFi
 	return ok
 }
 
-func (s *headscaleConfigService) HasOIDCAllowlist(config *HeadscaleConfigFile) bool {
-	if config == nil {
+// HasOIDCAllowlist reports whether the config has any allowed_users or
+// allowed_domains configured.
+func (s *headscaleConfigService) HasOIDCAllowlist(cfg *HeadscaleConfigFile) bool {
+	if cfg == nil {
 		return false
 	}
-	return len(normalizeOIDCAllowlist(config.OIDC.AllowedUsers)) > 0 || len(normalizeOIDCAllowlist(config.OIDC.AllowedDomains)) > 0
+	return len(normalizeOIDCAllowlist(cfg.OIDC.AllowedUsers)) > 0 ||
+		len(normalizeOIDCAllowlist(cfg.OIDC.AllowedDomains)) > 0
 }
 
 func normalizeOIDCAllowlist(values []string) map[string]struct{} {
 	result := make(map[string]struct{}, len(values))
-	for _, value := range values {
-		normalized := strings.ToLower(strings.TrimSpace(value))
+	for _, v := range values {
+		normalized := strings.ToLower(strings.TrimSpace(v))
 		if normalized == "" {
 			continue
 		}
@@ -344,76 +367,70 @@ func normalizeOIDCAllowlist(values []string) map[string]struct{} {
 	return result
 }
 
-func (s *headscaleConfigService) defaultConfig() *HeadscaleConfigFile {
-	return &HeadscaleConfigFile{
-		ServerURL:                      "https://headscale.example.com",
-		ListenAddr:                     "0.0.0.0:8080",
-		MetricsListenAddr:              "0.0.0.0:9090",
-		GRPCListenAddr:                 "0.0.0.0:50443",
-		GRPCAllowInsecure:              true,
-		EphemeralNodeInactivityTimeout: "30m",
-		Noise: NoiseConfig{
-			PrivateKeyPath: "./noise_private.key",
-		},
-		Prefixes: PrefixesConfig{
-			V4:         "100.64.0.0/10",
-			V6:         "fd7a:115c:a1e0::/48",
-			Allocation: "sequential",
-		},
-		DERP: DERPConfig{
-			Server: DERPServerConfig{
-				Enabled:    false,
-				RegionID:   999,
-				RegionCode: "headscale",
-				RegionName: "Headscale Embedded DERP",
-				STUNAddr:   "0.0.0.0:3478",
-			},
-			URLs:              []string{"https://controlplane.tailscale.com/derpmap/default"},
-			Paths:             []string{"/etc/headscale/derp.yaml"},
-			AutoUpdateEnabled: true,
-			UpdateFrequency:   "24h",
-		},
-		Database: DatabaseConfig{
-			Type: "sqlite",
-			SQLite: SQLiteConfig{
-				Path:          "/var/lib/headscale/db.sqlite",
-				WriteAheadLog: true,
-			},
-		},
-		DNS: DNSConfig{
-			BaseDomain:       "example.com",
-			MagicDNS:         true,
-			OverrideLocalDNS: true,
-			Nameservers: NameserversConfig{
-				Global: []string{"1.1.1.1", "8.8.8.8"},
-			},
-			ExtraRecordsPath: "/var/lib/headscale/extra-records.json",
-		},
-		Policy: PolicyConfig{
-			Mode: "database",
-		},
-		OIDC: OIDCConfig{
-			OnlyStartIfOIDCIsAvailable: false,
-			Issuer:                     "",
-			Scope:                      []string{"openid", "profile", "email"},
-			EmailVerifiedRequired:      true,
-			PKCE: PKCEConfig{
-				Enabled: false,
-				Method:  "S256",
-			},
-		},
-		LogTail: LogTailConfig{
-			Enabled: false,
-		},
-		Log: LogConfig{
-			Level:  "info",
-			Format: "text",
-		},
-		UnixSocket:           "/var/run/headscale/headscale.sock",
-		UnixSocketPermission: "0770",
-		RandomizeClientPort:  false,
-		Taildrop: TaildropConfig{
-			Enabled: true,
-		},
+// writeConfig marshals cfg to YAML and writes it to the config file path.
+func (s *headscaleConfigService) writeConfig(cfg *HeadscaleConfigFile) error {
+	data, err := yaml.Marshal(cfg)
+	if err != nil {
+		return fmt.Errorf("YAML 序列化失败: %w", err)
 	}
+	path := constants.HeadscaleConfigFilePath
+	if err := os.MkdirAll(filepath.Dir(path), 0750); err != nil {
+		return fmt.Errorf("创建配置目录失败: %w", err)
+	}
+	if err := os.WriteFile(path, data, 0600); err != nil {
+		return fmt.Errorf("写入配置文件失败: %w", err)
+	}
+	return nil
+}
+
+// mergeWithDefaults fills zero-value fields in cfg with values from the default
+// config. Only essential startup fields are back-filled.
+func (s *headscaleConfigService) mergeWithDefaults(cfg *HeadscaleConfigFile) *HeadscaleConfigFile {
+	def := s.defaultConfig()
+	out := *cfg
+
+	if out.ServerURL == "" {
+		out.ServerURL = def.ServerURL
+	}
+	if out.ListenAddr == "" {
+		out.ListenAddr = def.ListenAddr
+	}
+	if out.MetricsListenAddr == "" {
+		out.MetricsListenAddr = def.MetricsListenAddr
+	}
+	if out.GRPCListenAddr == "" {
+		out.GRPCListenAddr = def.GRPCListenAddr
+	}
+	if out.PrivateKeyPath == "" {
+		out.PrivateKeyPath = def.PrivateKeyPath
+	}
+	if out.Noise.PrivateKeyPath == "" {
+		out.Noise.PrivateKeyPath = def.Noise.PrivateKeyPath
+	}
+	if out.Prefixes.V4 == "" {
+		out.Prefixes.V4 = def.Prefixes.V4
+	}
+	if out.Prefixes.Allocation == "" {
+		out.Prefixes.Allocation = def.Prefixes.Allocation
+	}
+	if len(out.DERP.Paths) == 0 {
+		out.DERP.Paths = def.DERP.Paths
+	}
+	if out.Database.Type == "" {
+		out.Database.Type = def.Database.Type
+	}
+	if out.Database.SQLite.Path == "" {
+		out.Database.SQLite.Path = def.Database.SQLite.Path
+	}
+	if out.DNS.BaseDomain == "" {
+		out.DNS.BaseDomain = def.DNS.BaseDomain
+	}
+	if len(out.DNS.Nameservers.Global) == 0 {
+		out.DNS.Nameservers.Global = def.DNS.Nameservers.Global
+	}
+	if out.Policy.Mode == "" {
+		out.Policy.Mode = def.Policy.Mode
+	}
+
+	return &out
 }

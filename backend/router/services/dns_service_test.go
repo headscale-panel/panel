@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"headscale-panel/model"
-	"headscale-panel/pkg/conf"
+	"headscale-panel/pkg/constants"
 	"headscale-panel/pkg/utils/serializer"
 
 	"github.com/glebarez/sqlite"
@@ -16,10 +16,8 @@ import (
 
 func TestDNSListSyncsRecordsFromExtraRecordsFile(t *testing.T) {
 	previousDB := model.DB
-	previousConf := conf.Conf
 	t.Cleanup(func() {
 		model.DB = previousDB
-		conf.Conf = previousConf
 	})
 
 	db, err := gorm.Open(sqlite.Open("file::memory:?cache=shared"), &gorm.Config{})
@@ -64,7 +62,10 @@ func TestDNSListSyncsRecordsFromExtraRecordsFile(t *testing.T) {
 	}
 
 	tempDir := t.TempDir()
-	conf.Conf.Headscale.ExtraRecordsPath = filepath.Join(tempDir, "extra-records.json")
+	t.Chdir(tempDir)
+	if err := os.MkdirAll(filepath.Dir(constants.ExtraRecordsFilePath), 0755); err != nil {
+		t.Fatalf("create extra-records dir: %v", err)
+	}
 
 	fileRecords := []ExtraRecord{
 		{Name: "app.example.com", Type: "A", Value: "127.127.0.1"},
@@ -74,7 +75,7 @@ func TestDNSListSyncsRecordsFromExtraRecordsFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal file records: %v", err)
 	}
-	if err := os.WriteFile(conf.Conf.Headscale.ExtraRecordsPath, data, 0644); err != nil {
+	if err := os.WriteFile(constants.ExtraRecordsFilePath, data, 0644); err != nil {
 		t.Fatalf("write extra-records.json: %v", err)
 	}
 

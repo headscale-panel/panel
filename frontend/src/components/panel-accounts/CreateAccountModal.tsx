@@ -65,7 +65,7 @@ export default function CreateAccountModal({ open, groups, onCancel, onSuccess }
       onOk={handleOk}
       confirmLoading={saving}
       width={480}
-      destroyOnClose
+      destroyOnHidden
     >
       <Text type="secondary" className="block mb-16px">{pa.create.description}</Text>
 

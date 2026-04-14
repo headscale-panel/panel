@@ -10,6 +10,7 @@ import {
   EyeOutlined,
   LoadingOutlined,
   PlusOutlined,
+  ReloadOutlined,
   SafetyCertificateOutlined,
   SaveOutlined,
   TeamOutlined,
@@ -18,15 +19,16 @@ import { Button, Card, Input, Modal, Select, Space, Spin, Switch, Table, Tabs, T
 import type { ColumnsType } from 'antd/es/table';
 import DashboardLayout from '@/components/DashboardLayout';
 import { useTranslation } from '@/i18n/index';
-import { panelSettingsAPI, groupsAPI } from '@/lib/api';
+import { panelSettingsAPI, groupsAPI, headscaleConfigAPI } from '@/lib/api';
 import api from '@/lib/api';
+import type { HeadscaleConfig } from '@/api/headscale-config.types';
 import { loadConnectionSettingsData, loadOIDCSettingsData } from '@/lib/page-data';
 import { useRequest } from 'ahooks';
 import {
   defaultOIDCFormValues,
   type OIDCFormValues,
 } from '@/lib/normalizers';
-import { useState, useMemo, useCallback, useEffect } from 'react';
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 
 const SETTINGS_TOUR_TAB_EVENT = 'guide-tour:settings-tab';
 
@@ -135,13 +137,40 @@ export default function Settings() {
   const [useBuiltinOidc, setUseBuiltinOidc] = useState(false);
   const [builtinOidcLoading, setBuiltinOidcLoading] = useState(false);
 
+  const [previewCopied, setPreviewCopied] = useState(false);
+  const [oidcYamlPreview, setOidcYamlPreview] = useState('');
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const previewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const [savingGrpc, setSavingGrpc] = useState(false);
   const [savingOidc, setSavingOidc] = useState(false);
   const [testingConnection, setTestingConnection] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [activeTabKey, setActiveTabKey] = useState('grpc');
 
-  const [previewCopied, setPreviewCopied] = useState(false);
+  // ── Headscale config state ──────────────────────────
+  const [hsConfig, setHsConfig] = useState<HeadscaleConfig>({});
+  const [savingHsConfig, setSavingHsConfig] = useState(false);
+
+  const { loading: loadingHsConfig, refresh: refreshHsConfig } = useRequest(
+    async () => headscaleConfigAPI.get(),
+    {
+      onSuccess: (data) => setHsConfig(data ?? {}),
+      onError: () => message.error(t.common.errors.requestFailed),
+    },
+  );
+
+  const handleSaveHsConfig = async () => {
+    setSavingHsConfig(true);
+    try {
+      await headscaleConfigAPI.update(hsConfig);
+      message.success(t.settings.hsconfig.saveSuccess);
+    } catch (err: any) {
+      message.error(err?.message || t.common.errors.requestFailed);
+    } finally {
+      setSavingHsConfig(false);
+    }
+  };
 
   // ── Group management state ───────────────────────────
   const [groupModalOpen, setGroupModalOpen] = useState(false);
@@ -265,44 +294,46 @@ export default function Settings() {
     },
   );
 
-  const oidcYamlPreview = useMemo(() => {
-    if (!oidcForm.enabled) return '';
-    const lines: string[] = ['oidc:'];
-    lines.push('  only_start_if_oidc_is_available: ' + oidcForm.only_start_if_oidc_is_available);
-    lines.push('  issuer: "' + (oidcForm.issuer || 'https://auth.example.com') + '"');
-    lines.push('  client_id: "' + (oidcForm.client_id || 'headscale') + '"');
-    if (oidcForm.client_secret_path) {
-      lines.push('  client_secret_path: "' + oidcForm.client_secret_path + '"');
-    } else {
-      const secret = oidcForm.client_secret === '******' ? '<your-secret>' : (oidcForm.client_secret || '<your-secret>');
-      lines.push('  client_secret: "' + secret + '"');
+  useEffect(() => {
+    if (previewTimerRef.current) clearTimeout(previewTimerRef.current);
+    if (!oidcForm.enabled) {
+      setOidcYamlPreview('');
+      return;
     }
-    if (oidcForm.scope.length > 0) {
-      lines.push('  scope: [' + oidcForm.scope.filter(Boolean).map(s => '"' + s + '"').join(', ') + ']');
-    }
-    if (oidcForm.expiry) {
-      lines.push('  expiry: "' + oidcForm.expiry + '"');
-    }
-    lines.push('  email_verified_required: ' + oidcForm.email_verified_required);
-    lines.push('  strip_email_domain: ' + oidcForm.strip_email_domain);
-    lines.push('  use_expiry_from_token: ' + oidcForm.use_expiry_from_token);
-    if (oidcForm.allowed_domains.filter(Boolean).length > 0) {
-      lines.push('  allowed_domains:');
-      oidcForm.allowed_domains.filter(Boolean).forEach(d => lines.push('    - "' + d + '"'));
-    }
-    if (oidcForm.allowed_users.filter(Boolean).length > 0) {
-      lines.push('  allowed_users:');
-      oidcForm.allowed_users.filter(Boolean).forEach(u => lines.push('    - "' + u + '"'));
-    }
-    if (oidcForm.allowed_groups.filter(Boolean).length > 0) {
-      lines.push('  allowed_groups:');
-      oidcForm.allowed_groups.filter(Boolean).forEach(g => lines.push('    - "' + g + '"'));
-    }
-    lines.push('  pkce:');
-    lines.push('    enabled: ' + oidcForm.pkce_enabled);
-    lines.push('    method: ' + (oidcForm.pkce_method || 'S256'));
-    return lines.join('\n');
-  }, [oidcForm]);
+    previewTimerRef.current = setTimeout(async () => {
+      setPreviewLoading(true);
+      try {
+        const mergedConfig = {
+          ...hsConfig,
+          oidc: {
+            only_start_if_oidc_is_available: oidcForm.only_start_if_oidc_is_available,
+            issuer: oidcForm.issuer,
+            client_id: oidcForm.client_id,
+            client_secret: oidcForm.client_secret,
+            client_secret_path: oidcForm.client_secret_path,
+            scope: oidcForm.scope.filter(Boolean),
+            email_verified_required: oidcForm.email_verified_required,
+            allowed_domains: oidcForm.allowed_domains.filter(Boolean),
+            allowed_users: oidcForm.allowed_users.filter(Boolean),
+            allowed_groups: oidcForm.allowed_groups.filter(Boolean),
+            strip_email_domain: oidcForm.strip_email_domain,
+            expiry: oidcForm.expiry,
+            use_expiry_from_token: oidcForm.use_expiry_from_token,
+            pkce: { enabled: oidcForm.pkce_enabled, method: oidcForm.pkce_method },
+          },
+        };
+        const res = await headscaleConfigAPI.preview(mergedConfig);
+        setOidcYamlPreview((res as any)?.yaml ?? '');
+      } catch {
+        // silently ignore preview errors
+      } finally {
+        setPreviewLoading(false);
+      }
+    }, 500);
+    return () => {
+      if (previewTimerRef.current) clearTimeout(previewTimerRef.current);
+    };
+  }, [oidcForm, hsConfig]);
 
   const handleTestConnection = async () => {
     setTestingConnection(true);
@@ -377,6 +408,13 @@ export default function Settings() {
     }
   };
 
+  const handleCopyPreview = () => {
+    navigator.clipboard.writeText(oidcYamlPreview);
+    setPreviewCopied(true);
+    message.success(t.settings.oidcConfig.previewCopied);
+    setTimeout(() => setPreviewCopied(false), 2000);
+  };
+
   const handleSyncData = async () => {
     setSyncing(true);
     try {
@@ -399,13 +437,6 @@ export default function Settings() {
     } finally {
       setSavingOidc(false);
     }
-  };
-
-  const handleCopyPreview = () => {
-    navigator.clipboard.writeText(oidcYamlPreview);
-    setPreviewCopied(true);
-    message.success(t.settings.oidcConfig.previewCopied);
-    setTimeout(() => setPreviewCopied(false), 2000);
   };
 
   useEffect(() => {
@@ -612,7 +643,10 @@ export default function Settings() {
 
                       <Card style={{ position: 'sticky', top: 16, alignSelf: 'start' }}>
                         <div className="flex justify-between items-center mb-4">
-                          <Text strong className="text-15px">{t.settings.oidcConfig.previewTitle}</Text>
+                          <Space size={8}>
+                            <Text strong className="text-15px">{t.settings.oidcConfig.previewTitle}</Text>
+                            {previewLoading && <Spin indicator={<LoadingOutlined />} size="small" />}
+                          </Space>
                           <Button type="text" size="small" icon={previewCopied ? <CheckOutlined /> : <CopyOutlined />} onClick={handleCopyPreview}>
                             {previewCopied ? t.settings.oidcConfig.previewCopied : t.settings.oidcConfig.copyPreview}
                           </Button>
@@ -670,7 +704,7 @@ export default function Settings() {
                     onOk={handleSaveGroup}
                     confirmLoading={savingGroup}
                     width={520}
-                    destroyOnClose
+                    destroyOnHidden
                   >
                     <Space direction="vertical" className="w-full" size={12}>
                       <FieldRow label={t.settings.groups.groupNameLabel}>
@@ -696,6 +730,70 @@ export default function Settings() {
                       </FieldRow>
                     </Space>
                   </Modal>
+                </Space>
+              ),
+            },
+            {
+              key: 'hsconfig',
+              label: t.settings.tabs.hsconfig,
+              children: (
+                <Space direction="vertical" size={16} className="w-full">
+                  <SectionCard
+                    title={t.settings.hsconfig.title}
+                    description={t.settings.hsconfig.description}
+                    actions={
+                      <Button icon={<ReloadOutlined spin={loadingHsConfig} />} onClick={refreshHsConfig} />
+                    }
+                  >
+                    <FieldRow label={t.settings.hsconfig.serverUrl}>
+                      <Input value={hsConfig.server_url ?? ''} onChange={(e) => setHsConfig(p => ({ ...p, server_url: e.target.value }))} placeholder="https://vpn.example.com" />
+                    </FieldRow>
+                    <FieldRow label={t.settings.hsconfig.listenAddr}>
+                      <Input value={hsConfig.listen_addr ?? ''} onChange={(e) => setHsConfig(p => ({ ...p, listen_addr: e.target.value }))} placeholder="0.0.0.0:8080" />
+                    </FieldRow>
+                    <FieldRow label={t.settings.hsconfig.metricsListenAddr}>
+                      <Input value={hsConfig.metrics_listen_addr ?? ''} onChange={(e) => setHsConfig(p => ({ ...p, metrics_listen_addr: e.target.value }))} placeholder="0.0.0.0:9090" />
+                    </FieldRow>
+                    <FieldRow label={t.settings.hsconfig.grpcListenAddr}>
+                      <Input value={hsConfig.grpc_listen_addr ?? ''} onChange={(e) => setHsConfig(p => ({ ...p, grpc_listen_addr: e.target.value }))} placeholder="0.0.0.0:50443" />
+                    </FieldRow>
+                    <SwitchRow label={t.settings.hsconfig.grpcAllowInsecure} checked={hsConfig.grpc_allow_insecure ?? false} onCheckedChange={(v) => setHsConfig(p => ({ ...p, grpc_allow_insecure: v }))} />
+                    <FieldRow label={t.settings.hsconfig.privateKeyPath}>
+                      <Input value={hsConfig.private_key_path ?? ''} onChange={(e) => setHsConfig(p => ({ ...p, private_key_path: e.target.value }))} placeholder="/var/lib/headscale/private.key" />
+                    </FieldRow>
+                    <FieldRow label={t.settings.hsconfig.noisePrivateKeyPath}>
+                      <Input value={hsConfig.noise?.private_key_path ?? ''} onChange={(e) => setHsConfig(p => ({ ...p, noise: { ...p.noise, private_key_path: e.target.value } }))} placeholder="/var/lib/headscale/noise_private.key" />
+                    </FieldRow>
+                    <FieldRow label={t.settings.hsconfig.prefixesV4}>
+                      <Input value={hsConfig.prefixes?.v4 ?? ''} onChange={(e) => setHsConfig(p => ({ ...p, prefixes: { ...p.prefixes, v4: e.target.value } }))} placeholder="100.100.0.0/16" />
+                    </FieldRow>
+                    <FieldRow label={t.settings.hsconfig.prefixesAllocation}>
+                      <Select value={hsConfig.prefixes?.allocation ?? 'sequential'} onChange={(v) => setHsConfig(p => ({ ...p, prefixes: { ...p.prefixes, allocation: v } }))} style={{ width: '100%' }} options={[{ label: 'sequential', value: 'sequential' }, { label: 'random', value: 'random' }]} />
+                    </FieldRow>
+                    <FieldRow label={t.settings.hsconfig.derpPaths}>
+                      <ArrayEditor value={hsConfig.derp?.paths ?? []} onChange={(v) => setHsConfig(p => ({ ...p, derp: { ...p.derp, paths: v } }))} placeholder={t.settings.hsconfig.derpPathPlaceholder} />
+                    </FieldRow>
+                    <FieldRow label={t.settings.hsconfig.dbSqlitePath}>
+                      <Input value={hsConfig.database?.sqlite?.path ?? ''} onChange={(e) => setHsConfig(p => ({ ...p, database: { ...p.database, sqlite: { ...p.database?.sqlite, path: e.target.value } } }))} placeholder="/var/lib/headscale/db.sqlite" />
+                    </FieldRow>
+                    <SwitchRow label={t.settings.hsconfig.dbSqliteWal} checked={hsConfig.database?.sqlite?.write_ahead_log ?? true} onCheckedChange={(v) => setHsConfig(p => ({ ...p, database: { ...p.database, sqlite: { ...p.database?.sqlite, write_ahead_log: v } } }))} />
+                    <FieldRow label={t.settings.hsconfig.dnsBaseDomain}>
+                      <Input value={hsConfig.dns?.base_domain ?? ''} onChange={(e) => setHsConfig(p => ({ ...p, dns: { ...p.dns, base_domain: e.target.value } }))} placeholder="leviatan.vpn" />
+                    </FieldRow>
+                    <SwitchRow label={t.settings.hsconfig.dnsMagicDns} checked={hsConfig.dns?.magic_dns ?? true} onCheckedChange={(v) => setHsConfig(p => ({ ...p, dns: { ...p.dns, magic_dns: v } }))} />
+                    <SwitchRow label={t.settings.hsconfig.dnsOverrideLocalDns} checked={hsConfig.dns?.override_local_dns ?? true} onCheckedChange={(v) => setHsConfig(p => ({ ...p, dns: { ...p.dns, override_local_dns: v } }))} />
+                    <FieldRow label={t.settings.hsconfig.dnsNameservers}>
+                      <ArrayEditor value={hsConfig.dns?.nameservers?.global ?? []} onChange={(v) => setHsConfig(p => ({ ...p, dns: { ...p.dns, nameservers: { ...p.dns?.nameservers, global: v } } }))} placeholder={t.settings.hsconfig.dnsNameserverPlaceholder} />
+                    </FieldRow>
+                    <FieldRow label={t.settings.hsconfig.policyMode}>
+                      <Select value={hsConfig.policy?.mode ?? 'database'} onChange={(v) => setHsConfig(p => ({ ...p, policy: { mode: v } }))} style={{ width: '100%' }} options={[{ label: 'database', value: 'database' }, { label: 'file', value: 'file' }]} />
+                    </FieldRow>
+                    <div style={{ borderTop: `1px solid ${token.colorBorderSecondary}`, paddingTop: 16 }}>
+                      <Button type="primary" block onClick={handleSaveHsConfig} loading={savingHsConfig} icon={<SaveOutlined />}>
+                        {t.settings.hsconfig.saveButton}
+                      </Button>
+                    </div>
+                  </SectionCard>
                 </Space>
               ),
             },

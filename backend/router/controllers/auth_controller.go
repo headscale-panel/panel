@@ -53,22 +53,13 @@ func cleanExpiredStates() {
 // @Router /auth/oidc/status [get]
 // OIDCStatus returns whether OIDC login is available and provider metadata.
 func (a *AuthController) OIDCStatus(c *gin.Context) {
-	hsConfig, err := services.HeadscaleConfigService.GetConfig()
-	if err != nil {
-		serializer.Success(c, gin.H{
-			"enabled":       false,
-			"builtin":       false,
-			"provider_name": "",
-		})
-		return
-	}
-
-	if hsConfig.OIDC.Issuer != "" && hsConfig.OIDC.ClientID != "" {
+	oidcCfg := services.PanelSettingsService.GetOIDCConfig()
+	if oidcCfg != nil && oidcCfg.Enabled && oidcCfg.Issuer != "" && oidcCfg.ClientID != "" {
 		serializer.Success(c, gin.H{
 			"enabled":       true,
 			"builtin":       false,
 			"provider_name": "OIDC",
-			"issuer":        hsConfig.OIDC.Issuer,
+			"issuer":        oidcCfg.Issuer,
 		})
 		return
 	}
@@ -90,13 +81,8 @@ func (a *AuthController) OIDCStatus(c *gin.Context) {
 // OIDCLogin initiates the OIDC authorization code flow by returning the
 // authorization URL the frontend should redirect the user to.
 func (a *AuthController) OIDCLogin(c *gin.Context) {
-	hsConfig, err := services.HeadscaleConfigService.GetConfig()
-	if err != nil {
-		failOIDCAuth(c)
-		return
-	}
-
-	if hsConfig.OIDC.Issuer == "" || hsConfig.OIDC.ClientID == "" {
+	oidcCfg := services.PanelSettingsService.GetOIDCConfig()
+	if oidcCfg == nil || !oidcCfg.Enabled || oidcCfg.Issuer == "" || oidcCfg.ClientID == "" {
 		failOIDCAuth(c)
 		return
 	}
@@ -114,7 +100,7 @@ func (a *AuthController) OIDCLogin(c *gin.Context) {
 	oidcStates[state] = time.Now().Add(10 * time.Minute)
 	oidcStatesMu.Unlock()
 
-	scopes := hsConfig.OIDC.Scope
+	scopes := oidcCfg.Scope
 	if len(scopes) == 0 {
 		scopes = []string{"openid", "profile", "email"}
 	}
@@ -128,15 +114,15 @@ func (a *AuthController) OIDCLogin(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 15*time.Second)
 	defer cancel()
 
-	provider, err := oidc.NewProvider(ctx, hsConfig.OIDC.Issuer)
+	provider, err := oidc.NewProvider(ctx, oidcCfg.Issuer)
 	if err != nil {
 		failOIDCAuth(c)
 		return
 	}
 
 	oauthCfg := oauth2.Config{
-		ClientID:     hsConfig.OIDC.ClientID,
-		ClientSecret: hsConfig.OIDC.ClientSecret,
+		ClientID:     oidcCfg.ClientID,
+		ClientSecret: oidcCfg.ClientSecret,
 		RedirectURL:  redirectURI,
 		Endpoint:     provider.Endpoint(),
 		Scopes:       scopes,
@@ -185,13 +171,8 @@ func (a *AuthController) OIDCCallback(c *gin.Context) {
 		return
 	}
 
-	hsConfig, err := services.HeadscaleConfigService.GetConfig()
-	if err != nil {
-		failOIDCAuth(c)
-		return
-	}
-
-	if hsConfig.OIDC.Issuer == "" || hsConfig.OIDC.ClientID == "" {
+	oidcCfg := services.PanelSettingsService.GetOIDCConfig()
+	if oidcCfg == nil || !oidcCfg.Enabled || oidcCfg.Issuer == "" || oidcCfg.ClientID == "" {
 		failOIDCAuth(c)
 		return
 	}
@@ -199,13 +180,13 @@ func (a *AuthController) OIDCCallback(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 15*time.Second)
 	defer cancel()
 
-	provider, err := oidc.NewProvider(ctx, hsConfig.OIDC.Issuer)
+	provider, err := oidc.NewProvider(ctx, oidcCfg.Issuer)
 	if err != nil {
 		failOIDCAuth(c)
 		return
 	}
 
-	scopes := hsConfig.OIDC.Scope
+	scopes := oidcCfg.Scope
 	if len(scopes) == 0 {
 		scopes = []string{"openid", "profile", "email"}
 	}
@@ -217,8 +198,8 @@ func (a *AuthController) OIDCCallback(c *gin.Context) {
 	}
 
 	oauthCfg := oauth2.Config{
-		ClientID:     hsConfig.OIDC.ClientID,
-		ClientSecret: hsConfig.OIDC.ClientSecret,
+		ClientID:     oidcCfg.ClientID,
+		ClientSecret: oidcCfg.ClientSecret,
 		RedirectURL:  redirectURI,
 		Endpoint:     provider.Endpoint(),
 		Scopes:       scopes,
@@ -236,7 +217,7 @@ func (a *AuthController) OIDCCallback(c *gin.Context) {
 		return
 	}
 
-	verifier := provider.Verifier(&oidc.Config{ClientID: hsConfig.OIDC.ClientID})
+	verifier := provider.Verifier(&oidc.Config{ClientID: oidcCfg.ClientID})
 	idToken, err := verifier.Verify(ctx, rawIDToken)
 	if err != nil {
 		failOIDCAuth(c)
@@ -260,12 +241,12 @@ func (a *AuthController) OIDCCallback(c *gin.Context) {
 		failOIDCAuth(c)
 		return
 	}
-	if hsConfig.OIDC.EmailVerifiedRequired && !claims.EmailVerified {
+	if oidcCfg.EmailVerifiedRequired && !claims.EmailVerified {
 		failOIDCAuth(c)
 		return
 	}
 
-	user, err := findOrCreateOIDCUser(hsConfig, claims.Sub, claims.Email, claims.Name, claims.PreferredUser, claims.Picture)
+	user, err := findOrCreateOIDCUser(oidcCfg, claims.Sub, claims.Email, claims.Name, claims.PreferredUser, claims.Picture)
 	if err != nil {
 		failOIDCAuth(c)
 		return
@@ -300,7 +281,7 @@ func (a *AuthController) OIDCCallback(c *gin.Context) {
 
 // findOrCreateOIDCUser looks up an existing panel user by OIDC provider+sub,
 // falling back to email lookup (with allowlist guard), and finally creating a new user if none exists.
-func findOrCreateOIDCUser(config *services.HeadscaleConfigFile, sub, email, name, preferredUsername, picture string) (*model.User, error) {
+func findOrCreateOIDCUser(oidcCfg *services.OIDCSettingsPayload, sub, email, name, preferredUsername, picture string) (*model.User, error) {
 	// Try 1: Find by provider + provider_id (sub)
 	var user model.User
 	err := model.DB.Preload("Group").
@@ -329,8 +310,32 @@ func findOrCreateOIDCUser(config *services.HeadscaleConfigFile, sub, email, name
 		return nil, err
 	}
 
-	if services.HeadscaleConfigService.HasOIDCAllowlist(config) && !services.HeadscaleConfigService.IsOIDCAutoLinkAllowed(config, email) {
-		return nil, errors.New("oidc access denied by allowlist")
+	hasAllowlist := oidcCfg != nil && (len(oidcCfg.AllowedUsers) > 0 || len(oidcCfg.AllowedDomains) > 0 || len(oidcCfg.AllowedGroups) > 0)
+	if hasAllowlist {
+		allowed := false
+		if oidcCfg != nil {
+			for _, u := range oidcCfg.AllowedUsers {
+				if strings.EqualFold(u, email) {
+					allowed = true
+					break
+				}
+			}
+			if !allowed {
+				parts := strings.SplitN(email, "@", 2)
+				if len(parts) == 2 {
+					domain := strings.ToLower(parts[1])
+					for _, d := range oidcCfg.AllowedDomains {
+						if strings.ToLower(d) == domain {
+							allowed = true
+							break
+						}
+					}
+				}
+			}
+		}
+		if !allowed {
+			return nil, errors.New("oidc access denied by allowlist")
+		}
 	}
 
 	// Try 2: Find by email (link existing non-local account)

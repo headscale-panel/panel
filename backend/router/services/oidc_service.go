@@ -445,22 +445,11 @@ func validateRedirectURI(uri string) (string, error) {
 	return normalized, nil
 }
 
-// signingKeyPath returns the file path for the persisted OIDC signing key.
-// It stores the key alongside the application database so backups naturally
-// include both data and key material.
-func (s *oidcService) signingKeyPath() string {
-	dbPath := conf.Conf.DB.Path
-	if dbPath == "" {
-		dbPath = "headscale-panel.db"
-	}
-	return filepath.Join(filepath.Dir(dbPath), "oidc_signing_key.pem")
-}
-
 // loadOrCreatePrivateKey loads an existing RSA private key from disk, or
 // generates a new 2048-bit key and persists it in PEM format with 0600
 // permissions. This ensures OIDC tokens remain valid across restarts.
 func (s *oidcService) loadOrCreatePrivateKey() (*rsa.PrivateKey, error) {
-	keyPath := s.signingKeyPath()
+	keyPath := filepath.Join(constants.DataDir, "oidc_signing_key.pem")
 
 	// Try loading existing key
 	pemData, err := os.ReadFile(keyPath)

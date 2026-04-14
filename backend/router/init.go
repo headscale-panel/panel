@@ -13,37 +13,23 @@ import (
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
-	swaggerFiles "github.com/swaggo/files"
-	ginSwagger "github.com/swaggo/gin-swagger"
 )
 
 func InitRouter() *gin.Engine {
 	r := gin.Default()
 
 	corsConfig := cors.DefaultConfig()
-	if conf.Conf.System.Release {
-		corsConfig.AllowOrigins = buildAllowedOrigins()
-	} else {
-		corsConfig.AllowAllOrigins = true
-	}
+	corsConfig.AllowOrigins = buildAllowedOrigins()
 	corsConfig.AddAllowHeaders("Authorization", "X-Setup-Bootstrap-Token", "X-Setup-Init-Token", "X-Setup-Deploy-Token", "X-Setup-Token", "X-Bootstrap-Token")
 	r.Use(cors.New(corsConfig))
 
 	// Serve compiled frontend files (SPA with fallback to index.html)
-	frontendDir := os.Getenv("FRONTEND_DIR")
-	if frontendDir == "" {
-		exe, _ := os.Executable()
-		frontendDir = filepath.Join(filepath.Dir(exe), "frontend")
-	}
+	exe, _ := os.Executable()
+	frontendDir := filepath.Join(filepath.Dir(exe), constants.FrontendDir)
 	r.Use(middleware.FrontendMiddleware(frontendDir))
 
 	oidcController := controllers.NewOIDCController()
 	r.GET("/.well-known/openid-configuration", oidcController.Discovery)
-
-	// Swagger UI (development only)
-	if !conf.Conf.System.Release {
-		r.GET("/panel/api/v1/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
-	}
 
 	api := r.Group("/panel/api/v1")
 	{
@@ -182,6 +168,7 @@ func InitRouter() *gin.Engine {
 
 			headscaleConfigController := controllers.NewHeadscaleConfigController()
 			auth.GET("/headscale/config", middleware.PermissionMiddleware("headscale:config:view"), headscaleConfigController.Get)
+			auth.PUT("/headscale/config", middleware.PermissionMiddleware("headscale:config:update"), headscaleConfigController.Update)
 			auth.POST("/headscale/config/preview", middleware.PermissionMiddleware("headscale:config:view"), headscaleConfigController.Preview)
 
 			derpController := controllers.NewDERPController()

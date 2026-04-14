@@ -130,9 +130,10 @@ func (s *panelAccountService) List(actorUserID uint, q PanelAccountListQuery) ([
 		like := "%" + q.Search + "%"
 		db = db.Where("username LIKE ? OR email LIKE ?", like, like)
 	}
-	if q.Status == "active" {
+	switch q.Status {
+	case "active":
 		db = db.Where("is_active = ?", true)
-	} else if q.Status == "inactive" {
+	case "inactive":
 		db = db.Where("is_active = ?", false)
 	}
 	if q.GroupID > 0 {

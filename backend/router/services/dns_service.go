@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"headscale-panel/model"
-	"headscale-panel/pkg/conf"
+	"headscale-panel/pkg/constants"
 	"headscale-panel/pkg/utils/serializer"
 	"os"
 	"path/filepath"
@@ -55,23 +55,13 @@ func (s *dnsService) Create(actorUserID uint, req *CreateDNSRecordRequest) (*mod
 	if err := RequirePermission(actorUserID, "dns:record:create"); err != nil {
 		return nil, err
 	}
-
-	record := model.DNSRecord{
-		Name:    req.Name,
-		Type:    req.Type,
-		Value:   req.Value,
-		Comment: req.Comment,
-	}
-
+	record := model.DNSRecord{Name: req.Name, Type: req.Type, Value: req.Value, Comment: req.Comment}
 	if err := model.DB.Create(&record).Error; err != nil {
 		return nil, serializer.ErrDatabase.WithError(err)
 	}
-
-	// Sync to file
 	if err := s.SyncToFile(actorUserID); err != nil {
 		return &record, err
 	}
-
 	return &record, nil
 }
 
@@ -79,37 +69,28 @@ func (s *dnsService) List(actorUserID uint, req *ListDNSRecordRequest) ([]model.
 	if err := RequirePermission(actorUserID, "dns:record:list"); err != nil {
 		return nil, 0, err
 	}
-
-	// Reflect manual edits in extra-records.json only when the file has changed.
 	if s.shouldSyncFromFile() {
 		if _, err := s.syncFileRecordsToDB(); err != nil {
 			return nil, 0, err
 		}
 	}
-
 	var records []model.DNSRecord
 	var total int64
-
 	query := model.DB.Model(&model.DNSRecord{})
-
 	if req.Keyword != "" {
 		query = query.Where("name LIKE ? OR value LIKE ? OR comment LIKE ?",
 			"%"+req.Keyword+"%", "%"+req.Keyword+"%", "%"+req.Keyword+"%")
 	}
-
 	if req.Type != "" {
 		query = query.Where("type = ?", req.Type)
 	}
-
 	if err := query.Count(&total).Error; err != nil {
 		return nil, 0, serializer.ErrDatabase.WithError(err)
 	}
-
 	offset := (req.Page - 1) * req.PageSize
 	if err := query.Offset(offset).Limit(req.PageSize).Order("created_at DESC").Find(&records).Error; err != nil {
 		return nil, 0, serializer.ErrDatabase.WithError(err)
 	}
-
 	return records, total, nil
 }
 
@@ -117,12 +98,10 @@ func (s *dnsService) Update(actorUserID uint, req *UpdateDNSRecordRequest) (*mod
 	if err := RequirePermission(actorUserID, "dns:record:update"); err != nil {
 		return nil, err
 	}
-
 	var record model.DNSRecord
 	if err := model.DB.First(&record, req.ID).Error; err != nil {
 		return nil, serializer.ErrDatabase.WithError(err)
 	}
-
 	updates := map[string]interface{}{}
 	if req.Name != "" {
 		updates["name"] = req.Name
@@ -136,23 +115,17 @@ func (s *dnsService) Update(actorUserID uint, req *UpdateDNSRecordRequest) (*mod
 	if req.Comment != "" {
 		updates["comment"] = req.Comment
 	}
-
 	if len(updates) > 0 {
 		if err := model.DB.Model(&record).Updates(updates).Error; err != nil {
 			return nil, serializer.ErrDatabase.WithError(err)
 		}
 	}
-
-	// Re-fetch the updated record
 	if err := model.DB.First(&record, req.ID).Error; err != nil {
 		return nil, serializer.ErrDatabase.WithError(err)
 	}
-
-	// Sync to file
 	if err := s.SyncToFile(actorUserID); err != nil {
 		return &record, err
 	}
-
 	return &record, nil
 }
 
@@ -160,12 +133,9 @@ func (s *dnsService) Delete(actorUserID uint, id uint) error {
 	if err := RequirePermission(actorUserID, "dns:record:delete"); err != nil {
 		return err
 	}
-
 	if err := model.DB.Delete(&model.DNSRecord{}, id).Error; err != nil {
 		return serializer.ErrDatabase.WithError(err)
 	}
-
-	// Sync to file
 	return s.SyncToFile(actorUserID)
 }
 
@@ -173,7 +143,6 @@ func (s *dnsService) Get(actorUserID uint, id uint) (*model.DNSRecord, error) {
 	if err := RequirePermission(actorUserID, "dns:record:get"); err != nil {
 		return nil, err
 	}
-
 	var record model.DNSRecord
 	if err := model.DB.First(&record, id).Error; err != nil {
 		return nil, serializer.ErrDatabase.WithError(err)
@@ -186,57 +155,33 @@ func (s *dnsService) SyncToFile(actorUserID uint) error {
 	if err := RequirePermission(actorUserID, "dns:sync"); err != nil {
 		return err
 	}
-
 	var records []model.DNSRecord
 	if err := model.DB.Find(&records).Error; err != nil {
 		return serializer.ErrDatabase.WithError(err)
 	}
-
 	extraRecords := make([]ExtraRecord, len(records))
 	for i, r := range records {
-		extraRecords[i] = ExtraRecord{
-			Name:  r.Name,
-			Type:  r.Type,
-			Value: r.Value,
-		}
+		extraRecords[i] = ExtraRecord{Name: r.Name, Type: r.Type, Value: r.Value}
 	}
-
-	filePath := s.getExtraRecordsPath()
-
-	// Ensure directory exists
-	dir := filepath.Dir(filePath)
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(constants.ExtraRecordsFilePath), 0755); err != nil {
 		return fmt.Errorf("failed to create directory: %w", err)
 	}
-
-	// Write file
 	data, err := json.MarshalIndent(extraRecords, "", "  ")
 	if err != nil {
 		return fmt.Errorf("JSON marshal failed: %w", err)
 	}
-
-	if err := os.WriteFile(filePath, data, 0600); err != nil {
+	if err := os.WriteFile(constants.ExtraRecordsFilePath, data, 0600); err != nil {
 		return fmt.Errorf("failed to write file: %w", err)
 	}
-
 	return nil
 }
 
-// GetExtraRecordsFromFile reads DNS records from the file
+// GetExtraRecordsFromFile reads DNS records from the extra-records file
 func (s *dnsService) GetExtraRecordsFromFile(actorUserID uint) ([]ExtraRecord, error) {
 	if err := RequirePermission(actorUserID, "dns:file:get"); err != nil {
 		return nil, err
 	}
-
 	return s.readExtraRecordsFromFile()
-}
-
-func (s *dnsService) getExtraRecordsPath() string {
-	// Prefer configured path, fallback to default
-	if conf.Conf.Headscale.ExtraRecordsPath != "" {
-		return conf.Conf.Headscale.ExtraRecordsPath
-	}
-	return "./headscale/extra-records.json"
 }
 
 // ImportFromFile imports DNS records from the file into the database
@@ -244,29 +189,22 @@ func (s *dnsService) ImportFromFile(actorUserID uint) (int, error) {
 	if err := RequirePermission(actorUserID, "dns:import"); err != nil {
 		return 0, err
 	}
-
 	return s.syncFileRecordsToDB()
 }
 
-// shouldSyncFromFile checks if the extra-records.json file has been modified
-// since the last sync, avoiding unnecessary I/O on every List call.
+// shouldSyncFromFile checks if the extra-records.json file has been modified since last sync
 func (s *dnsService) shouldSyncFromFile() bool {
-	filePath := s.getExtraRecordsPath()
-	info, err := os.Stat(filePath)
+	info, err := os.Stat(constants.ExtraRecordsFilePath)
 	if err != nil {
 		return false
 	}
 	s.mtimeMu.Lock()
 	defer s.mtimeMu.Unlock()
-	if info.ModTime().After(s.lastSyncMtime) {
-		return true
-	}
-	return false
+	return info.ModTime().After(s.lastSyncMtime)
 }
 
 func (s *dnsService) markSynced() {
-	filePath := s.getExtraRecordsPath()
-	info, err := os.Stat(filePath)
+	info, err := os.Stat(constants.ExtraRecordsFilePath)
 	if err != nil {
 		return
 	}
@@ -276,21 +214,17 @@ func (s *dnsService) markSynced() {
 }
 
 func (s *dnsService) readExtraRecordsFromFile() ([]ExtraRecord, error) {
-	filePath := s.getExtraRecordsPath()
-
-	data, err := os.ReadFile(filePath)
+	data, err := os.ReadFile(constants.ExtraRecordsFilePath)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return []ExtraRecord{}, nil
 		}
 		return nil, fmt.Errorf("failed to read file: %w", err)
 	}
-
 	var records []ExtraRecord
 	if err := json.Unmarshal(data, &records); err != nil {
 		return nil, fmt.Errorf("JSON parse failed: %w", err)
 	}
-
 	return records, nil
 }
 
@@ -299,7 +233,6 @@ func (s *dnsService) syncFileRecordsToDB() (int, error) {
 	if err != nil {
 		return 0, err
 	}
-
 	imported := 0
 	for _, rawRecord := range records {
 		r := ExtraRecord{
@@ -307,18 +240,15 @@ func (s *dnsService) syncFileRecordsToDB() (int, error) {
 			Type:  strings.ToUpper(strings.TrimSpace(rawRecord.Type)),
 			Value: strings.TrimSpace(rawRecord.Value),
 		}
-
 		if r.Name == "" || r.Type == "" || r.Value == "" {
 			return imported, fmt.Errorf("extra-records.json contains invalid record: name/type/value must not be empty")
 		}
 		if r.Type != "A" && r.Type != "AAAA" {
 			return imported, fmt.Errorf("extra-records.json contains invalid record type: %s", r.Type)
 		}
-
 		var existing model.DNSRecord
 		result := model.DB.Where("name = ? AND type = ?", r.Name, r.Type).First(&existing)
 		if result.Error == nil {
-			// Already exists, update
 			if existing.Value != r.Value {
 				existing.Value = r.Value
 				if err := model.DB.Save(&existing).Error; err != nil {
@@ -330,20 +260,13 @@ func (s *dnsService) syncFileRecordsToDB() (int, error) {
 			if !errors.Is(result.Error, gorm.ErrRecordNotFound) {
 				return imported, serializer.ErrDatabase.WithError(result.Error)
 			}
-
-			// Does not exist, create
-			newRecord := model.DNSRecord{
-				Name:  r.Name,
-				Type:  r.Type,
-				Value: r.Value,
-			}
+			newRecord := model.DNSRecord{Name: r.Name, Type: r.Type, Value: r.Value}
 			if err := model.DB.Create(&newRecord).Error; err != nil {
 				return imported, serializer.ErrDatabase.WithError(err)
 			}
 			imported++
 		}
 	}
-
 	s.markSynced()
 	return imported, nil
 }

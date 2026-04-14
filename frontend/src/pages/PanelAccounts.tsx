@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import {
   Button,
+  Card,
   Input,
   Select,
   Space,
@@ -8,7 +9,6 @@ import {
   Tag,
   Typography,
   message,
-  theme,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import {
@@ -35,7 +35,6 @@ const { Title, Text } = Typography;
 
 export default function PanelAccounts() {
   const t = useTranslation();
-  const { token: themeToken } = theme.useToken();
   const pa = t.panelAccounts;
 
   // ── Filters ────────────────────────────────────────────
@@ -174,101 +173,102 @@ export default function PanelAccounts() {
     {
       label: pa.totalAccounts,
       value: total,
-      icon: <UserOutlined style={{ fontSize: 28, opacity: 0.15 }} />,
+      icon: <UserOutlined className="stat-icon-primary" />,
+      watermark: 'ALL',
     },
     {
       label: pa.activeAccounts,
       value: activeCount,
-      icon: <CheckCircleOutlined style={{ fontSize: 28, opacity: 0.15 }} />,
-      valueColor: themeToken.colorSuccess,
+      icon: <CheckCircleOutlined className="stat-icon-success" />,
+      watermark: 'ON',
     },
     {
       label: pa.disabledAccounts,
       value: disabledCount,
-      icon: <CloseCircleOutlined style={{ fontSize: 28, opacity: 0.15 }} />,
-      valueColor: themeToken.colorError,
+      icon: <CloseCircleOutlined className="stat-icon-warn" />,
+      watermark: 'OFF',
     },
   ];
 
   return (
     <DashboardLayout>
-      {/* Header */}
-      <div className="flex items-center justify-between mb-16px">
-        <div>
-          <Title level={4} className="!mb-0">
-            {pa.title}
-          </Title>
-          <Text type="secondary">{pa.description}</Text>
+      <div className="flex flex-col gap-6">
+        {/* Header */}
+        <div className="page-header-row">
+          <div>
+            <Title level={4} className="m-0">
+              {pa.title}
+            </Title>
+            <Text type="secondary">{pa.description}</Text>
+          </div>
+          <Space>
+            <Button icon={<ReloadOutlined spin={listLoading} />} loading={listLoading} onClick={loadList} />
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)} data-tour-id="panel-accounts-create">
+              {pa.newAccount}
+            </Button>
+          </Space>
         </div>
-        <Space>
-          <Button icon={<ReloadOutlined />} onClick={loadList} />
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)} data-tour-id="panel-accounts-create">
-            {pa.newAccount}
-          </Button>
-        </Space>
-      </div>
 
-      {/* Stat cards */}
-      <PageHeaderStatCards items={statCards} />
+        {/* Stat cards */}
+        <PageHeaderStatCards items={statCards} />
 
-      {/* Filters */}
-      <div className="flex items-center gap-12px mt-16px mb-12px flex-wrap" data-tour-id="panel-accounts-filters">
-        <Input
-          prefix={<SearchOutlined />}
-          placeholder={pa.searchPlaceholder}
-          allowClear
-          value={search}
-          onChange={(e) => {
-            setSearch(e.target.value);
-            setPage(1);
-          }}
-          style={{ width: 260 }}
-        />
-        <Select
-          value={statusFilter}
-          onChange={(v) => {
-            setStatusFilter(v);
-            setPage(1);
-          }}
-          style={{ width: 130 }}
-          options={[
-            { label: pa.statusAll, value: '' },
-            { label: pa.statusActive, value: 'active' },
-            { label: pa.statusInactive, value: 'inactive' },
-          ]}
-        />
-        <Select
-          value={groupFilter}
-          onChange={(v) => {
-            setGroupFilter(v);
-            setPage(1);
-          }}
-          allowClear
-          placeholder={pa.filterRole}
-          style={{ width: 160 }}
-          options={groups.map((g) => ({ label: g.name, value: g.ID }))}
-        />
-      </div>
-
-      {/* Table */}
-      <div data-tour-id="panel-accounts-table">
-        <Table<PanelAccountListItem>
-          rowKey="id"
-          columns={columns}
-          dataSource={list}
-          loading={listLoading}
-          size="middle"
-          pagination={{
-            current: page,
-            pageSize,
-            total,
-            showSizeChanger: true,
-            onChange: (p, ps) => {
-              setPage(p);
-              setPageSize(ps);
-            },
-          }}
-        />
+        {/* Table Card */}
+        <Card data-tour-id="panel-accounts-table">
+          <div className="flex flex-wrap gap-3 mb-4" data-tour-id="panel-accounts-filters">
+            <Input
+              prefix={<SearchOutlined />}
+              placeholder={pa.searchPlaceholder}
+              allowClear
+              value={search}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                setPage(1);
+              }}
+              className="flex-1 min-w-200px max-w-90"
+            />
+            <Select
+              value={statusFilter}
+              onChange={(v) => {
+                setStatusFilter(v);
+                setPage(1);
+              }}
+              className="w-130px"
+              options={[
+                { label: pa.statusAll, value: '' },
+                { label: pa.statusActive, value: 'active' },
+                { label: pa.statusInactive, value: 'inactive' },
+              ]}
+            />
+            <Select
+              value={groupFilter}
+              onChange={(v) => {
+                setGroupFilter(v);
+                setPage(1);
+              }}
+              allowClear
+              placeholder={pa.filterRole}
+              className="w-160px"
+              options={groups.map((g) => ({ label: g.name, value: g.ID }))}
+            />
+          </div>
+          <Table<PanelAccountListItem>
+            rowKey="id"
+            columns={columns}
+            dataSource={list}
+            loading={listLoading}
+            size="middle"
+            pagination={{
+              current: page,
+              pageSize,
+              total,
+              showSizeChanger: true,
+              onChange: (p, ps) => {
+                setPage(p);
+                setPageSize(ps);
+              },
+            }}
+          />
+        </Card>
       </div>
 
       {/* Detail Drawer */}

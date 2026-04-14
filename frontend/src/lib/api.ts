@@ -150,6 +150,7 @@ export const resourcesAPI = {
 
 export const headscaleConfigAPI = {
   get: () => headscaleConfigApi.get(),
+  update: (config: any) => headscaleConfigApi.update(config),
   preview: (config: any) => headscaleConfigApi.preview(config),
 };
 

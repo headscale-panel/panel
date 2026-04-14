@@ -34,10 +34,12 @@ func NewServer() (*Server, error) {
 	model.Init()
 
 	// Restore headscale connection settings from DB (survives container restart)
-	services.LoadHeadscaleConnectionFromDB()
-
-	if err := headscale.Init(); err != nil {
-		return nil, err
+	if services.LoadHeadscaleConnectionFromDB() {
+		if err := headscale.Init(); err != nil {
+			logrus.WithError(err).Warn("Headscale client init failed; complete setup via WebUI")
+		}
+	} else {
+		logrus.Warn("No Headscale connection configured; complete setup via WebUI")
 	}
 
 	if err := services.ACLService.InitPolicy(); err != nil {
@@ -69,9 +71,7 @@ func NewServer() (*Server, error) {
 }
 
 func (s *Server) Run() {
-	if conf.Conf.System.Release {
-		gin.SetMode(gin.ReleaseMode)
-	}
+	gin.SetMode(gin.ReleaseMode)
 
 	s.server = &http.Server{
 		Addr:    conf.Conf.System.Port,

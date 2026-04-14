@@ -5,7 +5,6 @@ import (
 	"encoding/base64"
 	"fmt"
 	"log"
-	"os"
 	"strings"
 
 	"github.com/joho/godotenv"
@@ -14,22 +13,15 @@ import (
 
 type Config struct {
 	System    SystemConfig    `mapstructure:"system"`
-	DB        DBConfig        `mapstructure:"db"`
 	JWT       JWTConfig       `mapstructure:"jwt"`
 	Headscale HeadscaleConfig `mapstructure:"headscale"`
 	InfluxDB  InfluxDBConfig  `mapstructure:"influxdb"`
-	Redis     RedisConfig     `mapstructure:"redis"`
 }
 
 type SystemConfig struct {
 	Port                string `mapstructure:"port"`
-	Release             bool   `mapstructure:"release"`
 	BaseURL             string `mapstructure:"base_url"`
 	SetupBootstrapToken string `mapstructure:"setup_bootstrap_token"`
-}
-
-type DBConfig struct {
-	Path string `mapstructure:"path"`
 }
 
 type JWTConfig struct {
@@ -42,7 +34,6 @@ type HeadscaleConfig struct {
 	APIKey           string `mapstructure:"api_key"`
 	Insecure         bool   `mapstructure:"insecure"`
 	ExtraRecordsPath string `mapstructure:"extra_records_path"`
-	ConfigPath       string `mapstructure:"config_path"`
 }
 
 type InfluxDBConfig struct {
@@ -50,12 +41,6 @@ type InfluxDBConfig struct {
 	Token  string `mapstructure:"token"`
 	Org    string `mapstructure:"org"`
 	Bucket string `mapstructure:"bucket"`
-}
-
-type RedisConfig struct {
-	Addr     string `mapstructure:"addr"`
-	Password string `mapstructure:"password"`
-	DB       int    `mapstructure:"db"`
 }
 
 var Conf Config
@@ -78,42 +63,24 @@ func Init(path string) {
 
 	// Set defaults
 	viper.SetDefault("system.port", ":8080")
-	viper.SetDefault("system.release", false)
 	viper.SetDefault("system.base_url", "http://localhost:8080")
 	viper.SetDefault("system.setup_bootstrap_token", "")
-	viper.SetDefault("db.path", "data.db")
 	viper.SetDefault("jwt.expire", 24)
-	viper.SetDefault("headscale.grpc_addr", "localhost:50443")
-	viper.SetDefault("headscale.api_key", "")
-	viper.SetDefault("headscale.insecure", false)
 	viper.SetDefault("influxdb.url", "")
 	viper.SetDefault("influxdb.token", "")
 	viper.SetDefault("influxdb.org", "headscale-panel")
 	viper.SetDefault("influxdb.bucket", "metrics")
-	viper.SetDefault("redis.addr", "localhost:6379")
-	viper.SetDefault("redis.password", "")
-	viper.SetDefault("redis.db", 0)
-
 	// Manually bind env vars to nested keys because Viper doesn't automatically map flat env keys to nested structs
 	viper.BindEnv("system.port", "SYSTEM_PORT")
-	viper.BindEnv("system.release", "SYSTEM_RELEASE")
 	viper.BindEnv("system.base_url", "SYSTEM_BASE_URL")
 	viper.BindEnv("system.setup_bootstrap_token", "SYSTEM_SETUP_BOOTSTRAP_TOKEN")
-	viper.BindEnv("db.path", "DB_PATH")
 	viper.BindEnv("jwt.secret", "JWT_SECRET")
 	viper.BindEnv("jwt.expire", "JWT_EXPIRE")
-	viper.BindEnv("headscale.grpc_addr", "HEADSCALE_GRPC_ADDR")
-	viper.BindEnv("headscale.api_key", "HEADSCALE_API_KEY")
-	viper.BindEnv("headscale.insecure", "HEADSCALE_INSECURE")
-	viper.BindEnv("headscale.config_path", "HEADSCALE_CONFIG_PATH")
-	viper.BindEnv("headscale.extra_records_path", "HEADSCALE_EXTRA_RECORDS_PATH")
 	viper.BindEnv("influxdb.url", "INFLUXDB_URL")
 	viper.BindEnv("influxdb.token", "INFLUXDB_TOKEN")
 	viper.BindEnv("influxdb.org", "INFLUXDB_ORG")
 	viper.BindEnv("influxdb.bucket", "INFLUXDB_BUCKET")
-	viper.BindEnv("redis.addr", "REDIS_ADDR")
-	viper.BindEnv("redis.password", "REDIS_PASSWORD")
-	viper.BindEnv("redis.db", "REDIS_DB")
+	viper.BindEnv("headscale.extra_records_path", "HEADSCALE_EXTRA_RECORDS_PATH")
 
 	if err := viper.Unmarshal(&Conf); err != nil {
 		log.Fatalf("Unable to decode into struct, %v", err)
@@ -127,14 +94,13 @@ func Init(path string) {
 func validateSecurityConfig(cfg Config) error {
 	secret := strings.TrimSpace(cfg.JWT.Secret)
 	if secret == "" {
-		// Auto-generate JWT secret and persist
-		generated, err := generateAndPersistSecret("JWT_SECRET", 48)
-		if err != nil {
+		buf := make([]byte, 48)
+		if _, err := rand.Read(buf); err != nil {
 			return fmt.Errorf("failed to auto-generate JWT_SECRET: %w", err)
 		}
-		Conf.JWT.Secret = generated
-		secret = generated
-		log.Println("Auto-generated JWT_SECRET and saved to .env")
+		Conf.JWT.Secret = base64.RawURLEncoding.EncodeToString(buf)[:48]
+		log.Println("JWT_SECRET not set, auto-generated for this session (tokens will be invalidated on restart)")
+		return nil
 	}
 
 	lowered := strings.ToLower(secret)
@@ -170,52 +136,4 @@ func validateSecurityConfig(cfg Config) error {
 	}
 
 	return nil
-}
-
-// generateAndPersistSecret generates a random base64 string and writes it to .env.
-func generateAndPersistSecret(key string, length int) (string, error) {
-	buf := make([]byte, length)
-	if _, err := rand.Read(buf); err != nil {
-		return "", fmt.Errorf("failed to generate random bytes: %w", err)
-	}
-	encoded := base64.RawURLEncoding.EncodeToString(buf)
-	if len(encoded) > length {
-		encoded = encoded[:length]
-	}
-
-	// Write to .env
-	envPath := ".env"
-	lines := []string{}
-	data, err := os.ReadFile(envPath)
-	if err == nil {
-		normalized := strings.ReplaceAll(string(data), "\r\n", "\n")
-		lines = strings.Split(normalized, "\n")
-	} else if !os.IsNotExist(err) {
-		return "", err
-	}
-
-	target := key + "="
-	found := false
-	for i, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, target) {
-			lines[i] = target + encoded
-			found = true
-			break
-		}
-	}
-	if !found {
-		lines = append(lines, target+encoded)
-	}
-
-	content := strings.Join(lines, "\n")
-	if !strings.HasSuffix(content, "\n") {
-		content += "\n"
-	}
-
-	if err := os.WriteFile(envPath, []byte(content), 0600); err != nil {
-		return "", err
-	}
-
-	return encoded, nil
 }

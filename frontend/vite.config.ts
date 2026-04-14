@@ -1,24 +1,7 @@
 import react from "@vitejs/plugin-react";
 import path from "node:path";
-import { defineConfig } from "vite";
+import { defineConfig } from "rolldown-vite";
 import UnoCSS from "unocss/vite";
-
-const chunkGroups: Record<string, string[]> = {
-  "vendor-monaco": ["@monaco-editor", "monaco-editor"],
-  "vendor-charts": ["recharts", "d3-"],
-  "vendor-antd-heavy": [
-    "/node_modules/antd/es/table/",
-    "/node_modules/antd/es/form/",
-    "/node_modules/antd/es/select/",
-    "/node_modules/antd/es/date-picker/",
-    "/node_modules/antd/es/tree/",
-    "/node_modules/antd/es/menu/",
-  ],
-  "vendor-antd-icons": ["@ant-design/icons", "@ant-design/icons-svg"],
-  "vendor-antd-rc": ["/node_modules/rc-", "/node_modules/@rc-component/", "/node_modules/rc-util/"],
-  "vendor-antd-core": ["/node_modules/antd/"],
-  "vendor-react": ["/node_modules/react/", "/node_modules/react-dom/", "/node_modules/scheduler/", "/node_modules/wouter/"],
-};
 
 export default defineConfig({
   plugins: [
@@ -37,17 +20,17 @@ export default defineConfig({
     outDir: path.resolve(import.meta.dirname, "dist"),
     emptyOutDir: true,
     sourcemap: false,
-    rollupOptions: {
-      output: {
-        manualChunks(id) {
-          if (!id.includes("node_modules")) return;
-          for (const [name, patterns] of Object.entries(chunkGroups)) {
-            if (patterns.some((pattern) => id.includes(pattern))) return name;
-          }
-          return "vendor-misc";
-        },
-      },
-    },
+    // rolldownOptions: {
+    //   output: {
+    //     advancedChunks: {
+    //       groups: [
+    //         { name: "vendor-monaco", test: /node_modules\/(@monaco-editor|monaco-editor)/ },
+    //         { name: "vendor-charts", test: /node_modules\/(recharts|d3-)/ },
+    //         { name: "vendor", test: /node_modules/ },
+    //       ],
+    //     },
+    //   },
+    // },
   },
   server: {
     port: 3000,

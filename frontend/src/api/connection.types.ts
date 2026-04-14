@@ -9,7 +9,8 @@ export interface GenerateCommandsRes {
 }
 
 export interface GeneratePreAuthKeyReq {
-  user_id: string;
+  /** Panel user database ID (uint) — not a Headscale user ID */
+  user_id: number;
   reusable: boolean;
   ephemeral: boolean;
   expiration?: string;
@@ -17,7 +18,7 @@ export interface GeneratePreAuthKeyReq {
 
 export interface PreAuthKey {
   key: string;
-  user_id: string;
+  user_id: number;
   reusable: boolean;
   ephemeral: boolean;
   expiration?: string;
@@ -27,13 +28,14 @@ export interface PreAuthKey {
 export type GeneratePreAuthKeyRes = PreAuthKey;
 
 export interface GenerateSSHCommandReq {
-  machine_id: string;
+  /** Headscale machine ID (uint64) */
+  machine_id: number;
   user?: string;
 }
 
 export interface SSHCommand {
   command: string;
-  machine_id: string;
+  machine_id: number;
   user?: string;
 }
 

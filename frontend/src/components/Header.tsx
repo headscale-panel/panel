@@ -83,9 +83,9 @@ export default function Header({ onMenuClick }: HeaderProps) {
           title={themeLabel}
         />
 
-        <Badge dot offset={[-4, 4]}>
+        {/* <Badge dot offset={[-4, 4]}>
           <Button type="text" icon={<BellOutlined />} />
-        </Badge>
+        </Badge> */}
       </Space>
     </AntHeader>
   );

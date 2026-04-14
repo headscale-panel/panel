@@ -3,8 +3,10 @@ package model
 import (
 	"errors"
 	"fmt"
-	"headscale-panel/pkg/conf"
+	"headscale-panel/pkg/constants"
 	"log"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/glebarez/sqlite"
@@ -15,8 +17,12 @@ import (
 var DB *gorm.DB
 
 func Init() {
+	dbPath := filepath.Join(constants.DataDir, "data.db")
+	if err := os.MkdirAll(constants.DataDir, 0700); err != nil {
+		log.Fatalf("models.Setup: failed to create data directory: %v", err)
+	}
 	var err error
-	DB, err = gorm.Open(sqlite.Open(conf.Conf.DB.Path), &gorm.Config{})
+	DB, err = gorm.Open(sqlite.Open(dbPath), &gorm.Config{})
 	if err != nil {
 		log.Fatalf("models.Setup err: %v", err)
 	}
@@ -122,7 +128,6 @@ func initDefaultData() {
 		{Name: "同步 DNS 文件", Code: "dns:sync", Type: "button"},
 		{Name: "导入 DNS 文件", Code: "dns:import", Type: "button"},
 		{Name: "查看 DNS 文件", Code: "dns:file:get", Type: "button"},
-
 		{Name: "查看 Headscale 配置", Code: "headscale:config:view", Type: "button"},
 		{Name: "更新 Headscale 配置", Code: "headscale:config:update", Type: "button"},
 		{Name: "查看 DERP 配置", Code: "headscale:derp:view", Type: "button"},

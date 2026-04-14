@@ -179,11 +179,7 @@ func (oc *OIDCController) UserInfo(c *gin.Context) {
 	// Validate the access token
 	claims, err := services.OIDCService.ValidateAccessToken(tokenStr)
 	if err != nil {
-		resp := gin.H{"error": "invalid_token"}
-		if !conf.Conf.System.Release {
-			resp["error_description"] = err.Error()
-		}
-		c.JSON(http.StatusUnauthorized, resp)
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid_token"})
 		return
 	}
 

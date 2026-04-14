@@ -155,7 +155,7 @@ export default function Profile() {
         onCancel={() => setTotpModalOpen(false)}
         footer={null}
         width={480}
-        destroyOnClose
+        destroyOnHidden
       >
         <Steps
           current={totpStep}

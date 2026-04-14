@@ -69,7 +69,7 @@ export default function EditAccountModal({ open, account, groups, onCancel, onSu
       onOk={handleOk}
       confirmLoading={saving}
       width={480}
-      destroyOnClose
+      destroyOnHidden
     >
       <Text type="secondary" className="block mb-16px">{pa.edit.description}</Text>
 

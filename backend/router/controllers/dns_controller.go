@@ -157,20 +157,19 @@ func (c *DNSController) Get(ctx *gin.Context) {
 }
 
 // Sync godoc
-// @Summary Sync DNS records to file
+// @Summary Sync DNS records to extra-records file
 // @Tags dns
 // @Produce json
 // @Success 200 {object} serializer.Response
 // @Security BearerAuth
 // @Router /dns/sync [post]
-// Sync 同步 DNS 记录到文件
+// Sync 将 DNS 记录同步到文件
 func (c *DNSController) Sync(ctx *gin.Context) {
 	userID := ctx.GetUint("userID")
 	if err := services.DNSService.SyncToFile(userID); err != nil {
 		serializer.Fail(ctx, err)
 		return
 	}
-
 	serializer.Success(ctx, gin.H{"message": "同步成功"})
 }
 
@@ -189,7 +188,6 @@ func (c *DNSController) Import(ctx *gin.Context) {
 		serializer.Fail(ctx, err)
 		return
 	}
-
 	serializer.Success(ctx, gin.H{
 		"message":  "导入成功",
 		"imported": imported,
@@ -200,7 +198,7 @@ func (c *DNSController) Import(ctx *gin.Context) {
 // @Summary Get DNS records from the extra-records file
 // @Tags dns
 // @Produce json
-// @Success 200 {object} serializer.Response{data=[]model.DNSRecord}
+// @Success 200 {object} serializer.Response{data=[]services.ExtraRecord}
 // @Security BearerAuth
 // @Router /dns/file [get]
 // GetFile 获取文件中的 DNS 记录
@@ -211,6 +209,5 @@ func (c *DNSController) GetFile(ctx *gin.Context) {
 		serializer.Fail(ctx, err)
 		return
 	}
-
 	serializer.Success(ctx, records)
 }

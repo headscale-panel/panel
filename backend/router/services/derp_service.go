@@ -2,7 +2,7 @@ package services
 
 import (
 	"fmt"
-	"headscale-panel/pkg/conf"
+	"headscale-panel/pkg/constants"
 	"os"
 	"path/filepath"
 
@@ -48,9 +48,7 @@ func (s *derpService) GetDERPMap(actorUserID uint) (*DERPMapFile, error) {
 }
 
 func (s *derpService) getDERPMap() (*DERPMapFile, error) {
-	filePath := s.getDERPMapPath()
-
-	data, err := os.ReadFile(filePath)
+	data, err := os.ReadFile(constants.DERPMapFilePath)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return &DERPMapFile{
@@ -82,9 +80,7 @@ func (s *derpService) SaveDERPMap(actorUserID uint, derpMap *DERPMapFile) error 
 }
 
 func (s *derpService) saveDERPMap(derpMap *DERPMapFile) error {
-	filePath := s.getDERPMapPath()
-
-	dir := filepath.Dir(filePath)
+	dir := filepath.Dir(constants.DERPMapFilePath)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return fmt.Errorf("failed to create directory: %w", err)
 	}
@@ -94,28 +90,11 @@ func (s *derpService) saveDERPMap(derpMap *DERPMapFile) error {
 		return fmt.Errorf("failed to marshal DERP map YAML: %w", err)
 	}
 
-	if err := os.WriteFile(filePath, data, 0600); err != nil {
+	if err := os.WriteFile(constants.DERPMapFilePath, data, 0600); err != nil {
 		return fmt.Errorf("failed to write DERP map file: %w", err)
 	}
 
 	return nil
-}
-
-// getDERPMapPath returns the path to the DERP map YAML file
-func (s *derpService) getDERPMapPath() string {
-	// Try to read from headscale config's derp.paths[0]
-	hsConfig, err := HeadscaleConfigService.GetConfig()
-	if err == nil && len(hsConfig.DERP.Paths) > 0 {
-		return hsConfig.DERP.Paths[0]
-	}
-
-	// Fall back to configured path or default
-	if conf.Conf.Headscale.ConfigPath != "" {
-		dir := filepath.Dir(conf.Conf.Headscale.ConfigPath)
-		return filepath.Join(dir, "derp-custom.yaml")
-	}
-
-	return "./headscale/derp-custom.yaml"
 }
 
 // AddRegion adds a new DERP region

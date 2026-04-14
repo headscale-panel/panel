@@ -1255,10 +1255,10 @@ export default function NetworkTopology({ data, deviceStatuses }: NetworkTopolog
         {/* Legend */}
         <div style={{ position: 'absolute', bottom: 8, left: 8, background: token.colorBgElevated, borderRadius: 8, padding: 8, boxShadow: '0 1px 3px rgba(0,0,0,0.1)', border: `1px solid ${token.colorBorderSecondary}`, zIndex: 30 }}>
           <p style={{ fontSize: 8, fontWeight: 600, color: token.colorTextSecondary, marginBottom: 4 }}>{t.topology.legend}</p>
-          <div className="flex flex-col gap-0.5">
-            <div className="flex items-center gap-1 text-8px"><div style={{ width: 8, height: 8, borderRadius: '50%', background: '#52c41a' }} /><span style={{ color: token.colorTextSecondary }}>{t.common.status.online}</span></div>
-            <div className="flex items-center gap-1 text-8px"><div style={{ width: 8, height: 8, borderRadius: '50%', background: '#999' }} /><span style={{ color: token.colorTextSecondary }}>{t.common.status.offline}</span></div>
-            <div className="flex items-center gap-1 text-8px"><div style={{ width: 16, height: 2, background: '#52c41a', borderRadius: 2 }} /><span style={{ color: token.colorTextSecondary }}>{t.topology.accessiblePath}</span></div>
+          <div className="flex flex-col gap-0.5" style={{fontSize: 12, fontWeight: 500}}>
+            <div className="flex items-center gap-1"><div style={{ width: 8, height: 8, borderRadius: '50%', background: '#52c41a', marginRight: 8 }} /><span style={{ color: token.colorTextSecondary }}>{t.common.status.online}</span></div>
+            <div className="flex items-center gap-1"><div style={{ width: 8, height: 8, borderRadius: '50%', background: '#999', marginRight: 8 }} /><span style={{ color: token.colorTextSecondary }}>{t.common.status.offline}</span></div>
+            <div className="flex items-center gap-1"><div style={{ width: 16, height: 2, background: '#52c41a', borderRadius: 2 }} /><span style={{ color: token.colorTextSecondary }}>{t.topology.accessiblePath}</span></div>
           </div>
           {topologyData.users.length > 0 && (
             <div style={{ marginTop: 6, paddingTop: 4, borderTop: `1px solid ${token.colorBorderSecondary}` }}>
@@ -1281,7 +1281,7 @@ export default function NetworkTopology({ data, deviceStatuses }: NetworkTopolog
 
         {/* Stats */}
         <div style={{ position: 'absolute', bottom: 8, right: 8, background: token.colorBgElevated, borderRadius: 8, padding: '4px 8px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', border: `1px solid ${token.colorBorderSecondary}`, zIndex: 30 }}>
-          <p style={{ fontSize: 8, color: token.colorTextSecondary, fontWeight: 500 }}>
+          <p style={{ fontSize: 12, fontWeight: 500, color: token.colorTextSecondary, margin: 0 }}>
             {topologyData.users.length} {t.topology.usersLabel} · {visibleDevices.length}/{topologyData.devices.length} {t.topology.devicesLabel} · {visibleDevices.filter(d => d.online).length} {t.common.status.online}
             {hideOfflineDevices && <span className="text-#faad14 ml-1">({t.topology.onlineOnly})</span>}
           </p>
@@ -1289,7 +1289,7 @@ export default function NetworkTopology({ data, deviceStatuses }: NetworkTopolog
 
         {/* Instructions */}
         <div style={{ position: 'absolute', top: 8, right: 8, background: token.colorBgElevated, borderRadius: 8, padding: '4px 8px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', border: `1px solid ${token.colorBorderSecondary}`, zIndex: 30 }}>
-          <p style={{ fontSize: 8, color: token.colorTextSecondary, display: 'flex', alignItems: 'center', gap: 4 }}><DragOutlined className="text-12px" /> {t.topology.instructions}</p>
+          <p style={{ fontSize: 12, fontWeight: 500, color: token.colorTextSecondary, display: 'flex', alignItems: 'center', gap: 4, margin: 0 }}><DragOutlined className="text-4" /> {t.topology.instructions}</p>
         </div>
       </div>
 

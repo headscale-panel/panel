@@ -489,19 +489,10 @@ function normalizeOIDCFormFromSource(source: Record<string, unknown>): OIDCFormV
   };
 }
 
-export function normalizeOIDCForm(
-  savedValue: unknown,
-  headscaleConfigValue?: unknown
-): OIDCFormValues {
+export function normalizeOIDCForm(savedValue: unknown): OIDCFormValues {
   const saved = asRecord(savedValue);
   if (saved) {
     return normalizeOIDCFormFromSource(saved);
-  }
-
-  const config = asRecord(headscaleConfigValue);
-  const oidc = config ? asRecord(config.oidc) : null;
-  if (oidc) {
-    return normalizeOIDCFormFromSource(oidc);
   }
 
   return { ...defaultOIDCFormValues };

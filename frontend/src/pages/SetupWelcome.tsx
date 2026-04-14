@@ -39,7 +39,7 @@ export default function SetupWelcome() {
   const [setupWindowOpen, setSetupWindowOpen] = useState(true);
   const [setupWindowDeadline, setSetupWindowDeadline] = useState('');
 
-  const [grpcAddr, setGrpcAddr] = useState('');
+  const [grpcAddr, setGrpcAddr] = useState('127.0.0.1:50443');
   const [apiKey, setApiKey] = useState('');
   const [enableTLS, setEnableTLS] = useState(false);
   const [connectResults, setConnectResults] = useState<ConnectivityResult[]>([]);
@@ -155,16 +155,10 @@ export default function SetupWelcome() {
     await initializeSetup();
   };
 
-  if (loading) {
-    return (
-      <div className="auth-page">
-        <Spin indicator={<LoadingOutlined className="text-32px" spin />} tip={t.setupWelcome.loading} />
-      </div>
-    );
-  }
-
   return (
-    <div
+    <>
+      <Spin spinning={loading} indicator={<LoadingOutlined className="text-32px" spin />} tip={t.setupWelcome.loading} fullscreen />
+      <div
       style={{
         minHeight: '100vh',
         display: 'flex',
@@ -369,5 +363,6 @@ export default function SetupWelcome() {
         )}
       </div>
     </div>
+    </>
   );
 }

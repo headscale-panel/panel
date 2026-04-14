@@ -8,11 +8,10 @@ services:
     restart: unless-stopped
     command: serve
     volumes:
-      - ./headscale.yaml:/etc/headscale/config.yaml
-      - ./derp.yaml:/etc/headscale/derp.yaml:ro
-      - ./data/headscale:/var/lib/headscale
+      - ../../../backend/data/headscale/lib:/var/lib/headscale
+      - ../../../backend/data/headscale/etc:/etc/headscale:ro
     ports:
-      - "${HEADSCALE_HTTP_PORT:-8080}:8080"   # Headscale HTTP API
+      - "${HEADSCALE_HTTP_PORT:-5080}:8080"   # Headscale HTTP API
       - "${HEADSCALE_GRPC_PORT:-50443}:50443" # Headscale gRPC for local backend access from host
     healthcheck:
       test: ["CMD", "headscale", "health"]
@@ -40,16 +39,38 @@ services:
       DERP_STUN_PORT: ${DERP_STUN_PORT}
       DERP_VERIFY_CLIENT_URL: http://headscale:8080/verify
       DERP_VERIFY_CLIENTS: "false"
-    volumes:
-      - ./data/derp:/root/.cache   # Persist Let's Encrypt certificate cache
     ports:
       - "${DERP_STUN_PORT:-3478}:3478/udp"   # STUN (NAT traversal)
-      - "443:443"                            # DERP relay (TLS)
+      - "443:3443"                           # DERP relay (TLS)
     depends_on:
       headscale:
         condition: service_healthy
     profiles:
       - derp
+    networks:
+      - panel-dev
+
+  influxdb:
+    image: influxdb:2
+    container_name: panel-dev-influxdb
+    restart: unless-stopped
+    environment:
+      DOCKER_INFLUXDB_INIT_MODE: setup
+      DOCKER_INFLUXDB_INIT_USERNAME: ${INFLUXDB_ADMIN_USER:-admin}
+      DOCKER_INFLUXDB_INIT_PASSWORD: ${INFLUXDB_ADMIN_PASSWORD:-adminpassword}
+      DOCKER_INFLUXDB_INIT_ORG: ${INFLUXDB_ORG:-headscale-panel}
+      DOCKER_INFLUXDB_INIT_BUCKET: ${INFLUXDB_BUCKET:-metrics}
+      DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: ${INFLUXDB_TOKEN:-dev-influxdb-token}
+    volumes:
+      - ./data/influxdb:/var/lib/influxdb2
+    ports:
+      - "${INFLUXDB_HOST_PORT:-8086}:8086"   # InfluxDB UI & API
+    healthcheck:
+      test: ["CMD", "influx", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
     networks:
       - panel-dev
 

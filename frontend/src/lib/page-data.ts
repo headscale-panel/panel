@@ -1,12 +1,10 @@
 import {
   aclAPI,
   devicesAPI,
-  headscaleConfigAPI,
   panelSettingsAPI,
   resourcesAPI,
   usersAPI,
 } from './api';
-import { isObject } from 'radashi';
 import {
   normalizeACLPolicy,
   normalizeDeviceListResponse,
@@ -16,7 +14,6 @@ import {
   normalizeOIDCStatus,
   normalizePanelConnectionSettings,
   normalizeResources,
-  type OIDCFormValues,
 } from './normalizers';
 export async function loadUsersPageData() {
   const [usersRes, policyRes, oidcStatusRes, onlineDevicesRes] = await Promise.all([
@@ -63,17 +60,11 @@ export async function loadConnectionSettingsData() {
 }
 
 export async function loadOIDCSettingsData(): Promise<{
-  oidcForm: OIDCFormValues;
-  fullConfig: Record<string, unknown> | null;
+  oidcForm: ReturnType<typeof normalizeOIDCForm>;
 }> {
   const saved = await panelSettingsAPI.getOIDCSettings().catch(() => null);
-  const headscaleConfig = saved ? null : await headscaleConfigAPI.get().catch(() => null);
 
   return {
-    oidcForm: normalizeOIDCForm(saved, headscaleConfig),
-    fullConfig:
-      isObject(headscaleConfig)
-        ? (headscaleConfig as unknown as Record<string, unknown>)
-        : null,
+    oidcForm: normalizeOIDCForm(saved),
   };
 }

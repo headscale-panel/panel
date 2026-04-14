@@ -13,8 +13,6 @@ import (
 	"headscale-panel/pkg/conf"
 	"headscale-panel/pkg/headscale"
 	"headscale-panel/pkg/utils/serializer"
-	"os"
-	"path/filepath"
 	"strings"
 )
 
@@ -83,15 +81,11 @@ func (s *panelSettingsService) SaveConnectionSettings(actorUserID uint, grpcAddr
 		return serializer.NewError(serializer.CodeDBError, "保存连接设置到数据库失败", err)
 	}
 
-	// Also persist to .env (best effort)
-	_ = writePanelConnectionEnv(grpcAddr, effectiveAPIKey, insecure)
-
 	// Reinitialize headscale client
 	headscale.Close()
 	if err := headscale.Init(); err != nil {
 		// Rollback
 		conf.Conf.Headscale = old
-		_ = writePanelConnectionEnv(old.GRPCAddr, old.APIKey, old.Insecure)
 		_ = headscale.Init()
 		return serializer.NewError(serializer.CodeThirdPartyServiceError, "重新初始化 Headscale 客户端失败", err)
 	}
@@ -171,65 +165,6 @@ func (s *panelSettingsService) SyncDataFromHeadscale(actorUserID uint) error {
 	return HeadscaleService.SyncACL()
 }
 
-func writePanelConnectionEnv(grpcAddr, apiKey string, insecureMode bool) error {
-	_ = apiKey
-	path := filepath.Clean(".env")
-
-	lines := []string{}
-	data, err := os.ReadFile(path)
-	if err == nil {
-		normalized := strings.ReplaceAll(string(data), "\r\n", "\n")
-		lines = strings.Split(normalized, "\n")
-	} else if !os.IsNotExist(err) {
-		return err
-	}
-
-	setLine := func(key, value string) {
-		target := key + "="
-		for i, line := range lines {
-			trimmed := strings.TrimSpace(line)
-			if strings.HasPrefix(trimmed, "export ") {
-				trimmed = strings.TrimSpace(strings.TrimPrefix(trimmed, "export "))
-			}
-			if strings.HasPrefix(trimmed, target) {
-				lines[i] = target + value
-				return
-			}
-		}
-		lines = append(lines, target+value)
-	}
-	deleteLine := func(key string) {
-		target := key + "="
-		filtered := lines[:0]
-		for _, line := range lines {
-			trimmed := strings.TrimSpace(line)
-			if strings.HasPrefix(trimmed, "export ") {
-				trimmed = strings.TrimSpace(strings.TrimPrefix(trimmed, "export "))
-			}
-			if strings.HasPrefix(trimmed, target) {
-				continue
-			}
-			filtered = append(filtered, line)
-		}
-		lines = filtered
-	}
-
-	setLine("HEADSCALE_GRPC_ADDR", grpcAddr)
-	deleteLine("HEADSCALE_API_KEY")
-	if insecureMode {
-		setLine("HEADSCALE_INSECURE", "true")
-	} else {
-		setLine("HEADSCALE_INSECURE", "false")
-	}
-
-	content := strings.Join(lines, "\n")
-	if !strings.HasSuffix(content, "\n") {
-		content += "\n"
-	}
-
-	return os.WriteFile(path, []byte(content), 0600)
-}
-
 // BuiltinOIDCConfig is the response for the built-in OIDC endpoint.
 type BuiltinOIDCConfig struct {
 	Issuer       string   `json:"issuer"`
@@ -296,6 +231,19 @@ func (s *panelSettingsService) GetOIDCSettings(actorUserID uint) (*OIDCSettingsP
 	}
 
 	return loadOIDCSettingsPayload(setting.Value)
+}
+
+// GetOIDCConfig returns the persisted OIDC settings for internal use without authentication check.
+func (s *panelSettingsService) GetOIDCConfig() *OIDCSettingsPayload {
+	var setting model.PanelSetting
+	if err := model.DB.Where("key = ?", panelSettingKeyOIDC).First(&setting).Error; err != nil {
+		return nil
+	}
+	payload, err := loadOIDCSettingsPayload(setting.Value)
+	if err != nil {
+		return nil
+	}
+	return payload
 }
 
 // SaveOIDCSettings persists the OIDC form settings.

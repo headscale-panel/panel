@@ -79,24 +79,3 @@ func TestSetupBootstrapValidationWhenConfigured(t *testing.T) {
 		t.Fatal("isSetupBootstrapAuthorized() should return true with correct token")
 	}
 }
-
-func TestNormalizeSSLCertMode(t *testing.T) {
-	cases := []struct {
-		name          string
-		mode          string
-		deployCertbot bool
-		want          string
-	}{
-		{name: "explicit certbot", mode: "certbot", deployCertbot: false, want: "certbot"},
-		{name: "explicit manual", mode: "manual", deployCertbot: true, want: "manual"},
-		{name: "fallback certbot", mode: "", deployCertbot: true, want: "certbot"},
-		{name: "fallback manual", mode: "", deployCertbot: false, want: "manual"},
-	}
-
-	for _, tc := range cases {
-		got := normalizeSSLCertMode(tc.mode, tc.deployCertbot)
-		if got != tc.want {
-			t.Fatalf("%s: expected %q, got %q", tc.name, tc.want, got)
-		}
-	}
-}

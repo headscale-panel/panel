@@ -153,14 +153,14 @@ export default function Login() {
 
   if (oidcLoading) {
     return (
-      <div className="auth-page">
+      <div className="auth-page" style={{ background: themeToken.colorBgLayout }}>
         <Spin indicator={<LoadingOutlined className="text-32px" spin />} tip={t.login.redirecting} />
       </div>
     );
   }
 
   return (
-    <div className="auth-page p-4">
+    <div className="auth-page p-4" style={{ background: themeToken.colorBgLayout }}>
       {/* Language Switcher */}
       <div className="lang-switcher">
         <Space size={4}>

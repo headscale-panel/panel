@@ -4,13 +4,13 @@ import type {
   DashboardOverviewRes,
   DashboardTopologyReq,
   DashboardTopologyRes,
-  DashboardStatsReq,
-  DashboardStatsRes,
+  DashboardACLMatrixReq,
+  DashboardACLMatrixRes,
 } from './dashboard.types';
 
 export const dashboardApi = {
   getOverview: (_req?: DashboardOverviewReq) => request.get<any, DashboardOverviewRes>('/dashboard/overview'),
   getTopology: (_req?: DashboardTopologyReq) => request.get<any, DashboardTopologyRes>('/topology'),
   getTopologyWithACL: (_req?: DashboardTopologyReq) => request.get<any, DashboardTopologyRes>('/topology/with-acl'),
-  getStats: (_req?: DashboardStatsReq) => request.get<any, DashboardStatsRes>('/dashboard/stats'),
+  getACLMatrix: (_req?: DashboardACLMatrixReq) => request.get<any, DashboardACLMatrixRes>('/topology/acl-matrix'),
 };

@@ -21,9 +21,9 @@ export interface DashboardTopologyRes {
   [key: string]: unknown;
 }
 
-// Kept for backward compatibility with existing callers
-export interface DashboardStatsReq {}
-export interface DashboardStatsRes {
+// GET /topology/acl-matrix
+export interface DashboardACLMatrixReq {}
+export interface DashboardACLMatrixRes {
   [key: string]: unknown;
 }
 

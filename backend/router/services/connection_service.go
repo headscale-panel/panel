@@ -79,15 +79,15 @@ func (s *connectionService) GenerateConnectionCommandsWithContext(ctx context.Co
 
 	switch strings.ToLower(platform) {
 	case "linux":
-		commands = append(commands, s.generateLinuxCommands(serverURL, authKey, machineIDs))
+		commands = append(commands, s.generateLinuxCommands(serverURL, authKey))
 	case "macos":
-		commands = append(commands, s.generateMacOSCommands(serverURL, authKey, machineIDs))
+		commands = append(commands, s.generateMacOSCommands(serverURL, authKey))
 	case "windows":
-		commands = append(commands, s.generateWindowsCommands(serverURL, authKey, machineIDs))
+		commands = append(commands, s.generateWindowsCommands(serverURL, authKey))
 	case "ios":
-		commands = append(commands, s.generateIOSCommands(serverURL, authKey))
+		commands = append(commands, s.generateIOSCommands(serverURL))
 	case "android":
-		commands = append(commands, s.generateAndroidCommands(serverURL, authKey))
+		commands = append(commands, s.generateAndroidCommands(serverURL))
 	default:
 		return nil, fmt.Errorf("unsupported platform: %s", platform)
 	}
@@ -101,7 +101,7 @@ func (s *connectionService) GenerateConnectionCommandsWithContext(ctx context.Co
 	return commands, nil
 }
 
-func (s *connectionService) generateLinuxCommands(serverURL, authKey string, machineIDs []string) ConnectionCommand {
+func (s *connectionService) generateLinuxCommands(serverURL, authKey string) ConnectionCommand {
 	return ConnectionCommand{
 		Platform:    "Linux",
 		Description: "Install and configure Tailscale on Linux",
@@ -118,7 +118,7 @@ func (s *connectionService) generateLinuxCommands(serverURL, authKey string, mac
 	}
 }
 
-func (s *connectionService) generateMacOSCommands(serverURL, authKey string, machineIDs []string) ConnectionCommand {
+func (s *connectionService) generateMacOSCommands(serverURL, authKey string) ConnectionCommand {
 	return ConnectionCommand{
 		Platform:    "macOS",
 		Description: "Install and configure Tailscale on macOS",
@@ -138,7 +138,7 @@ func (s *connectionService) generateMacOSCommands(serverURL, authKey string, mac
 	}
 }
 
-func (s *connectionService) generateWindowsCommands(serverURL, authKey string, machineIDs []string) ConnectionCommand {
+func (s *connectionService) generateWindowsCommands(serverURL, authKey string) ConnectionCommand {
 	return ConnectionCommand{
 		Platform:    "Windows",
 		Description: "Install and configure Tailscale on Windows",
@@ -154,7 +154,7 @@ func (s *connectionService) generateWindowsCommands(serverURL, authKey string, m
 	}
 }
 
-func (s *connectionService) generateIOSCommands(serverURL, authKey string) ConnectionCommand {
+func (s *connectionService) generateIOSCommands(serverURL string) ConnectionCommand {
 	return ConnectionCommand{
 		Platform:    "iOS",
 		Description: "Configure Tailscale on iOS",
@@ -167,7 +167,7 @@ func (s *connectionService) generateIOSCommands(serverURL, authKey string) Conne
 	}
 }
 
-func (s *connectionService) generateAndroidCommands(serverURL, authKey string) ConnectionCommand {
+func (s *connectionService) generateAndroidCommands(serverURL string) ConnectionCommand {
 	return ConnectionCommand{
 		Platform:    "Android",
 		Description: "Configure Tailscale on Android",

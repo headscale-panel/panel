@@ -20,7 +20,6 @@ func NewHeadscaleConfigController() *HeadscaleConfigController {
 // @Success 200 {object} serializer.Response{data=object}
 // @Security BearerAuth
 // @Router /headscale/config [get]
-// Get returns the current Headscale configuration
 func (c *HeadscaleConfigController) Get(ctx *gin.Context) {
 	userID := ctx.GetUint("userID")
 	config, err := services.HeadscaleConfigService.GetConfigWithAuth(userID)
@@ -28,7 +27,6 @@ func (c *HeadscaleConfigController) Get(ctx *gin.Context) {
 		serializer.Fail(ctx, err)
 		return
 	}
-
 	serializer.Success(ctx, services.HeadscaleConfigService.RedactSecrets(config))
 }
 
@@ -42,7 +40,6 @@ func (c *HeadscaleConfigController) Get(ctx *gin.Context) {
 // @Failure 400 {object} serializer.Response
 // @Security BearerAuth
 // @Router /headscale/config [put]
-// Update saves the Headscale configuration to the config.yaml file
 func (c *HeadscaleConfigController) Update(ctx *gin.Context) {
 	var config services.HeadscaleConfigFile
 	if err := ctx.ShouldBindJSON(&config); err != nil {
@@ -76,7 +73,6 @@ func (c *HeadscaleConfigController) Update(ctx *gin.Context) {
 // @Failure 400 {object} serializer.Response
 // @Security BearerAuth
 // @Router /headscale/config/preview [post]
-// Preview returns the YAML preview of the configuration without saving
 func (c *HeadscaleConfigController) Preview(ctx *gin.Context) {
 	var config services.HeadscaleConfigFile
 	if err := ctx.ShouldBindJSON(&config); err != nil {

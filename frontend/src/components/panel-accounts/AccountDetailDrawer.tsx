@@ -361,7 +361,7 @@ export default function AccountDetailDrawer({ accountId, open, onClose, onRefres
       onClose={onClose}
       title={detail ? `${pa.detail.title} - ${detail.username}` : pa.detail.title}
       width={640}
-      destroyOnClose
+      destroyOnHidden
       footer={
         detail ? (
           <div className="flex justify-between">

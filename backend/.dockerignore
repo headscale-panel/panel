@@ -22,8 +22,7 @@ headscale-panel
 testdata
 
 # Database
-*.db
-data.db
+data/
 
 # Logs
 *.log

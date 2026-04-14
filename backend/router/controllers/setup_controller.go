@@ -14,8 +14,6 @@ import (
 	"headscale-panel/pkg/utils/serializer"
 	"headscale-panel/router/services"
 	"net"
-	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -96,14 +94,7 @@ func (s *SetupController) Preflight(ctx *gin.Context) {
 		}
 	}
 
-	existingFiles := detectSetupConfigFiles()
-	checks := []gin.H{
-		{
-			"name":   "config_files",
-			"passed": true,
-			"detail": fmt.Sprintf("detected %d existing setup files", len(existingFiles)),
-		},
-	}
+	checks := []gin.H{}
 
 	if !req.SkipNetworkChecks {
 		grpcAddr := normalizeGRPCAddress(req.HeadscaleGRPCAddr)
@@ -118,8 +109,6 @@ func (s *SetupController) Preflight(ctx *gin.Context) {
 
 	serializer.Success(ctx, gin.H{
 		"checks":               checks,
-		"existing_files":       existingFiles,
-		"has_existing_config":  len(existingFiles) > 0,
 		"bootstrap_configured": isSetupBootstrapConfigured(),
 	})
 }
@@ -417,77 +406,15 @@ func applyHeadscaleConnectionConfig(grpcAddr, apiKey string, insecureMode bool) 
 		conf.Conf.Headscale = old
 		return serializer.NewError(serializer.CodeDBError, "failed to persist Headscale connection settings to DB", err)
 	}
-	// Also persist to .env (best effort)
-	_ = writeHeadscaleConnectionEnv(grpcAddr, apiKey, insecureMode)
 
 	headscale.Close()
 	if err := headscale.Init(); err != nil {
 		conf.Conf.Headscale = old
-		_ = writeHeadscaleConnectionEnv(old.GRPCAddr, old.APIKey, old.Insecure)
 		_ = headscale.Init()
 		return serializer.NewError(serializer.CodeThirdPartyServiceError, "failed to reinitialize headscale client", err)
 	}
 
 	return nil
-}
-
-func writeHeadscaleConnectionEnv(grpcAddr, apiKey string, insecureMode bool) error {
-	_ = apiKey
-	path := filepath.Clean(".env")
-
-	lines := []string{}
-	data, err := os.ReadFile(path)
-	if err == nil {
-		normalized := strings.ReplaceAll(string(data), "\r\n", "\n")
-		lines = strings.Split(normalized, "\n")
-	} else if !os.IsNotExist(err) {
-		return err
-	}
-
-	setLine := func(key, value string) {
-		target := key + "="
-		for i, line := range lines {
-			trimmed := strings.TrimSpace(line)
-			if strings.HasPrefix(trimmed, "export ") {
-				trimmed = strings.TrimSpace(strings.TrimPrefix(trimmed, "export "))
-			}
-			if strings.HasPrefix(trimmed, target) {
-				lines[i] = target + value
-				return
-			}
-		}
-		lines = append(lines, target+value)
-	}
-	deleteLine := func(key string) {
-		target := key + "="
-		filtered := lines[:0]
-		for _, line := range lines {
-			trimmed := strings.TrimSpace(line)
-			if strings.HasPrefix(trimmed, "export ") {
-				trimmed = strings.TrimSpace(strings.TrimPrefix(trimmed, "export "))
-			}
-			if strings.HasPrefix(trimmed, target) {
-				continue
-			}
-			filtered = append(filtered, line)
-		}
-		lines = filtered
-	}
-
-	setLine("HEADSCALE_GRPC_ADDR", grpcAddr)
-	deleteLine("HEADSCALE_API_KEY")
-	if insecureMode {
-		setLine("HEADSCALE_INSECURE", "true")
-	} else {
-		setLine("HEADSCALE_INSECURE", "false")
-	}
-
-	content := strings.Join(lines, "\n")
-	if !strings.HasSuffix(content, "\n") {
-		content += "\n"
-	}
-
-	return os.WriteFile(path, []byte(content), 0600)
 }
 
 func generateSecurePassword(length int) (string, error) {
@@ -623,36 +550,4 @@ func checkHeadscaleAPIAccess(ctx context.Context, addr, apiKey string, allowInse
 		return false, fmt.Sprintf("headscale api request failed: %v", err)
 	}
 	return true, "headscale api reachable"
-}
-
-func detectSetupConfigFiles() []string {
-	paths := []string{
-		"./.env",
-		"./config.yaml",
-		"./headscale/config/config.yaml",
-		"./headscale/config/derp.yaml",
-	}
-
-	found := make([]string, 0, len(paths))
-	for _, p := range paths {
-		clean := filepath.Clean(p)
-		info, err := os.Stat(clean)
-		if err != nil || info.IsDir() {
-			continue
-		}
-		found = append(found, clean)
-	}
-	return found
-}
-
-func normalizeSSLCertMode(mode string, deployCertbot bool) string {
-	normalized := strings.ToLower(strings.TrimSpace(mode))
-	switch normalized {
-	case "certbot", "manual", "none":
-		return normalized
-	}
-	if deployCertbot {
-		return "certbot"
-	}
-	return "manual"
 }

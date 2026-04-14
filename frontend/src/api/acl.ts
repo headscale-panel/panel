@@ -22,6 +22,8 @@ import type {
   ListPoliciesRes,
   ApplyReq,
   ApplyRes,
+  CheckACLAccessReq,
+  CheckACLAccessRes,
 } from './acl.types';
 
 export const aclApi = {
@@ -74,4 +76,7 @@ export const aclApi = {
     request.post<any, ApplyRes>('/headscale/acl/apply', {
       id: req.id,
     }),
+
+  checkAccess: (_req?: CheckACLAccessReq) =>
+    request.get<any, CheckACLAccessRes>('/headscale/acl/access'),
 };
