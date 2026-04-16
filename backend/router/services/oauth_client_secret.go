@@ -1,7 +1,6 @@
 package services
 
 import (
-	"crypto/subtle"
 	"errors"
 	"fmt"
 	"headscale-panel/model"
@@ -76,11 +75,8 @@ func verifyOAuthClientSecret(client *model.OauthClient, providedSecret string) (
 
 	hashedSecret := strings.TrimSpace(client.ClientSecretHash)
 	if hashedSecret == "" {
-		legacySecret := strings.TrimSpace(client.ClientSecret)
-		if legacySecret == "" {
-			return false, nil
-		}
-		return subtle.ConstantTimeCompare([]byte(legacySecret), []byte(providedSecret)) == 1, nil
+		// No hash available and migration did not produce one — reject
+		return false, nil
 	}
 
 	if err := bcrypt.CompareHashAndPassword([]byte(hashedSecret), []byte(providedSecret)); err != nil {

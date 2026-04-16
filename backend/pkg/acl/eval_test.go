@@ -18,9 +18,11 @@ func TestMatchUserToMember(t *testing.T) {
 		{"case insensitive", "Alice", "alice@", true},
 		{"prefix dash", "alice", "alice-local@", true},
 		{"prefix underscore", "alice", "alice_work@", true},
-		{"substring match long user", "alice", "xalicex@", true},
-		{"reverse substring", "gggxbbb", "gggxbbb@foxmail.com", true},
+		{"no substring match", "alice", "xalicex@", false},
+		{"email exact match", "gggxbbb", "gggxbbb@foxmail.com", true},
 		{"no match", "bob", "alice@", false},
+		{"bob should not match bobby", "bob", "bobby@", false},
+		{"admin should not match admintest", "admin", "admintest@", false},
 		{"short user no substring", "ab", "xabx@", false},
 		{"short member no reverse", "alice", "ab@", false},
 	}

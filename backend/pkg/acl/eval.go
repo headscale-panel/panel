@@ -18,15 +18,8 @@ func MatchUserToMember(userName string, member string) bool {
 		return true
 	}
 
+	// Match naming variants with explicit separators (e.g. "alice-local", "alice_work")
 	if strings.HasPrefix(memberBaseLower, userNameLower+"-") || strings.HasPrefix(memberBaseLower, userNameLower+"_") {
-		return true
-	}
-
-	if strings.Contains(memberBaseLower, userNameLower) && len(userNameLower) >= 3 {
-		return true
-	}
-
-	if strings.Contains(userNameLower, memberBaseLower) && len(memberBaseLower) >= 3 {
 		return true
 	}
 

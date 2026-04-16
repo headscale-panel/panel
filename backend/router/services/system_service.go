@@ -209,7 +209,7 @@ func (s *systemService) UpdateUser(actorUserID uint, id uint, email string, grou
 	}
 
 	// Only admins can change group assignments; prevent privilege escalation
-	if groupID != 0 && groupID != user.GroupID {
+	if groupID != user.GroupID {
 		if err := RequireAdmin(actorUserID); err != nil {
 			return serializer.NewError(serializer.CodeNoPermissionErr, "only admins can change user group", nil)
 		}

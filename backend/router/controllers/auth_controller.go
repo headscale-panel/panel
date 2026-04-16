@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"headscale-panel/pkg/conf"
+	"net/http"
 	"net/url"
 	"strings"
 	"sync"
@@ -261,6 +262,11 @@ func (a *AuthController) OIDCCallback(c *gin.Context) {
 		failOIDCAuth(c)
 		return
 	}
+
+	// Set HttpOnly cookie for OIDC authorize flow
+	secure := strings.HasPrefix(conf.Conf.System.BaseURL, "https")
+	c.SetSameSite(http.SameSiteLaxMode)
+	c.SetCookie("headscale_panel_token", token, int(conf.Conf.JWT.Expire*3600), "/", "", secure, true)
 
 	serializer.Success(c, gin.H{
 		"token": token,

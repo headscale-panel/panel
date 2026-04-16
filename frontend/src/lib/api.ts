@@ -212,8 +212,13 @@ class WebSocketManager {
     if (!token) return;
 
     try {
-      this.ws = new WebSocket(`${this.url}?token=${token}`);
-      this.ws.onopen = () => { this.reconnectAttempts = 0; this.emit('connected', {}); };
+      this.ws = new WebSocket(this.url);
+      this.ws.onopen = () => {
+        // Send auth token as the first message instead of in the URL
+        this.ws?.send(JSON.stringify({ type: 'auth', data: { token } }));
+        this.reconnectAttempts = 0;
+        this.emit('connected', {});
+      };
       this.ws.onmessage = (event) => {
         try {
           const { type, data } = JSON.parse(event.data);

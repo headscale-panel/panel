@@ -235,29 +235,67 @@ func (h *Hub) Stop() {
 func HandleWebSocket(c *gin.Context) {
 	ensureWebSocketHub()
 
-	token := extractWebSocketToken(c)
-	if token == "" {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Missing token"})
-		return
-	}
-
-	claims, err := paneljwt.ParseToken(token)
-	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
-		return
-	}
-	user, err := ValidateSessionUser(claims.UserID)
-	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
-		return
-	}
-	userID := fmt.Sprintf("%d", user.ID)
-
 	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
 		log.Printf("Failed to upgrade WebSocket connection: %v", err)
 		return
 	}
+
+	// Require the first message to be an auth message within 10 seconds.
+	conn.SetReadDeadline(time.Now().Add(10 * time.Second))
+	_, message, err := conn.ReadMessage()
+	if err != nil {
+		conn.WriteMessage(websocket.CloseMessage,
+			websocket.FormatCloseMessage(4001, "auth timeout"))
+		conn.Close()
+		return
+	}
+
+	var authMsg WSMessage
+	if err := json.Unmarshal(message, &authMsg); err != nil || authMsg.Type != "auth" {
+		conn.WriteMessage(websocket.CloseMessage,
+			websocket.FormatCloseMessage(4001, "first message must be auth"))
+		conn.Close()
+		return
+	}
+
+	dataMap, ok := authMsg.Data.(map[string]interface{})
+	if !ok {
+		conn.WriteMessage(websocket.CloseMessage,
+			websocket.FormatCloseMessage(4001, "invalid auth data"))
+		conn.Close()
+		return
+	}
+	token, _ := dataMap["token"].(string)
+	if token == "" {
+		// Backward compat: also accept token from query param during migration period
+		token = extractWebSocketToken(c)
+	}
+	if token == "" {
+		conn.WriteMessage(websocket.CloseMessage,
+			websocket.FormatCloseMessage(4001, "missing token"))
+		conn.Close()
+		return
+	}
+
+	claims, err := paneljwt.ParseToken(token)
+	if err != nil {
+		conn.WriteMessage(websocket.CloseMessage,
+			websocket.FormatCloseMessage(4001, "invalid token"))
+		conn.Close()
+		return
+	}
+	user, err := ValidateSessionUser(claims.UserID)
+	if err != nil {
+		conn.WriteMessage(websocket.CloseMessage,
+			websocket.FormatCloseMessage(4001, "invalid token"))
+		conn.Close()
+		return
+	}
+	userID := fmt.Sprintf("%d", user.ID)
+
+	// Auth succeeded — reset deadline and register client
+	conn.SetReadDeadline(time.Time{})
 
 	client := &Client{
 		ID:     generateClientID(),

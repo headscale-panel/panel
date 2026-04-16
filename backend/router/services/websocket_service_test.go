@@ -81,14 +81,18 @@ func TestIsOriginAllowed(t *testing.T) {
 func TestHandleWebSocketRejectsUnauthorized(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
+	// With the new message-based auth, the handler first attempts to upgrade
+	// the connection. A non-WebSocket request will fail at the upgrade step
+	// with a 400 Bad Request, which is the expected behavior.
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
 	c.Request = httptest.NewRequest(http.MethodGet, "/ws", nil)
 
 	HandleWebSocket(c)
 
-	if w.Code != http.StatusUnauthorized {
-		t.Fatalf("expected status %d, got %d", http.StatusUnauthorized, w.Code)
+	// Upgrade fails for non-WebSocket requests → 400
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected status %d, got %d", http.StatusBadRequest, w.Code)
 	}
 }
 
@@ -101,14 +105,16 @@ func TestHandleWebSocketRejectsInvalidToken(t *testing.T) {
 		conf.Conf.JWT.Secret = originalSecret
 	})
 
+	// With message-based auth, a non-WebSocket request will fail at upgrade.
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
 	c.Request = httptest.NewRequest(http.MethodGet, "/ws?token=invalid-token", nil)
 
 	HandleWebSocket(c)
 
-	if w.Code != http.StatusUnauthorized {
-		t.Fatalf("expected status %d, got %d", http.StatusUnauthorized, w.Code)
+	// Upgrade fails for non-WebSocket requests → 400
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected status %d, got %d", http.StatusBadRequest, w.Code)
 	}
 }
 

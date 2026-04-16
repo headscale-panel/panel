@@ -214,11 +214,13 @@ func buildAllowedOrigins() []string {
 		}
 	}
 
-	// Common local development origins
-	origins["http://localhost:5173"] = struct{}{}
-	origins["http://localhost:3000"] = struct{}{}
-	origins["http://127.0.0.1:5173"] = struct{}{}
-	origins["http://127.0.0.1:3000"] = struct{}{}
+	// Only allow localhost origins in development mode
+	if gin.Mode() != gin.ReleaseMode {
+		origins["http://localhost:5173"] = struct{}{}
+		origins["http://localhost:3000"] = struct{}{}
+		origins["http://127.0.0.1:5173"] = struct{}{}
+		origins["http://127.0.0.1:3000"] = struct{}{}
+	}
 
 	result := make([]string, 0, len(origins))
 	for origin := range origins {

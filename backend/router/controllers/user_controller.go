@@ -2,8 +2,10 @@ package controllers
 
 import (
 	"headscale-panel/model"
+	"headscale-panel/pkg/conf"
 	"headscale-panel/pkg/utils/serializer"
 	"headscale-panel/router/services"
+	"net/http"
 
 	"github.com/gin-gonic/gin"
 )
@@ -81,6 +83,13 @@ func (u *UserController) Login(c *gin.Context) {
 
 	// Get user permissions
 	permissions, _ := services.UserService.GetUserPermissions(user.ID)
+
+	// Set HttpOnly cookie for OIDC authorize flow
+	secure := conf.Conf.System.BaseURL != "" &&
+		len(conf.Conf.System.BaseURL) > 5 &&
+		conf.Conf.System.BaseURL[:5] == "https"
+	c.SetSameSite(http.SameSiteLaxMode)
+	c.SetCookie("headscale_panel_token", token, int(conf.Conf.JWT.Expire*3600), "/", "", secure, true)
 
 	serializer.Success(c, gin.H{
 		"token":       token,

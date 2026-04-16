@@ -7,14 +7,19 @@ import (
 	"headscale-panel/model"
 	"headscale-panel/pkg/constants"
 	"headscale-panel/pkg/utils/serializer"
+	"net"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
 
 	"gorm.io/gorm"
 )
+
+// dnsNameRegexp validates DNS record names (RFC 1123 hostname with optional trailing dot).
+var dnsNameRegexp = regexp.MustCompile(`^([a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,63}\.?$`)
 
 type dnsService struct {
 	lastSyncMtime time.Time
@@ -51,8 +56,33 @@ type ExtraRecord struct {
 	Value string `json:"value"`
 }
 
+// validateDNSRecord checks that name is a valid domain and value is a valid IP for the given type.
+func validateDNSRecord(name, recordType, value string) error {
+	if !dnsNameRegexp.MatchString(strings.TrimSpace(name)) {
+		return serializer.NewError(serializer.CodeParamErr, "invalid DNS record name: must be a valid domain name", nil)
+	}
+	ip := net.ParseIP(strings.TrimSpace(value))
+	if ip == nil {
+		return serializer.NewError(serializer.CodeParamErr, "invalid DNS record value: must be a valid IP address", nil)
+	}
+	switch strings.ToUpper(strings.TrimSpace(recordType)) {
+	case "A":
+		if ip.To4() == nil {
+			return serializer.NewError(serializer.CodeParamErr, "A record value must be an IPv4 address", nil)
+		}
+	case "AAAA":
+		if ip.To4() != nil {
+			return serializer.NewError(serializer.CodeParamErr, "AAAA record value must be an IPv6 address", nil)
+		}
+	}
+	return nil
+}
+
 func (s *dnsService) Create(actorUserID uint, req *CreateDNSRecordRequest) (*model.DNSRecord, error) {
 	if err := RequirePermission(actorUserID, "dns:record:create"); err != nil {
+		return nil, err
+	}
+	if err := validateDNSRecord(req.Name, req.Type, req.Value); err != nil {
 		return nil, err
 	}
 	record := model.DNSRecord{Name: req.Name, Type: req.Type, Value: req.Value, Comment: req.Comment}

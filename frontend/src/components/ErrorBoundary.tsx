@@ -40,7 +40,7 @@ class ErrorBoundary extends Component<Props, State> {
               </Button>
             }
           >
-            {this.state.error?.stack && (
+            {import.meta.env.DEV && this.state.error?.stack && (
               <Paragraph>
                 <Text code className="whitespace-pre-wrap text-12px">
                   {this.state.error.stack}
