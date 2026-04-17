@@ -1,6 +1,11 @@
 # Headscale Panel
 
 <p align="center">
+    <a href="README-zh.md">中文</a> |
+    <a href="README.md">English</a>
+</p>
+
+<p align="center">
     <a href="LICENSE">
         <img src="https://img.shields.io/badge/License-AGPL%20v3-blue.svg">
     </a>
@@ -12,104 +17,174 @@
     </a>
 </p>
 
-一个现代化的 Headscale 管理面板，提供类似 UniFi 风格的用户界面，支持设备管理、用户管理、ACL 可视化、路由管理、DNS 管理、在线时长统计等功能。
+A modern Headscale management panel with a UniFi-inspired UI. Supports device management, user management, ACL visualization, route management, DNS management, uptime statistics, and more.
 
-## ✨ 核心功能
+## ✨ Features
 
-### 🎨 现代化 UI
-- **UniFi 风格设计**：浅色主题，蓝色主色调，科技感十足
-- **响应式布局**：支持桌面端和移动端
-- **流畅动画**：平滑过渡和微交互效果
-- **网络拓扑可视化**：实时展示设备连接关系及 ACL 访问矩阵
-- **实时推送**：WebSocket 驱动的状态实时更新
+### 🎨 Modern UI
+- **UniFi-inspired design**: Light theme with a blue accent color palette
+- **Responsive layout**: Works on both desktop and mobile
+- **Smooth animations**: Polished transitions and micro-interactions
+- **Network topology visualization**: Real-time device connection graph and ACL access matrix
+- **Real-time updates**: WebSocket-powered live state refresh
 
-### 📊 监控统计
-- **在线时长统计**：基于 InfluxDB 的精确时长记录
-- **设备状态监控**：实时显示设备在线/离线状态及历史曲线
-- **流量统计**：设备流量趋势分析
-- **数据可视化**：Recharts 图表展示
+### 📊 Monitoring & Statistics
+- **Uptime tracking**: Accurate session duration recording backed by InfluxDB
+- **Device status monitoring**: Real-time online/offline indicators with historical charts
+- **Traffic statistics**: Device traffic trend analysis
+- **Data visualization**: Interactive charts powered by Recharts
 
-### 🛠️ 设备管理
-- **设备列表**：查看所有已注册的设备
-- **设备操作**：重命名、删除、过期、添加/修改标签
-- **节点注册**：手动注册新节点到指定用户
-- **筛选搜索**：按用户、状态、标签筛选
-- **预授权密钥**：创建、查看、过期 PreAuthKey
+### 🛠️ Device Management
+- **Device list**: Browse all registered devices
+- **Device actions**: Rename, delete, expire, add/edit tags
+- **Node registration**: Manually register new nodes to a specific user
+- **Filtering & search**: Filter by user, status, or tag
+- **Pre-auth keys**: Create, view, and expire PreAuthKeys
 
-### 👥 用户管理
-- **Headscale 用户**：创建、重命名、删除 Headscale 网络用户
-- **面板账户**：独立的面板登录账户管理，支持启用/禁用
-- **网络身份绑定**：将面板账户与 Headscale 用户绑定，支持多身份
-- **用户组与权限**：基于 RBAC 的用户组管理和细粒度权限分配
-- **2FA 支持**：TOTP 两步验证
+### 👥 User Management
+- **Headscale users**: Create, rename, and delete Headscale network users
+- **Panel accounts**: Standalone panel login accounts with enable/disable support
+- **Identity binding**: Bind panel accounts to Headscale users (multiple identities supported)
+- **Groups & permissions**: RBAC-based group management with fine-grained permission assignment
+- **2FA support**: TOTP two-factor authentication
 
-### 🔒 ACL 管理
-- **可视化编辑**：图形化 ACL 规则编辑器，支持增删改
-- **原始编辑**：直接编辑 HuJSON 原始策略内容
-- **AI 辅助生成**：通过自然语言描述自动生成 ACL 规则
-- **版本历史**：保留历史策略版本，支持回溯
-- **访问检查**：验证特定源/目的之间的访问权限
-- **一键应用**：将策略直接推送到 Headscale
+### 🔒 ACL Management
+- **Visual editor**: Graphical ACL rule editor with add/edit/delete support
+- **Raw editor**: Direct HuJSON policy editing
+- **AI-assisted generation**: Auto-generate ACL rules from natural language descriptions
+- **Version history**: Keeps historical policy versions for rollback
+- **Access check**: Verify access permissions between a given source and destination
+- **One-click apply**: Push the policy directly to Headscale
 
-### 🛣️ 路由管理
-- **路由列表**：查看所有设备发布的子网路由
-- **启用/禁用**：逐条控制路由的激活状态
+### 🛣️ Route Management
+- **Route list**: View all subnet routes advertised by devices
+- **Enable/Disable**: Toggle individual route activation state
 
-### 🌐 DNS 管理
-- **自定义记录**：管理 Headscale extra-records（A / AAAA 记录）
+### 🌐 DNS Management
+- **Custom records**: Manage Headscale extra-records (A / AAAA records)
 
-### 🔗 快速连接
-- **命令生成**：自动生成连接命令
-- **SSH 命令生成**：生成 tailscale SSH 连接命令
-- **一键复制**：快速复制到剪贴板
-- **PreAuthKey**：生成预授权密钥
+### 🔗 Quick Connect
+- **Command generation**: Auto-generate connection commands
+- **SSH command generation**: Generate Tailscale SSH connection commands
+- **One-click copy**: Copy to clipboard instantly
+- **PreAuthKey**: Generate pre-authorization keys
 
-### 📦 资源中心
-- **资源管理**：以 IP + 端口形式定义内部资源（ACL 主机别名）
-- **资源同步**：将资源自动同步为 ACL Hosts 条目
-- **权限控制**：基于用户组的资源访问控制
+### 📦 Resource Center
+- **Resource management**: Define internal resources by IP + port (ACL host aliases)
+- **Resource sync**: Automatically sync resources as ACL Hosts entries
+- **Access control**: Group-based resource access control
 
-### ⚙️ 系统设置
-- **连接配置**：管理 Headscale gRPC 连接地址和 API Key
-- **数据同步**：从 Headscale 手动同步数据
+### ⚙️ System Settings
+- **Connection config**: Manage the Headscale gRPC address and API key
+- **Data sync**: Manually sync data from Headscale
 
 ### 🆔 OIDC Provider
-- **内置 OIDC**：完整实现 OpenID Connect 服务，可作为 Headscale 的认证提供者
-- **外部 OIDC 登录**：支持通过外部 OIDC 提供者登录面板
-- **OAuth2 客户端**：管理第三方应用接入，支持密钥轮换
-- **统一认证**：一套账号管理所有服务
+- **Built-in OIDC**: Full OpenID Connect implementation — use this panel as Headscale's authentication provider
+- **External OIDC login**: Log in to the panel via an external OIDC provider
+- **OAuth2 clients**: Manage third-party application access with key rotation support
+- **Unified authentication**: One account for all services
 
 ---
 
-## 🚀 快速开始
+## 🚀 Quick Start
 
-### 使用 Docker（推荐）
+### Using Docker (Recommended)
 
-以下方式适用于镜像/部署场景；如果是本地开发，请参考下方[本地开发](#本地开发)章节。
+The steps below are for deploying a production instance. For local development, see the [Development](#development) section below.
+
+**Pull the image:**
 
 ```bash
-# 构建镜像
-docker build -t headscale-panel .
-
-# 运行容器
-docker run -d \
-  --name headscale-panel \
-  -p 8080:8080 \
-  -v $(pwd)/data:/app/data \
-  -e SYSTEM_BASE_URL=https://vpn.example.com \
-  headscale-panel
+docker pull ghcr.io/headscale-panel/panel:latest
 ```
 
-首次启动后访问 `http://localhost:8080`，进入初始化向导配置 gRPC 连接和管理员账户。
+**Using Docker Compose (Recommended):**
 
-面板通过 gRPC 连接 Headscale，需提前准备好 Headscale 并生成 API Key。以下为 Headscale 推荐最小配置（`/etc/headscale/config.yaml`）：
+Save the following as `docker-compose.yml`. Update the items marked with `# ← change`, then prepare the Headscale config file (see below).
 
 ```yaml
-server_url: https://vpn.example.com
+networks:
+  private:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.200.0/24
+
+services:
+  headscale:
+    image: headscale/headscale:stable
+    container_name: headscale
+    networks:
+      - private
+    volumes:
+      - ./headscale/config:/etc/headscale        # Headscale config directory
+      - ./headscale/data:/var/lib/headscale       # Headscale persistent data
+      - /usr/share/zoneinfo/Asia/Shanghai:/etc/localtime:ro
+    ports:
+      - "28080:8080"    # Tailscale client ingress port (must be publicly accessible)
+      - "28081:50443"   # gRPC port (internal panel access only; no need to expose externally)
+    command: serve
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "headscale", "health"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  panel:
+    image: ghcr.io/headscale-panel/panel:latest
+    container_name: headscale-panel
+    restart: unless-stopped
+    networks:
+      - private
+    ports:
+      - "27070:8080"    # Panel web interface (pair with a reverse proxy; avoid direct public exposure)
+    volumes:
+      - ./panel/data:/app/data    # Panel SQLite database and OIDC signing key
+    environment:
+      - GIN_MODE=release
+      - TZ=Asia/Shanghai
+      - SYSTEM_PORT=:8080
+      - SYSTEM_BASE_URL=https://vpn.example.com  # ← change to your public URL
+      - JWT_SECRET=                               # ← change to a random string ≥32 characters
+      - JWT_EXPIRE=24
+      # Bootstrap token for the setup wizard (≥32 chars). Only this token will allow
+      # access to /setup. It is recommended to remove this variable after setup is complete.
+      # - SYSTEM_SETUP_BOOTSTRAP_TOKEN=           # ← optional, recommended
+    depends_on:
+      headscale:
+        condition: service_healthy
+```
+
+**Start the services:**
+
+```bash
+# Create the directory structure
+mkdir -p headscale/config headscale/data panel/data
+
+# Write the Headscale config to ./headscale/config/config.yaml (see below)
+
+# Start
+docker compose up -d
+
+# Generate a Headscale API key (run after first startup)
+docker exec headscale headscale apikeys create
+```
+
+On first access (`http://localhost:27070` or your reverse-proxy address), the setup wizard will open. In the **Connection** step, fill in:
+
+- **gRPC address**: `headscale:50443` (panel and Headscale share the same Docker network — use the service name)
+- **API Key**: the key generated by the command above
+- **Allow insecure connection**: check this if Headscale has no TLS certificate (internal gRPC without TLS, matching `grpc_allow_insecure: true` in the config below)
+
+The panel connects to Headscale over gRPC. Below is the recommended minimal Headscale config (`./headscale/config/config.yaml`):
+
+```yaml
+server_url: https://vpn.example.com   # ← change to your public URL
 listen_addr: 0.0.0.0:8080
 metrics_listen_addr: 0.0.0.0:9090
 grpc_listen_addr: 0.0.0.0:50443
-grpc_allow_insecure: true
+grpc_allow_insecure: true             # Internal gRPC; panel accesses via Docker network
 private_key_path: /var/lib/headscale/private.key
 noise:
     private_key_path: /var/lib/headscale/noise_private.key
@@ -136,46 +211,47 @@ policy:
     mode: database
 ```
 
-> 更多配置项请参考：https://headscale.net/stable/ref/configuration/
+> For additional configuration options, see: https://headscale.net/stable/ref/configuration/
 
-### 环境变量
+### Environment Variables
 
-| 变量名                         | 说明                                     | 默认值                  |
-| ------------------------------ | ---------------------------------------- | ----------------------- |
-| `SYSTEM_PORT`                  | 面板监听端口                             | `:8080`                 |
-| `SYSTEM_BASE_URL`              | 面板外部访问地址（用于 OIDC 回调等）     | `http://localhost:8080` |
-| `SYSTEM_SETUP_BOOTSTRAP_TOKEN` | 初始化引导令牌（≥32 字符，留空则不启用） | —                       |
-| `JWT_SECRET`                   | JWT 签名密钥（≥32 字符，留空自动生成）   | 自动生成                |
-| `JWT_EXPIRE`                   | JWT 过期时间（小时）                     | `24`                    |
-| `INFLUXDB_URL`                 | InfluxDB 地址（留空则禁用指标统计）      | —                       |
-| `INFLUXDB_TOKEN`               | InfluxDB 认证 Token                      | —                       |
-| `INFLUXDB_ORG`                 | InfluxDB 组织名                          | `headscale-panel`       |
-| `INFLUXDB_BUCKET`              | InfluxDB Bucket 名                       | `metrics`               |
+| Variable                       | Description                                              | Default                 |
+| ------------------------------ | -------------------------------------------------------- | ----------------------- |
+| `SYSTEM_PORT`                  | Panel listen port                                        | `:8080`                 |
+| `SYSTEM_BASE_URL`              | External panel URL (used for OIDC callbacks, etc.)       | `http://localhost:8080` |
+| `SYSTEM_SETUP_BOOTSTRAP_TOKEN` | Setup wizard bootstrap token (≥32 chars; disabled if empty) | —                    |
+| `JWT_SECRET`                   | JWT signing secret (≥32 chars; auto-generated if empty)  | auto-generated          |
+| `JWT_EXPIRE`                   | JWT expiration time (hours)                              | `24`                    |
+| `DB_PATH`                      | SQLite database file path                                | `data/data.db`          |
+| `INFLUXDB_URL`                 | InfluxDB address (metrics disabled if empty)             | —                       |
+| `INFLUXDB_TOKEN`               | InfluxDB authentication token                            | —                       |
+| `INFLUXDB_ORG`                 | InfluxDB organization name                               | `headscale-panel`       |
+| `INFLUXDB_BUCKET`              | InfluxDB bucket name                                     | `metrics`               |
 
 ---
 
-## 🏗️ 架构说明
+## 🏗️ Architecture
 
 ```mermaid
 flowchart TB
-    A["浏览器/客户端"] <-->|HTTPS| B["反向代理 (Nginx)"]
+    A["Browser / Client"] <-->|HTTPS| B["Reverse Proxy (Nginx)"]
 
-    B --> C["Panel :8080 UI+API"]
+    B --> C["Panel :8080  UI + API"]
     B --> D["Headscale HTTP :8080"]
     B --> E["Headscale gRPC :50443"]
 
-    C -->|gRPC 内网| E
+    C -->|gRPC internal| E
 ```
 
-- **Headscale Panel**（本项目）：管理面板，提供 Web UI 和 REST API，通过 gRPC 连接 Headscale
-- **Headscale**：VPN 控制平面，Tailscale 客户端直接连接此服务
-- 面板和 Headscale 之间通过 gRPC 通信，通常部署在同一台服务器或内网
+- **Headscale Panel** (this project): Management panel providing a Web UI and REST API; communicates with Headscale over gRPC.
+- **Headscale**: VPN control plane; Tailscale clients connect directly to this service.
+- The panel and Headscale communicate via gRPC and are typically deployed on the same host or within the same internal network.
 
 ---
 
-## 🌐 反向代理配置
+## 🌐 Reverse Proxy Configuration
 
-推荐将面板挂载在 `/panel/` 路径下，与 Headscale 共用同一域名。以下为 Nginx 示例（Panel 监听 `:8090`，`SYSTEM_BASE_URL=https://vpn.example.com/panel`）：
+It is recommended to mount the panel under a `/panel/` path and share the same domain as Headscale. The Nginx example below has the panel listening on `:8090` and `SYSTEM_BASE_URL=https://vpn.example.com/panel`:
 
 ```nginx
 server {
@@ -185,7 +261,7 @@ server {
     ssl_certificate     /etc/letsencrypt/live/vpn.example.com/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/vpn.example.com/privkey.pem;
 
-    # 管理面板 UI + API
+    # Panel UI + API
     location /panel/ {
         proxy_pass http://127.0.0.1:8090/;
         proxy_set_header Host $host;
@@ -197,85 +273,92 @@ server {
         proxy_set_header Connection "upgrade";
     }
 
-    # 其余流量交给 Headscale（Tailscale 客户端连接）
-    # Headscale 反向代理配置参考：https://headscale.net/stable/ref/integration/reverse-proxy
+    # All other traffic goes to Headscale (Tailscale client connections)
+    # Headscale reverse-proxy reference: https://headscale.net/stable/ref/integration/reverse-proxy
     location / {
-        # proxy_pass http://127.0.0.1:8080;  # Headscale HTTP 端口
+        proxy_pass http://127.0.0.1:8080;  # Headscale HTTP port
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
     }
 }
 ```
 
-> 面板内置 OIDC 时，还需确保 `/.well-known/openid-configuration` 和 `/api/v1/oidc/` 路径能到达面板（即额外添加对应 `location` 块，`proxy_pass` 同面板地址）。
+> When using the built-in OIDC provider, also ensure that `/.well-known/openid-configuration` and `/api/v1/oidc/` paths route to the panel (add corresponding `location` blocks with the same `proxy_pass` address).
 
 ---
 
-## 🔧 开发指南
+## 🔧 Development
 
-### 前置要求
+### Prerequisites
 
 - Docker + Docker Compose
 - Go 1.24+
 - Node.js 20+ / pnpm
 
-### 本地开发
+### Local Development
 
-推荐流程：
+Recommended workflow:
 
 ```bash
-# 1) 初始化 .env 及 Headscale 配置文件（不会覆盖已有文件）
+# 1) Initialize .env and Headscale config files (existing files are not overwritten)
 ./shell/dev/01-init.sh
 
-# 2) 启动外部依赖（Headscale 等）
+# 2) Start external dependencies (Headscale, etc.)
 ./shell/dev/02-start.sh
 
-# 3) 生成 Headscale API Key
+# 3) Generate a Headscale API Key
 docker exec panel-dev-headscale headscale apikeys create
 
-# 4) 启动本地后端
+# 4) Start the local backend
 cd backend && go run .
 
-# 5) 启动本地前端
+# 5) Start the local frontend
 cd frontend && pnpm install && pnpm dev
 ```
 
-> `01-init.sh` 会自动在 `backend/data/headscale/` 下创建 Headscale 配置文件（若不存在）。
+> `01-init.sh` automatically creates the Headscale config under `backend/data/headscale/` if it does not already exist.
 
-外部依赖脚本速查：
+Helper script reference:
 
 ```bash
-# 初始化 .env 文件（不会覆盖已有文件）
+# Initialize .env (does not overwrite existing files)
 ./shell/dev/01-init.sh
 
-# 启动外部依赖（默认只启动 Headscale）
+# Start external dependencies (Headscale only by default)
 ./shell/dev/02-start.sh
 
-# 启动外部依赖并启用 DERP
+# Start external dependencies with DERP enabled
 WITH_DERP=true ./shell/dev/02-start.sh
 
-# 重启外部依赖
+# Restart external dependencies
 ./shell/dev/03-restart.sh
 
-# 停止外部依赖
+# Stop external dependencies
 ./shell/dev/04-stop.sh
 
-# 清空依赖数据（慎用）
+# Reset all dependency data (destructive!)
 ./shell/dev/99-reset.sh
 ```
 
-默认访问地址与端口：
+Default addresses and ports:
 
 - Headscale HTTP: http://localhost:8080
 - Headscale gRPC: localhost:50443
-- DERP relay ports: 443/tcp, 3478/udp（仅 `WITH_DERP=true`）
+- DERP relay ports: 443/tcp, 3478/udp (only when `WITH_DERP=true`)
 
-外部依赖会启动以下服务：
+External dependencies include:
 
 - Headscale
-- DERP 中继服务（仅在 `WITH_DERP=true` 时启动）
+- DERP relay service (only when `WITH_DERP=true`)
 
-Headscale 连接（gRPC 地址和 API Key）通过 WebUI 初始化向导或「设置 → 连接配置」完成。
+The Headscale connection (gRPC address and API key) is configured via the Web UI setup wizard or **Settings → Connection Config**.
 
-### 构建 Docker 镜像
+### Building the Docker Image
 
 ```bash
 docker build -t headscale-panel .
