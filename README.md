@@ -59,7 +59,6 @@
 - **自定义记录**：管理 Headscale extra-records（A / AAAA 记录）
 
 ### 🔗 快速连接
-- **多平台支持**：Linux, macOS, Windows, iOS, Android
 - **命令生成**：自动生成连接命令
 - **SSH 命令生成**：生成 tailscale SSH 连接命令
 - **一键复制**：快速复制到剪贴板
@@ -286,4 +285,4 @@ docker build -t headscale-panel .
 
 ## 📄 License
 
-MIT
+GNU AGPLv3
