@@ -17,12 +17,28 @@
     </a>
 </p>
 
-A modern Headscale management panel with a UniFi-inspired UI. Supports device management, user management, ACL visualization, route management, DNS management, uptime statistics, and more.
+A modern Headscale management panel with a clean, network-operations-focused UI. Supports device management, user management, ACL visualization, route management, DNS management, uptime statistics, and more.
+
+## 📸 Screenshots
+
+### Dashboard
+
+![Dashboard](docs/assets/dashboard_image.png)
+
+### ACL
+
+![ACL Overview](docs/assets/acl_main_image.png)
+
+![ACL Rule Editor](docs/assets/acl_add_image.png)
+
+### DNS
+
+![DNS Management](docs/assets/dns_image.png)
 
 ## ✨ Features
 
 ### 🎨 Modern UI
-- **UniFi-inspired design**: Light theme with a blue accent color palette
+- **Clean dashboard design**: Light theme with a blue accent color palette
 - **Responsive layout**: Works on both desktop and mobile
 - **Smooth animations**: Polished transitions and micro-interactions
 - **Network topology visualization**: Real-time device connection graph and ACL access matrix
