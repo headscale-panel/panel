@@ -2,15 +2,11 @@ name: Build and Publish
 
 on:
   push:
-    branches:
-      - 'main'
     tags:
-      - '**'
-  workflow_dispatch:
+      - "v*.*.*"
 
 jobs:
   build-and-push:
-    if: github.event_name == 'workflow_dispatch' || github.ref_type == 'tag' || github.ref_name == github.event.repository.default_branch
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -34,19 +30,11 @@ jobs:
         id: meta
         env:
           REPO_OWNER: ${{ github.repository_owner }}
-          REF_TYPE: ${{ github.ref_type }}
           REF_NAME: ${{ github.ref_name }}
-          SHA: ${{ github.sha }}
         run: |
           OWNER_LOWER="$(printf '%s' "$REPO_OWNER" | tr '[:upper:]' '[:lower:]')"
           IMAGE="ghcr.io/${OWNER_LOWER}/panel"
-          SHORT_SHA="$(printf '%s' "$SHA" | cut -c1-8)"
-
-          if [ "$REF_TYPE" = "tag" ]; then
-            VERSION_TAG="dev-${REF_NAME}"
-          else
-            VERSION_TAG="dev-${SHORT_SHA}"
-          fi
+          VERSION_TAG="${REF_NAME#v}"
 
           {
             echo "image=${IMAGE}"
@@ -60,7 +48,7 @@ jobs:
           push: true
           pull: true
           build-args: |
-            ALPINE_MIRROR=${{ env.ALPINE_MIRROR }}
+            ALPINE_MIRROR=${{ vars.ALPINE_MIRROR }}
           tags: |
             ${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.version_tag }}
             ${{ steps.meta.outputs.image }}:latest
