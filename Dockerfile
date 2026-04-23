@@ -1,6 +1,6 @@
 ARG ALPINE_MIRROR=
 
-FROM node:20-alpine AS frontend-builder
+FROM node:24-alpine AS frontend-builder
 
 RUN corepack enable && corepack prepare pnpm@latest --activate
 
