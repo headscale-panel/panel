@@ -4,13 +4,10 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/subtle"
-	"crypto/tls"
 	"encoding/base64"
 	"fmt"
 	"headscale-panel/model"
 	"headscale-panel/pkg/conf"
-	"headscale-panel/pkg/headscale"
-	v1 "headscale-panel/pkg/proto/headscale/v1"
 	"headscale-panel/pkg/utils/serializer"
 	"headscale-panel/router/services"
 	"net"
@@ -18,10 +15,6 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials"
-	"google.golang.org/grpc/credentials/insecure"
-	"google.golang.org/grpc/metadata"
 )
 
 type SetupController struct{}
@@ -164,7 +157,7 @@ func (s *SetupController) ConnectivityCheck(ctx *gin.Context) {
 		if req.GRPCAllowInsecure != nil {
 			allowInsecure = *req.GRPCAllowInsecure
 		}
-		ok, detail = checkHeadscaleAPIAccess(ctx.Request.Context(), grpcAddr, req.APIKey, allowInsecure)
+		ok, detail = services.CheckHeadscaleConnectivityWithConfig(ctx.Request.Context(), grpcAddr, req.APIKey, allowInsecure)
 		results = append(results, gin.H{
 			"name":      "headscale_api",
 			"address":   grpcAddr,
@@ -220,7 +213,7 @@ func (s *SetupController) ConnectivityPoll(ctx *gin.Context) {
 
 	var lastDetail string
 	for i := 0; i < maxAttempts; i++ {
-		ok, detail := checkHeadscaleAPIAccess(ctx.Request.Context(), grpcAddr, req.APIKey, allowInsecure)
+		ok, detail := services.CheckHeadscaleConnectivityWithConfig(ctx.Request.Context(), grpcAddr, req.APIKey, allowInsecure)
 		lastDetail = detail
 		if ok {
 			serializer.Success(ctx, gin.H{
@@ -318,12 +311,12 @@ func (s *SetupController) Initialize(ctx *gin.Context) {
 	}
 	allowInsecure := !enableTLS
 
-	if ok, detail := checkHeadscaleAPIAccess(ctx.Request.Context(), grpcAddr, apiKey, allowInsecure); !ok {
+	if ok, detail := services.CheckHeadscaleConnectivityWithConfig(ctx.Request.Context(), grpcAddr, apiKey, allowInsecure); !ok {
 		serializer.Fail(ctx, serializer.NewError(serializer.CodeThirdPartyServiceError, detail, nil))
 		return
 	}
 
-	if err := applyHeadscaleConnectionConfig(grpcAddr, apiKey, allowInsecure); err != nil {
+	if err := services.SaveConnectionAndInitialize(ctx.Request.Context(), grpcAddr, apiKey, allowInsecure); err != nil {
 		serializer.Fail(ctx, err)
 		return
 	}
@@ -393,28 +386,6 @@ func (s *SetupController) Initialize(ctx *gin.Context) {
 	}
 
 	serializer.Success(ctx, resp)
-}
-
-func applyHeadscaleConnectionConfig(grpcAddr, apiKey string, insecureMode bool) error {
-	old := conf.Conf.Headscale
-
-	conf.Conf.Headscale.GRPCAddr = grpcAddr
-	conf.Conf.Headscale.APIKey = apiKey
-	conf.Conf.Headscale.Insecure = insecureMode
-
-	if err := services.PersistHeadscaleConnection(grpcAddr, apiKey, insecureMode); err != nil {
-		conf.Conf.Headscale = old
-		return serializer.NewError(serializer.CodeDBError, "failed to persist Headscale connection settings to DB", err)
-	}
-
-	headscale.Close()
-	if err := headscale.Init(); err != nil {
-		conf.Conf.Headscale = old
-		_ = headscale.Init()
-		return serializer.NewError(serializer.CodeThirdPartyServiceError, "failed to reinitialize headscale client", err)
-	}
-
-	return nil
 }
 
 func generateSecurePassword(length int) (string, error) {
@@ -510,38 +481,4 @@ func checkTCPConnect(ctx context.Context, addr string) (bool, string) {
 	}
 	_ = conn.Close()
 	return true, "reachable"
-}
-
-func checkHeadscaleAPIAccess(ctx context.Context, addr, apiKey string, allowInsecure bool) (bool, string) {
-	targetAddr := strings.TrimSpace(addr)
-	if targetAddr == "" {
-		return false, "headscale gRPC address is required"
-	}
-	token := strings.TrimSpace(apiKey)
-	if token == "" {
-		return false, "headscale api key is required"
-	}
-
-	var transport credentials.TransportCredentials
-	if allowInsecure {
-		transport = insecure.NewCredentials()
-	} else {
-		transport = credentials.NewTLS(&tls.Config{MinVersion: tls.VersionTLS12})
-	}
-
-	conn, err := grpc.NewClient(targetAddr, grpc.WithTransportCredentials(transport))
-	if err != nil {
-		return false, fmt.Sprintf("grpc client init failed: %v", err)
-	}
-	defer conn.Close()
-
-	client := v1.NewHeadscaleServiceClient(conn)
-	queryCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-	queryCtx = metadata.AppendToOutgoingContext(queryCtx, "authorization", "Bearer "+token)
-
-	if _, err := client.ListUsers(queryCtx, &v1.ListUsersRequest{}); err != nil {
-		return false, fmt.Sprintf("headscale api request failed: %v", err)
-	}
-	return true, "headscale api reachable"
 }

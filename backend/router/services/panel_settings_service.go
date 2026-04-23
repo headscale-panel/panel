@@ -1,6 +1,7 @@
 package services
 
 import (
+	"context"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
@@ -67,27 +68,8 @@ func (s *panelSettingsService) SaveConnectionSettings(actorUserID uint, grpcAddr
 		return serializer.NewError(serializer.CodeParamErr, "API Key 不能为空", nil)
 	}
 
-	// Backup old config
-	old := conf.Conf.Headscale
-
-	// Apply new config
-	conf.Conf.Headscale.GRPCAddr = grpcAddr
-	conf.Conf.Headscale.APIKey = effectiveAPIKey
-	conf.Conf.Headscale.Insecure = insecure
-
-	// Persist to DB
-	if err := PersistHeadscaleConnection(grpcAddr, effectiveAPIKey, insecure); err != nil {
-		conf.Conf.Headscale = old
-		return serializer.NewError(serializer.CodeDBError, "保存连接设置到数据库失败", err)
-	}
-
-	// Reinitialize headscale client
-	headscale.Close()
-	if err := headscale.Init(); err != nil {
-		// Rollback
-		conf.Conf.Headscale = old
-		_ = headscale.Init()
-		return serializer.NewError(serializer.CodeThirdPartyServiceError, "重新初始化 Headscale 客户端失败", err)
+	if err := SaveConnectionAndInitialize(context.Background(), grpcAddr, effectiveAPIKey, insecure); err != nil {
+		return err
 	}
 
 	return nil

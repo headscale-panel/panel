@@ -35,15 +35,11 @@ func NewServer() (*Server, error) {
 
 	// Restore headscale connection settings from DB (survives container restart)
 	if services.LoadHeadscaleConnectionFromDB() {
-		if err := headscale.Init(); err != nil {
-			logrus.WithError(err).Warn("Headscale client init failed; complete setup via WebUI")
+		if err := services.HeadscaleInitService.InitializeFromCurrentConfig(context.Background()); err != nil {
+			logrus.WithError(err).Warn("Headscale init flow failed; complete setup via WebUI")
 		}
 	} else {
 		logrus.Warn("No Headscale connection configured; complete setup via WebUI")
-	}
-
-	if err := services.ACLService.InitPolicy(); err != nil {
-		logrus.WithError(err).Warn("Failed to initialize ACL policy on startup")
 	}
 
 	if conf.Conf.InfluxDB.URL != "" {
