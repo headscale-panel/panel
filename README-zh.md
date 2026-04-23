@@ -116,7 +116,7 @@ docker pull ghcr.io/headscale-panel/panel:latest
 
 **使用 Docker Compose（推荐）：**
 
-将以下内容保存为 `docker-compose.yml`，按注释修改标有 `# ← 修改` 的项，然后准备 Headscale 配置文件（见下方）。
+将以下内容保存为 `docker-compose.yml`，按实际需求修改配置项，然后准备 Headscale 配置文件（见下方）。
 
 ```yaml
 networks:
@@ -133,12 +133,13 @@ services:
     networks:
       - private
     volumes:
-      - ./headscale/config:/etc/headscale        # Headscale 配置目录
+      - ./headscale/config:/etc/headscale         # Headscale 配置目录
       - ./headscale/data:/var/lib/headscale       # Headscale 持久化数据
       - /usr/share/zoneinfo/Asia/Shanghai:/etc/localtime:ro
     ports:
-      - "28080:8080"    # Tailscale 客户端接入端口（需对外暴露）
-      - "28081:50443"   # gRPC 端口（仅面板内网访问，可不对外暴露）
+      - "8080:8080"   # Tailscale 客户端接入端口（需对外暴露）
+    expose:
+      - "50443"       # gRPC 端口（仅面板访问，不建议对外暴露）
     command: serve
     restart: unless-stopped
     healthcheck:
@@ -154,19 +155,15 @@ services:
     networks:
       - private
     ports:
-      - "27070:8080"    # 面板 Web 界面（建议配合反向代理，不直接对外暴露）
+      - "8090:8080"   # 面板 Web 界面（建议配合反向代理，不直接对外暴露）
     volumes:
-      - ./panel/data:/app/data    # 面板 SQLite 数据库及 OIDC 签名密钥
+      - ./headscale/config:/app/headscale/etc
+      - ./headscale/data:/app/headscale/lib
+      - ./headscale/panel:/app/data
     environment:
-      - GIN_MODE=release
       - TZ=Asia/Shanghai
-      - SYSTEM_PORT=:8080
-      - SYSTEM_BASE_URL=https://vpn.example.com  # ← 修改为实际公网地址
-      - JWT_SECRET=                               # ← 修改为 ≥32 字符的随机字符串
-      - JWT_EXPIRE=24
-      # 初始化引导令牌（≥32 字符），设置后仅凭此 Token 才能访问 /setup 初始化向导
-      # 首次配置完成后建议移除
-      # - SYSTEM_SETUP_BOOTSTRAP_TOKEN=           # ← 可选，建议设置
+      - SYSTEM_BASE_URL=https://vpn.example.com
+      - JWT_SECRET=random_str_len_32
     depends_on:
       headscale:
         condition: service_healthy
@@ -187,7 +184,7 @@ docker compose up -d
 docker exec headscale headscale apikeys create
 ```
 
-首次访问面板（`http://localhost:27070` 或反向代理地址），进入初始化向导，在「连接配置」步骤填写：
+首次访问面板（`http://localhost:8090` 或反向代理地址），进入初始化向导，在「连接配置」步骤填写：
 
 - **gRPC 地址**：`headscale:50443`（面板与 Headscale 位于同一 Docker 网络，直接使用服务名）
 - **API Key**：填入上方命令生成的 Key
@@ -196,21 +193,23 @@ docker exec headscale headscale apikeys create
 面板通过 gRPC 连接 Headscale，需提前准备好 Headscale 配置文件。以下为推荐最小配置（`./headscale/config/config.yaml`）：
 
 ```yaml
-server_url: https://vpn.example.com   # ← 修改为实际公网地址
+server_url: https://vpn.example.com
 listen_addr: 0.0.0.0:8080
 metrics_listen_addr: 0.0.0.0:9090
 grpc_listen_addr: 0.0.0.0:50443
-grpc_allow_insecure: true             # 内网 gRPC，面板通过 Docker 网络访问
+grpc_allow_insecure: true
 private_key_path: /var/lib/headscale/private.key
 noise:
     private_key_path: /var/lib/headscale/noise_private.key
 prefixes:
-    v4: 100.64.0.0/10
-    v6: ""
+    v4: 100.100.0.0/16
+    v6: 64:ff9b::/96
     allocation: sequential
 derp:
     server:
         enabled: false
+    paths:
+        - /etc/headscale/derp-custom.yaml
 database:
     type: sqlite
     sqlite:
@@ -225,6 +224,23 @@ dns:
             - 1.0.0.1
 policy:
     mode: database
+```
+
+对应的推荐最小 `./headscale/config/derp-custom.yaml`
+
+```yaml
+regions:
+  900:
+    regionid: 900
+    regioncode: custom
+    regionname: My Region
+    nodes:
+      - name: 900a
+        regionid: 900
+        hostname: myderp.example.com
+        stunport: 0
+        stunonly: false
+        derpport: 0
 ```
 
 > 更多配置项请参考：https://headscale.net/stable/ref/configuration/
@@ -267,7 +283,7 @@ flowchart TB
 
 ## 🌐 反向代理配置
 
-推荐将面板挂载在 `/panel/` 路径下，与 Headscale 共用同一域名。以下为 Nginx 示例（Panel 监听 `:8090`，`SYSTEM_BASE_URL=https://vpn.example.com/panel`）：
+推荐将面板挂载在 `/panel/` 路径下，与 Headscale 共用同一域名。以下为 Nginx 示例（`SYSTEM_BASE_URL=https://vpn.example.com/panel`）：
 
 ```nginx
 server {
@@ -279,7 +295,7 @@ server {
 
     # 管理面板 UI + API
     location /panel/ {
-        proxy_pass http://127.0.0.1:8090/;
+        proxy_pass http://panel:8080/;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -292,7 +308,7 @@ server {
     # 其余流量交给 Headscale（Tailscale 客户端连接）
     # Headscale 反向代理配置参考：https://headscale.net/stable/ref/integration/reverse-proxy
     location / {
-        proxy_pass http://127.0.0.1:8080;  # Headscale HTTP 端口
+        proxy_pass http://headscale:8080;  # Headscale HTTP 端口
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -314,7 +330,7 @@ server {
 
 - Docker + Docker Compose
 - Go 1.24+
-- Node.js 20+ / pnpm
+- Node.js 24+ / pnpm
 
 ### 本地开发
 

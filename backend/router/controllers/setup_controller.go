@@ -435,11 +435,7 @@ func generateSecurePassword(length int) (string, error) {
 func requireSetupBootstrap(ctx *gin.Context) error {
 	expected := strings.TrimSpace(conf.Conf.System.SetupBootstrapToken)
 	if expected == "" {
-		// When no bootstrap token is configured, only allow localhost access
-		clientIP := ctx.ClientIP()
-		if clientIP != "127.0.0.1" && clientIP != "::1" {
-			return serializer.NewError(serializer.CodeNoPermissionErr, "setup access restricted to localhost when no bootstrap token is configured", nil)
-		}
+		// Bootstrap token is optional; if not configured, allow setup flow without credential.
 		return nil
 	}
 
@@ -458,9 +454,7 @@ func requireSetupBootstrap(ctx *gin.Context) error {
 func isSetupBootstrapAuthorized(ctx *gin.Context) bool {
 	expected := strings.TrimSpace(conf.Conf.System.SetupBootstrapToken)
 	if expected == "" {
-		// Consistent with requireSetupBootstrap: only allow localhost when no token configured
-		clientIP := ctx.ClientIP()
-		return clientIP == "127.0.0.1" || clientIP == "::1"
+		return true
 	}
 
 	provided := strings.TrimSpace(readSetupBootstrapCredential(ctx))

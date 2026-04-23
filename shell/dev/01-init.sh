@@ -41,7 +41,7 @@ noise:
     private_key_path: /var/lib/headscale/noise_private.key
 prefixes:
     v4: 100.100.0.0/16
-    v6: ""
+    v6: 64:ff9b::/96
     allocation: sequential
 derp:
     server:
@@ -80,8 +80,6 @@ regions:
       - name: 900a
         regionid: 900
         hostname: myderp.example.com
-        ipv4: 198.51.100.1
-        ipv6: 2001:db8::1
         stunport: 0
         stunonly: false
         derpport: 0
