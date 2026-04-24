@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"headscale-panel/pkg/conf"
+	v1 "headscale-panel/pkg/proto/headscale/v1"
 	paneljwt "headscale-panel/pkg/utils/jwt"
 	"log"
 	"net/http"
@@ -433,18 +434,51 @@ func startMetricsCollector(ctx context.Context, stopped chan<- struct{}) {
 			continue
 		}
 
-		// Collect device status
-		// TODO: Implement actual device status collection from Headscale
+		deviceMetrics := collectDeviceCountMetrics(ctx)
 
 		// Broadcast metrics update
 		wsHub.Broadcast("metrics_update", MetricsUpdate{
 			Type: "device_count",
-			Data: map[string]interface{}{
-				"online": 12,
-				"total":  22,
-			},
+			Data: deviceMetrics,
 		})
 	}
+}
+
+func collectDeviceCountMetrics(ctx context.Context) map[string]interface{} {
+	metrics := map[string]interface{}{
+		"online": 0,
+		"total":  0,
+	}
+
+	client, err := headscaleServiceClient()
+	if err != nil {
+		log.Printf("WebSocket metrics: headscale client unavailable: %v", err)
+		return metrics
+	}
+
+	queryCtx, cancel := withServiceTimeout(ctx)
+	defer cancel()
+
+	nodesResp, err := client.ListNodes(queryCtx, &v1.ListNodesRequest{})
+	if err != nil {
+		log.Printf("WebSocket metrics: failed to list headscale nodes: %v", err)
+		return metrics
+	}
+
+	online := 0
+	for _, node := range nodesResp.Nodes {
+		if node.LastSeen == nil {
+			continue
+		}
+		if time.Since(node.LastSeen.AsTime()) < 5*time.Minute {
+			online++
+		}
+	}
+
+	metrics["online"] = online
+	metrics["total"] = len(nodesResp.Nodes)
+
+	return metrics
 }
 
 // BroadcastDeviceStatus broadcasts a device status update
