@@ -43,7 +43,7 @@ function getPermissionSet(user: User | null | undefined): Set<string> {
   return new Set(user?.permissions || []);
 }
 
-export function isAdmin(user: User | null | undefined): boolean {
+function isAdmin(user: User | null | undefined): boolean {
   return user?.role === UserRole.Admin;
 }
 

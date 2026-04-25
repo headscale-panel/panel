@@ -1,7 +1,5 @@
 import type { Resource } from './entities';
 
-export type { Resource };
-
 export interface ListResourcesReq {
   page?: number;
   pageSize?: number;

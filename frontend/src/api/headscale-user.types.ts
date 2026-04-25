@@ -1,7 +1,5 @@
 import type { HeadscaleUser, HeadscaleAuthKey } from './entities';
 
-export type { HeadscaleUser, HeadscaleAuthKey };
-
 export interface ListHeadscaleUsersReq {
   page?: number;
   pageSize?: number;

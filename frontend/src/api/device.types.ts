@@ -1,7 +1,5 @@
 import type { HeadscaleMachine, HeadscaleUser } from './entities';
 
-export type { HeadscaleMachine, HeadscaleUser };
-
 export interface ListDevicesReq {
   page?: number;
   pageSize?: number;

@@ -39,7 +39,7 @@ export function parsePersistedAuthValue(raw: string | null): Partial<AuthSnapsho
   }
 }
 
-export function getPersistedAuthSnapshot(): Partial<AuthSnapshot> | null {
+function getPersistedAuthSnapshot(): Partial<AuthSnapshot> | null {
   if (typeof window === 'undefined') {
     return null;
   }
@@ -59,7 +59,7 @@ export function clearStoredAuthState() {
   }
 }
 
-export function setAuthNotice(notice: AuthNoticeKey) {
+function setAuthNotice(notice: AuthNoticeKey) {
   if (typeof window === 'undefined') {
     return;
   }

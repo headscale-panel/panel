@@ -64,7 +64,7 @@ export default defineConfig({
 
     // ── Stat cards ────────────────────────────────────────────────────────────────
     'stat-card': 'p-1 relative overflow-hidden',
-    'stat-watermark': 'absolute right-2 bottom--1 text-48px font-900 opacity-4 tracking--2 leading-none pointer-events-none select-none',
+    'stat-watermark': 'absolute right-2 bottom--1 text-48px font-900 opacity-4 tracking--1 leading-none pointer-events-none select-none',
     'stat-content': 'relative flex justify-between items-center',
     'stat-label': 'text-13px',
     'stat-value': 'text-24px font-700 mt-1',

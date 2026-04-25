@@ -11,15 +11,13 @@ import {
   normalizeHeadscaleUsers,
   normalizeHeadscaleUserOptions,
   normalizeOIDCForm,
-  normalizeOIDCStatus,
   normalizePanelConnectionSettings,
   normalizeResources,
 } from './normalizers';
 export async function loadUsersPageData() {
-  const [usersRes, policyRes, oidcStatusRes, onlineDevicesRes] = await Promise.all([
+  const [usersRes, policyRes, onlineDevicesRes] = await Promise.all([
     usersAPI.list({ all: true }),
     aclAPI.getPolicy().catch(() => null),
-    panelSettingsAPI.getOIDCStatus().catch(() => null),
     devicesAPI.list({ all: true, status: 'online' }).catch(() => null),
   ]);
 
@@ -33,7 +31,6 @@ export async function loadUsersPageData() {
   return {
     hsUsers,
     aclPolicy: normalizeACLPolicy(policyRes),
-    oidcStatus: normalizeOIDCStatus(oidcStatusRes),
     onlineUsers,
   };
 }

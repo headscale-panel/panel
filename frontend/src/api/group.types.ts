@@ -1,7 +1,5 @@
 import type { Group, Permission } from './entities';
 
-export type { Group, Permission };
-
 export interface ListGroupsReq {
   page?: number;
   pageSize?: number;

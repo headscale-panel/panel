@@ -1,7 +1,5 @@
 import type { User, Group } from './entities';
 
-export type { User, Group };
-
 export interface ListSystemUsersReq {
   page?: number;
   pageSize?: number;

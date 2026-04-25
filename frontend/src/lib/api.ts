@@ -65,7 +65,7 @@ export const usersAPI = {
   expirePreAuthKey: (user: string, key: string) => headscaleUserApi.expirePreAuthKey({ user, key }),
 };
 
-export const systemUsersAPI = {
+const systemUsersAPI = {
   list: (params?: { page?: number; pageSize?: number; all?: boolean }) => systemUserApi.list(params),
   create: (data: {
     username: string;

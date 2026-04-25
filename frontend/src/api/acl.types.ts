@@ -1,7 +1,5 @@
 import type { ACLPolicyStructure, ACLRule, ACLRuleMeta, ParsedACLRule, ACLPolicyRecord } from './entities';
 
-export type { ACLPolicyStructure, ACLRule, ACLRuleMeta, ParsedACLRule, ACLPolicyRecord };
-
 export interface GetPolicyReq {}
 export type GetPolicyRes = ACLPolicyStructure;
 

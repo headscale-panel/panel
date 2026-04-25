@@ -14,7 +14,7 @@ import {
   TagOutlined,
   TeamOutlined,
 } from '@ant-design/icons';
-import { Button, Card, Space, Spin, Tag, Tooltip, Typography, message, theme } from 'antd';
+import { Button, Card, Empty, Space, Spin, Tag, Tooltip, Typography, message, theme } from 'antd';
 import DashboardLayout from '@/components/DashboardLayout';
 import PageHeaderStatCards from '@/components/PageHeaderStatCards';
 import { useTranslation } from '@/i18n/index';
@@ -325,11 +325,16 @@ export default function ACL() {
           <Text type="secondary" className="text-13px block mb-4">{t.acl.ruleListDesc}</Text>
 
           {rules.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '48px 0', color: token.colorTextSecondary }}>
-              <CodeOutlined className="text-48px opacity-50 block mb-4" />
-              <p>{t.acl.noRules}</p>
-              <Text type="secondary" className="text-13px">{t.acl.noRulesHint}</Text>
-            </div>
+            <Empty
+              image={Empty.PRESENTED_IMAGE_SIMPLE}
+              description={
+                <Space direction="vertical" size={2}>
+                  <Text>{t.acl.noRules}</Text>
+                  <Text type="secondary" className="text-13px">{t.acl.noRulesHint}</Text>
+                </Space>
+              }
+              style={{ padding: '48px 0' }}
+            />
           ) : (
             <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
               <SortableContext items={rules.map((_, i) => `rule-${i}`)} strategy={verticalListSortingStrategy}>

@@ -57,12 +57,12 @@ export default function Header({ onMenuClick }: HeaderProps) {
           icon={<MenuOutlined />}
           onClick={onMenuClick}
         />
-        <Input
+        {/* <Input
           placeholder={t.header.searchPlaceholder}
           prefix={<SearchOutlined />}
           className="max-w-100"
           variant="filled"
-        />
+        /> */}
       </Space>
 
       <Space size={4}>

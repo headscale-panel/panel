@@ -1,8 +1,6 @@
 import type { DNSRecord } from './entities';
 import { DNSRecordType } from '@/lib/enums';
 
-export type { DNSRecord };
-
 export interface ListDnsReq {
   page?: number;
   pageSize?: number;

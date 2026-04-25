@@ -3,7 +3,7 @@ import {
   CopyOutlined, CodeOutlined, WifiOutlined,
   ZoomInOutlined, ZoomOutOutlined, ExpandOutlined,
   ExclamationCircleOutlined, LaptopOutlined, MobileOutlined,
-  DesktopOutlined, TabletOutlined, CloudServerOutlined,
+  DesktopOutlined, TabletOutlined, CloudServerOutlined, CloudTwoTone,
   DragOutlined, EyeOutlined, EyeInvisibleOutlined,
 } from '@ant-design/icons';
 import { useCallback, useEffect, useRef, useState, useMemo } from 'react';
@@ -184,7 +184,7 @@ export default function NetworkTopology({ data, deviceStatuses }: NetworkTopolog
     });
 
     return {
-      server: { id: 'server', name: 'Headscale Cloud' },
+      server: { id: 'server', name: 'Headscale Server' },
       users,
       devices,
       acl: data.acl || [],
@@ -1101,27 +1101,10 @@ export default function NetworkTopology({ data, deviceStatuses }: NetworkTopolog
                 <div className="relative cursor-pointer">
                   <div style={{ position: 'absolute', inset: -16, background: 'linear-gradient(to right, rgba(96,165,250,0.25), rgba(59,130,246,0.35), rgba(96,165,250,0.25))', filter: 'blur(16px)', borderRadius: '50%' }} />
                   <div className="relative w-14 h-10 flex items-center justify-center">
-                    <svg viewBox="0 0 120 70" style={{ width: '100%', height: '100%', filter: 'drop-shadow(0 3px 10px rgba(0, 102, 255, 0.35))' }}>
-                      <defs>
-                        <linearGradient id="cloudGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                          <stop offset="0%" stopColor="#60A5FA" />
-                          <stop offset="50%" stopColor="#3B82F6" />
-                          <stop offset="100%" stopColor="#1D4ED8" />
-                        </linearGradient>
-                        <linearGradient id="cloudHighlight" x1="0%" y1="0%" x2="0%" y2="100%">
-                          <stop offset="0%" stopColor="rgba(255,255,255,0.5)" />
-                          <stop offset="100%" stopColor="rgba(255,255,255,0)" />
-                        </linearGradient>
-                      </defs>
-                      <path d="M95 50 C115 50 115 30 95 30 C95 10 70 5 55 18 C40 5 15 10 15 30 C-5 30 -5 50 15 50 Z" fill="url(#cloudGradient)" />
-                      <path d="M90 45 C105 45 105 30 90 30 C90 15 70 12 58 22 C48 12 28 15 28 30 C15 30 15 45 28 45 Z" fill="url(#cloudHighlight)" />
-                      <g transform="translate(45, 24)">
-                        <rect x="2" y="1" width="14" height="5" rx="1" fill="rgba(255,255,255,0.95)" />
-                        <rect x="2" y="9" width="14" height="5" rx="1" fill="rgba(255,255,255,0.95)" />
-                        <circle cx="6" cy="3.5" r="1.2" fill="#3B82F6" />
-                        <circle cx="6" cy="11.5" r="1.2" fill="#3B82F6" />
-                      </g>
-                    </svg>
+                    <CloudTwoTone
+                      twoToneColor={["#60A5FA", "#1D4ED8"]}
+                      style={{ fontSize: 36, filter: 'drop-shadow(0 3px 10px rgba(0, 102, 255, 0.35))' }}
+                    />
                   </div>
                   <div style={{ position: 'absolute', bottom: -16, left: '50%', transform: 'translateX(-50%)', whiteSpace: 'nowrap' }}>
                     <span style={{ fontSize: 8, fontWeight: 700, color: token.colorPrimary, background: token.colorBgContainer, padding: '2px 6px', borderRadius: 10, boxShadow: '0 1px 3px rgba(0,0,0,0.1)', border: `1px solid ${token.colorPrimaryBorder}` }}>{topologyData.server.name}</span>

@@ -115,5 +115,3 @@ export function useTheme() {
   }
   return context;
 }
-
-export { ThemeMode };

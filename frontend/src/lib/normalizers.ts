@@ -219,7 +219,7 @@ function normalizeDeviceUser(value: unknown): NormalizedDeviceUser | null {
   };
 }
 
-export function normalizeDevice(raw: unknown): NormalizedDevice {
+function normalizeDevice(raw: unknown): NormalizedDevice {
   const device = asRecord(raw) ?? {};
 
   return {
@@ -301,7 +301,7 @@ export function normalizeHeadscaleUsers(value: unknown): NormalizedHeadscaleUser
   return normalizedUsers;
 }
 
-export function normalizeSystemUsers(value: unknown): NormalizedSystemUser[] {
+function normalizeSystemUsers(value: unknown): NormalizedSystemUser[] {
   const normalizedUsers: NormalizedSystemUser[] = [];
 
   for (const item of extractListCandidate(value)) {
@@ -339,7 +339,7 @@ export function normalizeSystemUsers(value: unknown): NormalizedSystemUser[] {
   return normalizedUsers;
 }
 
-export function normalizeGroups(value: unknown): NormalizedGroup[] {
+function normalizeGroups(value: unknown): NormalizedGroup[] {
   const normalizedGroups: NormalizedGroup[] = [];
 
   for (const item of extractListCandidate(value)) {
@@ -440,18 +440,6 @@ export function normalizeACLPolicy(value: unknown): ACLPolicy | null {
         )
       : undefined,
     acls,
-  };
-}
-
-export function normalizeOIDCStatus(value: unknown): OIDCStatusData {
-  const data = asRecord(value) ?? {};
-
-  return {
-    oidc_enabled: asBoolean(data.oidc_enabled),
-    third_party: asBoolean(data.third_party),
-    builtin: asBoolean(data.builtin),
-    password_required: asBoolean(data.password_required, true),
-    mode: asString(data.mode, 'direct'),
   };
 }
 

@@ -10,7 +10,7 @@ import { getTranslations } from '@/i18n/index';
 import { getAuthToken, redirectToLoginWithNotice } from './auth';
 import { isEmpty } from 'radashi';
 
-export const baseURL = import.meta.env.VITE_API_URL || '/panel/api/v1';
+const baseURL = import.meta.env.VITE_API_URL || '/panel/api/v1';
 
 export type RespType<T = any> = {
   code: number;
@@ -31,7 +31,7 @@ enum AXIOS_ERR_E {
   ERR_SERVER = 'ERR_SERVER',
 }
 
-export enum RESP_CODE {
+enum RESP_CODE {
   SUCCESS = 0,
 }
 
@@ -49,11 +49,11 @@ interface AxiosResponseCustom<T> extends AxiosResponse<T> {
   config: InternalAxiosRequestConfigCustom;
 }
 
-export type RequestInterceptor = (
+type RequestInterceptor = (
   configs: InternalAxiosRequestConfigCustom,
 ) => InternalAxiosRequestConfig | Promise<InternalAxiosRequestConfig>;
 
-export type ResponseInterceptor<T = any> = (
+type ResponseInterceptor<T = any> = (
   response: AxiosResponseCustom<T>,
 ) => AxiosResponseCustom<T> | Promise<AxiosResponseCustom<T>>;
 
@@ -87,7 +87,7 @@ const handleUnauthorized = () => {
   redirectToLoginWithNotice('sessionExpired');
 };
 
-export const createAxiosInstance = (options?: AxiosCreateConfigCustom): AxiosInstance => {
+const createAxiosInstance = (options?: AxiosCreateConfigCustom): AxiosInstance => {
   const defaultConfig = {
     baseURL,
     timeout: 30000,

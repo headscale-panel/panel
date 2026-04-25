@@ -25,6 +25,7 @@ import {
   Button,
   Card,
   Dropdown,
+  Empty,
   Input,
   Modal,
   Space,
@@ -906,11 +907,11 @@ export default function UsersPage() {
               ) : (
                 <div>
                   {filteredUsers.length === 0 ? (
-                    <div className="empty-state-box">
-                      <Text type="secondary" className="text-13px">
-                        {searchQuery ? t.users.noSearchResult : t.users.noUsers}
-                      </Text>
-                    </div>
+                    <Empty
+                      className="empty-state-box"
+                      image={Empty.PRESENTED_IMAGE_SIMPLE}
+                      description={searchQuery ? t.users.noSearchResult : t.users.noUsers}
+                    />
                   ) : (
                     filteredUsers.map(renderUserRow)
                   )}
