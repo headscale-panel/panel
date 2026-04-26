@@ -41,6 +41,7 @@ export default function Devices() {
   const t = useTranslation();
   const { token } = theme.useToken();
   const { user } = useAuthStore();
+  const [initialLoading, setInitialLoading] = useState(true);
 
   const owner = (user?.headscale_name || user?.username || '').trim();
   const canListDevices = hasPermission(user, 'headscale:machine:list');
@@ -67,7 +68,11 @@ export default function Devices() {
     },
     {
       refreshDeps: [canListDevices],
+      onSuccess: () => {
+        setInitialLoading(false);
+      },
       onError: (error: any) => {
+        setInitialLoading(false);
         message.error(t.devices.loadFailed + (error.message ? `: ${error.message}` : ''));
       },
     },
@@ -126,7 +131,7 @@ export default function Devices() {
     message.success(successMessage);
   };
 
-  if (loading) {
+  if (initialLoading && loading) {
     return (
       <DashboardLayout>
         <div className="centered-loading">

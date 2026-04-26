@@ -126,6 +126,8 @@ function SwitchRow({ label, description, checked, onCheckedChange }: {
 export default function Settings() {
   const t = useTranslation();
   const { token } = theme.useToken();
+  const [connectionInitialized, setConnectionInitialized] = useState(false);
+  const [configInitialized, setConfigInitialized] = useState(false);
 
   const [grpcAddr, setGrpcAddr] = useState('');
   const [apiKeyInput, setApiKeyInput] = useState('');
@@ -270,6 +272,7 @@ export default function Settings() {
     async () => loadConnectionSettingsData(),
     {
       onSuccess: (data) => {
+        setConnectionInitialized(true);
         setGrpcAddr(data.grpc_addr);
         setInsecure(data.insecure);
         setHasApiKey(data.has_api_key);
@@ -278,6 +281,7 @@ export default function Settings() {
         setShowApiKeyInput(false);
       },
       onError: () => {
+        setConnectionInitialized(true);
         message.error(t.common.errors.requestFailed);
       },
     },
@@ -287,9 +291,11 @@ export default function Settings() {
     async () => loadOIDCSettingsData(),
     {
       onSuccess: (data) => {
+        setConfigInitialized(true);
         setOidcForm(data.oidcForm);
       },
       onError: () => {
+        setConfigInitialized(true);
         // Config may not exist yet
       },
     },
@@ -455,8 +461,9 @@ export default function Settings() {
   }, []);
 
   const loading = loadingConnection || loadingConfig;
+  const initialLoading = !connectionInitialized || !configInitialized;
 
-  if (loading) {
+  if (initialLoading && loading) {
     return (
       <DashboardLayout>
         <div className="centered-loading">

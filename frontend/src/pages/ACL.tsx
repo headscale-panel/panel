@@ -114,6 +114,7 @@ function SortableRuleCard({ id, children }: SortableRuleCardProps) {
 export default function ACL() {
   const t = useTranslation();
   const { token } = theme.useToken();
+  const [initialLoading, setInitialLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [rules, setRules] = useState<ACLRule[]>([]);
   const [policy, setPolicy] = useState<ACLPolicy | null>(null);
@@ -152,6 +153,7 @@ export default function ACL() {
     async () => loadACLPageData(),
     {
       onSuccess: ({ policy, devices, resources, headscaleUsers }) => {
+        setInitialLoading(false);
         if (policy) {
           setPolicy(policy);
           setAclGroups(policy.groups || {});
@@ -183,6 +185,7 @@ export default function ACL() {
         setHeadscaleUsers(headscaleUsers);
       },
       onError: (error) => {
+        setInitialLoading(false);
         console.error('Failed to load ACL data:', error);
         message.error(t.acl.loadFailed);
       },
@@ -274,7 +277,7 @@ export default function ACL() {
     hosts: policy?.hosts ? Object.keys(policy.hosts).length : 0,
   };
 
-  if (loading) {
+  if (initialLoading && loading) {
     return (
       <DashboardLayout>
         <div className="flex justify-center items-center p-20">

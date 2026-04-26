@@ -78,6 +78,8 @@ export default function UsersPage() {
   const t = useTranslation();
   const [, setLocation] = useLocation();
   const { token } = theme.useToken();
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
   const [hsUsers, setHsUsers] = useState<UserData[]>([]);
   const [userDevicesByOwner, setUserDevicesByOwner] = useState<Record<string, DeviceData[]>>({});
@@ -105,6 +107,7 @@ export default function UsersPage() {
     async () => loadUsersPageData(),
     {
       onSuccess: ({ hsUsers, aclPolicy, onlineUsers }) => {
+        setInitialLoading(false);
         setHsUsers(hsUsers);
         setAclPolicy(aclPolicy);
         setUserDevicesByOwner({});
@@ -118,14 +121,11 @@ export default function UsersPage() {
         setOnlineUsers(onlineUsers);
       },
       onError: (error: any) => {
+        setInitialLoading(false);
         message.error(t.users.loadFailed + (error.message || t.common.errors.unknownError));
       },
     },
   );
-
-  const loadData = useCallback(async () => {
-    await refreshAsync();
-  }, [refreshAsync]);
 
   const userMatchesAclGroup = (user: UserData, groupName: string): boolean => {
     const group = aclGroups.find((candidate) => candidate.name.toLowerCase() === groupName.toLowerCase());
@@ -213,7 +213,7 @@ export default function UsersPage() {
     return ownerKey ? userDevicesByOwner[ownerKey] || [] : [];
   };
 
-  const ensureUserDevicesLoaded = async (user: UserData, force = false) => {
+  const ensureUserDevicesLoaded = useCallback(async (user: UserData, force = false) => {
     const owner = (user.headscale_name || user.username || '').trim();
     const ownerKey = owner.toLowerCase();
     if (!owner || (!force && (ownerKey in userDevicesByOwner || loadingDeviceOwners.has(ownerKey)))) {
@@ -239,7 +239,49 @@ export default function UsersPage() {
         return next;
       });
     }
-  };
+  }, [loadingDeviceOwners, t.devices.loadFailed, userDevicesByOwner]);
+
+  const preloadExpandedUsersDevices = useCallback(
+    async (usersSnapshot: UserData[]) => {
+      const usersById = new Map(usersSnapshot.map((user) => [user.ID, user]));
+
+      setExpandedUserDevices((current) => {
+        const next = new Set(Array.from(current).filter((id) => usersById.has(id)));
+        return next;
+      });
+
+      const expandedIds = new Set(expandedUserDevices);
+      if (selectedNode.type === 'user') {
+        expandedIds.add(selectedNode.userId);
+      }
+
+      const usersToLoad = Array.from(expandedIds)
+        .map((id) => usersById.get(id))
+        .filter((user): user is UserData => Boolean(user));
+
+      if (usersToLoad.length === 0) {
+        return;
+      }
+
+      await Promise.allSettled(usersToLoad.map((user) => ensureUserDevicesLoaded(user, true)));
+    },
+    [ensureUserDevicesLoaded, expandedUserDevices, selectedNode]
+  );
+
+  const loadData = useCallback(async () => {
+    if (refreshing) {
+      return;
+    }
+
+    setRefreshing(true);
+    try {
+      const result = await refreshAsync();
+      const latestUsers = result?.hsUsers || [];
+      await preloadExpandedUsersDevices(latestUsers);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refreshAsync, preloadExpandedUsersDevices, refreshing]);
 
   const selectedTreeUserDevices = useMemo(
     () => getDevicesForUser(selectedTreeUser),
@@ -723,7 +765,7 @@ export default function UsersPage() {
     );
   };
 
-  if (loading) {
+  if (initialLoading && loading) {
     return (
       <DashboardLayout>
         <div className="centered-loading">
@@ -763,7 +805,7 @@ export default function UsersPage() {
           </div>
           <Space data-tour-id="users-actions">
             <Tooltip title={t.common.actions.refresh}>
-              <Button icon={<ReloadOutlined spin={loading} />} onClick={loadData} disabled={loading} />
+              <Button icon={<ReloadOutlined spin={refreshing} />} onClick={loadData} disabled={refreshing} />
             </Tooltip>
             <Button icon={<DesktopOutlined />} onClick={openAddDeviceDialog}>{t.devices.addDevice}</Button>
             <Dropdown
