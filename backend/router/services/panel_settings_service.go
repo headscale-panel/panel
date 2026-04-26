@@ -247,11 +247,95 @@ func (s *panelSettingsService) SaveOIDCSettings(actorUserID uint, payload *OIDCS
 			Key:   panelSettingKeyOIDC,
 			Value: string(data),
 		}
-		return model.DB.Create(&setting).Error
+		if err := model.DB.Create(&setting).Error; err != nil {
+			return err
+		}
+	} else {
+		// Update existing
+		setting.Value = string(data)
+		if err := model.DB.Save(&setting).Error; err != nil {
+			return err
+		}
 	}
-	// Update existing
-	setting.Value = string(data)
-	return model.DB.Save(&setting).Error
+
+	if err := s.syncOIDCSettingsToHeadscaleConfig(payload); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (s *panelSettingsService) syncOIDCSettingsToHeadscaleConfig(payload *OIDCSettingsPayload) error {
+	cfg, err := HeadscaleConfigService.GetConfig()
+	if err != nil {
+		return serializer.NewError(serializer.CodeInternalErr, "failed to load headscale config", err)
+	}
+
+	merged := mergeOIDCSettingsIntoHeadscaleConfig(cfg, payload)
+	if err := HeadscaleConfigService.SaveConfig(merged); err != nil {
+		return serializer.NewError(serializer.CodeInternalErr, "failed to update headscale config", err)
+	}
+
+	return nil
+}
+
+func mergeOIDCSettingsIntoHeadscaleConfig(cfg *HeadscaleConfigFile, payload *OIDCSettingsPayload) *HeadscaleConfigFile {
+	if cfg == nil {
+		cfg = HeadscaleConfigService.defaultConfig()
+	}
+
+	merged := *cfg
+	if payload == nil || !payload.Enabled {
+		merged.OIDC = OIDCConfig{}
+		return &merged
+	}
+
+	clientSecret := strings.TrimSpace(payload.ClientSecret)
+	if clientSecret == "" {
+		clientSecret = cfg.OIDC.ClientSecret
+	}
+
+	merged.OIDC = OIDCConfig{
+		OnlyStartIfOIDCIsAvailable: payload.OnlyStartIfOIDCIsAvailable,
+		Issuer:                     strings.TrimSpace(payload.Issuer),
+		ClientID:                   strings.TrimSpace(payload.ClientID),
+		ClientSecret:               clientSecret,
+		ClientSecretPath:           strings.TrimSpace(payload.ClientSecretPath),
+		Scope:                      compactTrimmed(payload.Scope),
+		EmailVerifiedRequired:      payload.EmailVerifiedRequired,
+		AllowedDomains:             compactTrimmed(payload.AllowedDomains),
+		AllowedUsers:               compactTrimmed(payload.AllowedUsers),
+		AllowedGroups:              compactTrimmed(payload.AllowedGroups),
+		StripEmailDomain:           payload.StripEmailDomain,
+		Expiry:                     strings.TrimSpace(payload.Expiry),
+		UseExpiryFromToken:         payload.UseExpiryFromToken,
+		PKCE: PKCEConfig{
+			Enabled: payload.PKCEEnabled,
+			Method:  strings.TrimSpace(payload.PKCEMethod),
+		},
+	}
+
+	return &merged
+}
+
+func compactTrimmed(values []string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+
+	result := make([]string, 0, len(values))
+	for _, v := range values {
+		normalized := strings.TrimSpace(v)
+		if normalized == "" {
+			continue
+		}
+		result = append(result, normalized)
+	}
+	if len(result) == 0 {
+		return nil
+	}
+
+	return result
 }
 
 // IsOIDCEnabled returns true if either the saved OIDC settings or the built-in OIDC is enabled.
