@@ -600,7 +600,7 @@ const zh = {
       oidc: 'OIDC 配置',
       groups: '角色分组管理',
       hsconfig: 'Headscale 配置',
-      derp: 'DERP 地图',
+      derp: 'DERP 配置',
     },
     groups: {
       title: '角色分组管理',
