@@ -6,7 +6,7 @@ import "time"
 const DataDir = "data"
 
 // HeadscaleBaseDir is the root directory for all headscale-related panel data.
-const HeadscaleBaseDir = DataDir + "/headscale"
+const HeadscaleBaseDir = "headscale"
 
 // HeadscaleLibDir holds configuration files managed by the panel (config.yaml, extra records, etc.).
 // It is mounted into the headscale container as /var/lib/headscale.
