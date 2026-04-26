@@ -15,16 +15,29 @@ import {
   normalizeResources,
 } from './normalizers';
 export async function loadUsersPageData() {
-  const [usersRes, policyRes, onlineDevicesRes] = await Promise.all([
+  const [usersRes, policyRes, onlineDevicesRes, allDevicesRes] = await Promise.all([
     headscaleUserApi.list({ all: true }),
     aclApi.getPolicy().catch(() => null),
     deviceApi.list({ all: true, status: 'online' }).catch(() => null),
+    deviceApi.list({ all: true }).catch(() => null),
   ]);
 
   const devices = normalizeDeviceListResponse(onlineDevicesRes).list;
+  const allDevices = normalizeDeviceListResponse(allDevicesRes).list;
   const onlineUsers = new Set(
     devices.filter((device) => device.online && device.user?.name).map((device) => device.user!.name)
   );
+  const userDevicesByOwner = allDevices.reduce<Record<string, typeof allDevices>>((record, device) => {
+    const ownerKey = device.user?.name?.trim().toLowerCase();
+    if (!ownerKey) {
+      return record;
+    }
+    if (!record[ownerKey]) {
+      record[ownerKey] = [];
+    }
+    record[ownerKey].push(device);
+    return record;
+  }, {});
 
   const hsUsers = normalizeHeadscaleUsers(usersRes);
 
@@ -32,6 +45,7 @@ export async function loadUsersPageData() {
     hsUsers,
     aclPolicy: normalizeACLPolicy(policyRes),
     onlineUsers,
+    userDevicesByOwner,
   };
 }
 

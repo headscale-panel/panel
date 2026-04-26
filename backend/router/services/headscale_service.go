@@ -476,6 +476,76 @@ func (s *headscaleService) SetMachineTagsWithContext(ctx context.Context, actorU
 	return &machine, nil
 }
 
+func headscaleUserFromProto(user *v1.User) *HeadscaleUser {
+	if user == nil {
+		return nil
+	}
+
+	normalized := &HeadscaleUser{
+		ID:            user.Id,
+		Name:          user.Name,
+		DisplayName:   user.DisplayName,
+		Email:         user.Email,
+		Provider:      normalizeHeadscaleProvider(user.Provider),
+		ProviderID:    user.ProviderId,
+		ProfilePicURL: user.ProfilePicUrl,
+	}
+	if user.CreatedAt != nil {
+		normalized.CreatedAt = user.CreatedAt.AsTime().Format(time.RFC3339)
+	}
+
+	return normalized
+}
+
+func (s *headscaleService) findAccessibleUserByNameWithContext(ctx context.Context, actorUserID uint, name string) (*v1.User, error) {
+	trimmedName := strings.TrimSpace(name)
+	if trimmedName == "" {
+		return nil, unifyerror.WrongParam("name")
+	}
+
+	client, err := headscaleServiceClient()
+	if err != nil {
+		return nil, err
+	}
+	scope, err := loadActorScope(actorUserID)
+	if err != nil {
+		return nil, err
+	}
+
+	queryCtx, cancel := withServiceTimeout(ctx)
+	defer cancel()
+
+	resp, err := client.ListUsers(queryCtx, &v1.ListUsersRequest{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to list users from Headscale: %w", err)
+	}
+
+	for _, user := range resp.Users {
+		if !strings.EqualFold(strings.TrimSpace(user.Name), trimmedName) {
+			continue
+		}
+		if !actorCanAccessHeadscaleUser(scope, user.Name) {
+			break
+		}
+		return user, nil
+	}
+
+	return nil, unifyerror.New(http.StatusNotFound, unifyerror.CodeNotFound, "headscale user not found")
+}
+
+func (s *headscaleService) GetUserByNameWithContext(ctx context.Context, actorUserID uint, name string) (*HeadscaleUser, error) {
+	if err := RequirePermission(actorUserID, "headscale:user:list"); err != nil {
+		return nil, err
+	}
+
+	user, err := s.findAccessibleUserByNameWithContext(ctx, actorUserID, name)
+	if err != nil {
+		return nil, err
+	}
+
+	return headscaleUserFromProto(user), nil
+}
+
 // CreateUser creates a user in Headscale
 func (s *headscaleService) CreateUser(actorUserID uint, name, displayName, email, pictureURL string) (*HeadscaleUser, error) {
 	return s.CreateUserWithContext(context.Background(), actorUserID, name, displayName, email, pictureURL)
@@ -485,6 +555,11 @@ func (s *headscaleService) CreateUserWithContext(ctx context.Context, actorUserI
 	if err := RequirePermission(actorUserID, "headscale:user:create"); err != nil {
 		return nil, err
 	}
+	trimmedName := strings.TrimSpace(name)
+	if trimmedName == "" {
+		return nil, unifyerror.WrongParam("name")
+	}
+
 	client, err := headscaleServiceClient()
 	if err != nil {
 		return nil, err
@@ -493,8 +568,18 @@ func (s *headscaleService) CreateUserWithContext(ctx context.Context, actorUserI
 	queryCtx, cancel := withServiceTimeout(ctx)
 	defer cancel()
 
+	listResp, err := client.ListUsers(queryCtx, &v1.ListUsersRequest{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to list users from Headscale: %w", err)
+	}
+	for _, existingUser := range listResp.Users {
+		if strings.EqualFold(strings.TrimSpace(existingUser.Name), trimmedName) {
+			return nil, unifyerror.Conflict("user already exists")
+		}
+	}
+
 	resp, err := client.CreateUser(queryCtx, &v1.CreateUserRequest{
-		Name:        name,
+		Name:        trimmedName,
 		DisplayName: displayName,
 		Email:       email,
 		PictureUrl:  pictureURL,
@@ -502,19 +587,8 @@ func (s *headscaleService) CreateUserWithContext(ctx context.Context, actorUserI
 	if err != nil {
 		return nil, fmt.Errorf("failed to create user: %w", err)
 	}
-	user := HeadscaleUser{
-		ID:            resp.User.Id,
-		Name:          resp.User.Name,
-		DisplayName:   resp.User.DisplayName,
-		Email:         resp.User.Email,
-		Provider:      normalizeHeadscaleProvider(resp.User.Provider),
-		ProviderID:    resp.User.ProviderId,
-		ProfilePicURL: resp.User.ProfilePicUrl,
-	}
-	if resp.User.CreatedAt != nil {
-		user.CreatedAt = resp.User.CreatedAt.AsTime().Format(time.RFC3339)
-	}
-	return &user, nil
+
+	return headscaleUserFromProto(resp.User), nil
 }
 
 // RenameUser renames a user in Headscale
@@ -526,6 +600,11 @@ func (s *headscaleService) RenameUserWithContext(ctx context.Context, actorUserI
 	if err := RequirePermission(actorUserID, "headscale:user:update"); err != nil {
 		return nil, err
 	}
+	trimmedNewName := strings.TrimSpace(newName)
+	if trimmedNewName == "" {
+		return nil, unifyerror.WrongParam("new_name")
+	}
+
 	client, err := headscaleServiceClient()
 	if err != nil {
 		return nil, err
@@ -536,19 +615,14 @@ func (s *headscaleService) RenameUserWithContext(ctx context.Context, actorUserI
 
 	resp, err := client.RenameUser(queryCtx, &v1.RenameUserRequest{
 		OldId:   oldID,
-		NewName: newName,
+		NewName: trimmedNewName,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to rename user: %w", err)
 	}
-	user := HeadscaleUser{
-		ID:            resp.User.Id,
-		Name:          resp.User.Name,
-		DisplayName:   resp.User.DisplayName,
-		Email:         resp.User.Email,
-		Provider:      normalizeHeadscaleProvider(resp.User.Provider),
-		ProviderID:    resp.User.ProviderId,
-		ProfilePicURL: resp.User.ProfilePicUrl,
+	user := headscaleUserFromProto(resp.User)
+	if user == nil {
+		return nil, fmt.Errorf("failed to rename user: empty response")
 	}
 	if user.DisplayName == "" && strings.TrimSpace(displayName) != "" {
 		user.DisplayName = strings.TrimSpace(displayName)
@@ -559,7 +633,36 @@ func (s *headscaleService) RenameUserWithContext(ctx context.Context, actorUserI
 	if user.ProfilePicURL == "" && strings.TrimSpace(pictureURL) != "" {
 		user.ProfilePicURL = strings.TrimSpace(pictureURL)
 	}
-	return &user, nil
+	return user, nil
+}
+
+func (s *headscaleService) RenameUserByNameWithContext(ctx context.Context, actorUserID uint, oldName, newName, displayName, email, pictureURL string) (*HeadscaleUser, error) {
+	if err := RequirePermission(actorUserID, "headscale:user:update"); err != nil {
+		return nil, err
+	}
+
+	targetUser, err := s.findAccessibleUserByNameWithContext(ctx, actorUserID, oldName)
+	if err != nil {
+		return nil, err
+	}
+
+	trimmedOldName := strings.TrimSpace(oldName)
+	trimmedNewName := strings.TrimSpace(newName)
+	if trimmedNewName == "" {
+		return nil, unifyerror.WrongParam("new_name")
+	}
+
+	if !strings.EqualFold(trimmedOldName, trimmedNewName) {
+		if _, err := s.findAccessibleUserByNameWithContext(ctx, actorUserID, trimmedNewName); err == nil {
+			return nil, unifyerror.Conflict("user already exists")
+		} else {
+			if uniErr, ok := err.(*unifyerror.UniErr); !ok || uniErr.Code != unifyerror.CodeNotFound {
+				return nil, err
+			}
+		}
+	}
+
+	return s.RenameUserWithContext(ctx, actorUserID, targetUser.Id, trimmedNewName, displayName, email, pictureURL)
 }
 
 // DeleteUser deletes a user in Headscale
@@ -586,6 +689,19 @@ func (s *headscaleService) DeleteUserWithContext(ctx context.Context, actorUserI
 		return fmt.Errorf("failed to delete user: %w", err)
 	}
 	return nil
+}
+
+func (s *headscaleService) DeleteUserByNameWithContext(ctx context.Context, actorUserID uint, name string) error {
+	if err := RequirePermission(actorUserID, "headscale:user:delete"); err != nil {
+		return err
+	}
+
+	targetUser, err := s.findAccessibleUserByNameWithContext(ctx, actorUserID, name)
+	if err != nil {
+		return err
+	}
+
+	return s.DeleteUserWithContext(ctx, actorUserID, targetUser.Id)
 }
 
 func (s *headscaleService) CountUserMachinesWithContext(ctx context.Context, userName string) (int, error) {

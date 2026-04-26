@@ -138,26 +138,8 @@ func (h *HeadscaleController) RenameUser(c *gin.Context) {
 		return
 	}
 
-	// Find user ID by listing users and matching name
 	actorUserID := c.GetUint("userID")
-	users, err := services.HeadscaleService.ListHeadscaleUsersWithContext(c.Request.Context(), actorUserID)
-	if err != nil {
-		unifyerror.Fail(c, err)
-		return
-	}
-	var targetUserID uint64
-	for _, u := range users {
-		if u.Name == req.OldName {
-			targetUserID = u.ID
-			break
-		}
-	}
-	if targetUserID == 0 {
-		unifyerror.Fail(c, unifyerror.New(http.StatusNotFound, unifyerror.CodeNotFound, "User not found"))
-		return
-	}
-
-	user, err := services.HeadscaleService.RenameUserWithContext(c.Request.Context(), actorUserID, targetUserID, req.NewName, req.DisplayName, req.Email, req.PictureURL)
+	user, err := services.HeadscaleService.RenameUserByNameWithContext(c.Request.Context(), actorUserID, req.OldName, req.NewName, req.DisplayName, req.Email, req.PictureURL)
 	if err != nil {
 		unifyerror.Fail(c, err)
 		return
@@ -181,26 +163,8 @@ func (h *HeadscaleController) DeleteUser(c *gin.Context) {
 		return
 	}
 
-	// Find user ID by listing users and matching name
 	actorUserID := c.GetUint("userID")
-	users, err := services.HeadscaleService.ListHeadscaleUsersWithContext(c.Request.Context(), actorUserID)
-	if err != nil {
-		unifyerror.Fail(c, err)
-		return
-	}
-	var targetUserID uint64
-	for _, u := range users {
-		if u.Name == q.Name {
-			targetUserID = u.ID
-			break
-		}
-	}
-	if targetUserID == 0 {
-		unifyerror.Fail(c, unifyerror.New(http.StatusNotFound, unifyerror.CodeNotFound, "User not found"))
-		return
-	}
-
-	if err := services.HeadscaleService.DeleteUserWithContext(c.Request.Context(), actorUserID, targetUserID); err != nil {
+	if err := services.HeadscaleService.DeleteUserByNameWithContext(c.Request.Context(), actorUserID, q.Name); err != nil {
 		unifyerror.Fail(c, err)
 		return
 	}

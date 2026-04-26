@@ -107,11 +107,11 @@ export default function UsersPage() {
   const { loading, refreshAsync } = useRequest(
     async () => loadUsersPageData(),
     {
-      onSuccess: ({ hsUsers, aclPolicy, onlineUsers }) => {
+      onSuccess: ({ hsUsers, aclPolicy, onlineUsers, userDevicesByOwner }) => {
         setInitialLoading(false);
         setHsUsers(hsUsers);
         setAclPolicy(aclPolicy);
-        setUserDevicesByOwner({});
+        setUserDevicesByOwner(userDevicesByOwner || {});
         setLoadingDeviceOwners(new Set());
         setAclGroups(
           Object.entries(aclPolicy?.groups || {}).map(([key, members]) => ({
@@ -264,7 +264,7 @@ export default function UsersPage() {
         return;
       }
 
-      await Promise.allSettled(usersToLoad.map((user) => ensureUserDevicesLoaded(user, true)));
+      await Promise.allSettled(usersToLoad.map((user) => ensureUserDevicesLoaded(user, false)));
     },
     [ensureUserDevicesLoaded, expandedUserDevices, selectedNode]
   );
