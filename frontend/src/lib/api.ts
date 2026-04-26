@@ -18,7 +18,6 @@ import {
   routeApi,
   systemUserApi,
 } from '@/api';
-export type { DNSRecord } from '@/api/dns.types';
 
 export default api;
 
