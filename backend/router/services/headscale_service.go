@@ -102,6 +102,39 @@ func (s *headscaleService) ListHeadscaleUsersWithContext(ctx context.Context, ac
 		return nil, fmt.Errorf("failed to list users from Headscale: %w", err)
 	}
 
+	nameSet := make(map[string]struct{}, len(resp.Users))
+	for _, u := range resp.Users {
+		name := strings.TrimSpace(u.Name)
+		if name == "" {
+			continue
+		}
+		nameSet[name] = struct{}{}
+	}
+
+	names := make([]string, 0, len(nameSet))
+	for name := range nameSet {
+		names = append(names, name)
+	}
+
+	providerOverrides := make(map[string]model.User, len(names))
+	if len(names) > 0 {
+		var panelUsers []model.User
+		if err := model.DB.Select("username", "headscale_name", "provider", "provider_id", "display_name", "email", "profile_pic_url").
+			Where("headscale_name IN ? OR username IN ?", names, names).
+			Find(&panelUsers).Error; err == nil {
+			for _, panelUser := range panelUsers {
+				primaryKey := strings.ToLower(strings.TrimSpace(panelUser.HeadscaleName))
+				if primaryKey == "" {
+					primaryKey = strings.ToLower(strings.TrimSpace(panelUser.Username))
+				}
+				if primaryKey == "" {
+					continue
+				}
+				providerOverrides[primaryKey] = panelUser
+			}
+		}
+	}
+
 	users := make([]HeadscaleUser, 0, len(resp.Users))
 	for _, u := range resp.Users {
 		if !actorCanAccessHeadscaleUser(scope, u.Name) {
@@ -118,6 +151,24 @@ func (s *headscaleService) ListHeadscaleUsersWithContext(ctx context.Context, ac
 		}
 		if u.CreatedAt != nil {
 			user.CreatedAt = u.CreatedAt.AsTime().Format(time.RFC3339)
+		}
+		if override, ok := providerOverrides[strings.ToLower(strings.TrimSpace(u.Name))]; ok {
+			overrideProvider := strings.ToLower(strings.TrimSpace(override.Provider))
+			if overrideProvider == "oidc" {
+				user.Provider = "oidc"
+				if strings.TrimSpace(override.ProviderID) != "" {
+					user.ProviderID = strings.TrimSpace(override.ProviderID)
+				}
+				if strings.TrimSpace(override.DisplayName) != "" {
+					user.DisplayName = strings.TrimSpace(override.DisplayName)
+				}
+				if strings.TrimSpace(override.Email) != "" {
+					user.Email = strings.TrimSpace(override.Email)
+				}
+				if strings.TrimSpace(override.ProfilePicURL) != "" {
+					user.ProfilePicURL = strings.TrimSpace(override.ProfilePicURL)
+				}
+			}
 		}
 		users = append(users, user)
 	}

@@ -98,7 +98,12 @@ func (s *systemService) syncHeadscaleUsers() {
 			}
 			normalizedProvider := normalizeHeadscaleProvider(hsUser.Provider)
 			if normalizedProvider != "" && existing.Provider != normalizedProvider {
-				updates["provider"] = normalizedProvider
+				// Preserve panel-side OIDC tagging for users created via the OIDC add-user flow.
+				if strings.EqualFold(strings.TrimSpace(existing.Provider), "oidc") && normalizedProvider != "oidc" {
+					// keep existing provider
+				} else {
+					updates["provider"] = normalizedProvider
+				}
 			}
 			if hsUser.ProviderId != "" && existing.ProviderID != hsUser.ProviderId {
 				updates["provider_id"] = hsUser.ProviderId

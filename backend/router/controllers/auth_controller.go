@@ -427,17 +427,10 @@ func (a *AuthController) OIDCHeadscaleUserCallback(c *gin.Context) {
 			return
 		}
 
-		updates := map[string]interface{}{"provider": "oidc", "provider_id": claims.Sub}
-		if claims.Name != "" {
-			updates["display_name"] = claims.Name
+		if err := upsertOIDCHeadscaleShadowUser(existing.Name, claims.Sub, claims.Email, claims.Name, claims.Picture); err != nil {
+			unifyerror.Fail(c, unifyerror.ServerError(err))
+			return
 		}
-		if claims.Email != "" {
-			updates["email"] = claims.Email
-		}
-		if claims.Picture != "" {
-			updates["profile_pic_url"] = claims.Picture
-		}
-		_ = model.DB.Model(&model.User{}).Where("headscale_name = ?", existing.Name).Updates(updates).Error
 
 		existing.Provider = "oidc"
 		if claims.Name != "" {
@@ -463,6 +456,11 @@ func (a *AuthController) OIDCHeadscaleUserCallback(c *gin.Context) {
 		unifyerror.Fail(c, err)
 		return
 	}
+	if err := upsertOIDCHeadscaleShadowUser(createdUser.Name, claims.Sub, claims.Email, claims.Name, claims.Picture); err != nil {
+		unifyerror.Fail(c, unifyerror.ServerError(err))
+		return
+	}
+	createdUser.Provider = "oidc"
 
 	unifyerror.Success(c, gin.H{
 		"created":          true,
@@ -627,6 +625,48 @@ func findOrCreateOIDCUser(oidcCfg *services.OIDCSettingsPayload, sub, email, nam
 
 func failOIDCAuth(c *gin.Context) {
 	unifyerror.Fail(c, unifyerror.New(http.StatusForbidden, unifyerror.CodeForbidden, "OIDC authentication failed"))
+}
+
+func upsertOIDCHeadscaleShadowUser(headscaleName, sub, email, displayName, picture string) error {
+	headscaleName = strings.TrimSpace(headscaleName)
+	if headscaleName == "" {
+		return nil
+	}
+
+	var user model.User
+	err := model.DB.Where("headscale_name = ? OR username = ?", headscaleName, headscaleName).First(&user).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		newUser := model.User{
+			Username:      headscaleName,
+			HeadscaleName: headscaleName,
+			DisplayName:   strings.TrimSpace(displayName),
+			Email:         strings.TrimSpace(email),
+			Provider:      "oidc",
+			ProviderID:    strings.TrimSpace(sub),
+			ProfilePicURL: strings.TrimSpace(picture),
+		}
+		return model.DB.Create(&newUser).Error
+	}
+	if err != nil {
+		return err
+	}
+
+	updates := map[string]interface{}{
+		"provider":       "oidc",
+		"provider_id":    strings.TrimSpace(sub),
+		"headscale_name": headscaleName,
+	}
+	if strings.TrimSpace(displayName) != "" {
+		updates["display_name"] = strings.TrimSpace(displayName)
+	}
+	if strings.TrimSpace(email) != "" {
+		updates["email"] = strings.TrimSpace(email)
+	}
+	if strings.TrimSpace(picture) != "" {
+		updates["profile_pic_url"] = strings.TrimSpace(picture)
+	}
+
+	return model.DB.Model(&user).Updates(updates).Error
 }
 
 func oidcClaimsMatchHeadscaleUser(user services.HeadscaleUser, oidcName, oidcEmail string) bool {
