@@ -24,6 +24,9 @@ export type CreateHeadscaleUserRes = HeadscaleUser;
 export interface RenameHeadscaleUserReq {
   old_name: string;
   new_name: string;
+  display_name?: string;
+  email?: string;
+  picture_url?: string;
 }
 export interface RenameHeadscaleUserRes {}
 

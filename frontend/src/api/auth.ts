@@ -12,6 +12,7 @@ import type {
   EnableTOTPReq,
   OidcCallbackReq,
   OidcCallbackRes,
+  OidcCreateHeadscaleUserCallbackRes,
   OidcStatusReq,
   OidcStatusRes,
 } from './auth.types';
@@ -23,6 +24,9 @@ export const authApi = {
   markGuideTourSeen: (_req?: MarkGuideTourSeenReq) => request.post<any, MarkGuideTourSeenRes>('/user/guide-tour/seen'),
   oidcLogin: () => request.get<any, { url?: string }>('/auth/oidc/login'),
   oidcCallback: (req: OidcCallbackReq) => request.get<any, OidcCallbackRes>('/auth/oidc/callback', { params: req }),
+  oidcCreateHeadscaleUserLogin: () => request.get<any, { url?: string; redirect_url?: string }>('/auth/oidc/headscale-user/login'),
+  oidcCreateHeadscaleUserCallback: (req: OidcCallbackReq) =>
+    request.get<any, OidcCreateHeadscaleUserCallbackRes>('/auth/oidc/headscale-user/callback', { params: req }),
   generateTOTP: () => request.post<any, GenerateTOTPRes>('/user/totp/generate'),
   enableTOTP: (req: EnableTOTPReq) => request.post<any, void>('/user/totp/enable', req),
 };

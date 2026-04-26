@@ -39,13 +39,14 @@ import {
 import { loadUsersPageData } from '@/lib/page-data';
 import DashboardLayout from '@/components/DashboardLayout';
 import PageHeaderStatCards from '@/components/PageHeaderStatCards';
-import { aclApi, deviceApi, headscaleUserApi } from '@/api';
+import { aclApi, authApi, deviceApi, headscaleUserApi, publicAuthApi } from '@/api';
 import type {
   ACLPolicy,
   NormalizedDevice,
   NormalizedHeadscaleUser,
 } from '@/lib/normalizers';
 import { normalizeDeviceListResponse } from '@/lib/normalizers';
+import { setOidcCreateHeadscaleUserIntent } from '@/lib/auth';
 import { UserProvider } from '@/lib/enums';
 import { useTranslation } from '@/i18n/index';
 import { useRequest } from 'ahooks';
@@ -72,7 +73,6 @@ type TreeSelection =
   | { type: 'ungrouped' }
   | { type: 'group'; groupName: string }
   | { type: 'user'; userId: number; groupName?: string };
-
 
 export default function UsersPage() {
   const t = useTranslation();
@@ -102,6 +102,7 @@ export default function UsersPage() {
   const [selectedDevice, setSelectedDevice] = useState<DeviceData | null>(null);
   const [addDeviceDialogOpen, setAddDeviceDialogOpen] = useState(false);
   const [onlineUsers, setOnlineUsers] = useState<Set<string>>(new Set());
+  const [oidcEnabled, setOidcEnabled] = useState(false);
 
   const { loading, refreshAsync } = useRequest(
     async () => loadUsersPageData(),
@@ -319,6 +320,24 @@ export default function UsersPage() {
     }
   }, [selectedTreeUser]);
 
+  useEffect(() => {
+    let mounted = true;
+    void publicAuthApi
+      .oidcStatus()
+      .then((data: any) => {
+        if (!mounted) return;
+        setOidcEnabled(Boolean(data?.enabled));
+      })
+      .catch(() => {
+        if (!mounted) return;
+        setOidcEnabled(false);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
   const filteredUsers = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     if (!q) {
@@ -387,10 +406,8 @@ export default function UsersPage() {
   );
 
   const handleUpdateHeadscaleUser = useCallback(
-    async ({ oldName, newName, groupName }: { oldName: string; newName: string; groupName?: string }) => {
-      if (oldName !== newName) {
-        await headscaleUserApi.rename({ old_name: oldName, new_name: newName });
-      }
+    async ({ oldName, newName, displayName, email, groupName }: { oldName: string; newName: string; displayName: string; email: string; groupName?: string }) => {
+      await headscaleUserApi.rename({ old_name: oldName, new_name: newName, display_name: displayName, email });
 
       const oldToken = getGroupMemberToken(oldName);
       const newToken = getGroupMemberToken(newName);
@@ -409,6 +426,21 @@ export default function UsersPage() {
     },
     [aclGroups, aclPolicy],
   );
+
+  const handleCreateHeadscaleUserViaOIDC = useCallback(async () => {
+    try {
+      const data: any = await authApi.oidcCreateHeadscaleUserLogin();
+      const redirectUrl = data?.url || data?.redirect_url;
+      if (!redirectUrl) {
+        message.error(t.login.oidcRedirectFailed);
+        return;
+      }
+      setOidcCreateHeadscaleUserIntent();
+      window.location.href = redirectUrl;
+    } catch {
+      message.error(t.login.oidcConfigError);
+    }
+  }, [t.login.oidcConfigError, t.login.oidcRedirectFailed]);
 
   const handleEditUser = (user: UserData) => {
     setSelectedUser(user);
@@ -812,6 +844,9 @@ export default function UsersPage() {
               menu={{
                 items: [
                   { key: 'user', icon: <UserAddOutlined />, label: t.users.newUser, onClick: () => setCreateUserDialogOpen(true) },
+                  ...(oidcEnabled
+                    ? [{ key: 'user-oidc', icon: <UserOutlined />, label: t.users.newUserByOidc, onClick: () => void handleCreateHeadscaleUserViaOIDC() }]
+                    : []),
                   { key: 'group', icon: <UsergroupAddOutlined />, label: t.users.newGroup, onClick: () => setCreateGroupDialogOpen(true) },
                 ],
               }}

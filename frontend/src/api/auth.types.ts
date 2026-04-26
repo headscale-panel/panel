@@ -50,6 +50,18 @@ export interface OidcCallbackRes {
   permissions?: string[];
 }
 
+export interface OidcCreateHeadscaleUserCallbackRes {
+  created: boolean;
+  updated_existing: boolean;
+  user?: {
+    id?: number;
+    name?: string;
+    display_name?: string;
+    email?: string;
+    provider?: string;
+  };
+}
+
 export interface OidcStatusReq {}
 
 export interface OidcStatusRes {

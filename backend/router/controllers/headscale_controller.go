@@ -17,13 +17,19 @@ func NewHeadscaleController() *HeadscaleController {
 
 // HeadscaleCreateUserRequest is the request body for CreateUser.
 type HeadscaleCreateUserRequest struct {
-	Name string `json:"name" binding:"required"`
+	Name        string `json:"name" binding:"required"`
+	DisplayName string `json:"display_name"`
+	Email       string `json:"email"`
+	PictureURL  string `json:"picture_url"`
 }
 
 // HeadscaleRenameUserRequest is the request body for RenameUser.
 type HeadscaleRenameUserRequest struct {
-	OldName string `json:"old_name" binding:"required"`
-	NewName string `json:"new_name" binding:"required"`
+	OldName     string `json:"old_name" binding:"required"`
+	NewName     string `json:"new_name" binding:"required"`
+	DisplayName string `json:"display_name"`
+	Email       string `json:"email"`
+	PictureURL  string `json:"picture_url"`
 }
 
 // HeadscaleRenameMachineRequest is the request body for RenameMachine.
@@ -107,7 +113,7 @@ func (h *HeadscaleController) CreateUser(c *gin.Context) {
 		return
 	}
 	userID := c.GetUint("userID")
-	user, err := services.HeadscaleService.CreateUserWithContext(c.Request.Context(), userID, req.Name)
+	user, err := services.HeadscaleService.CreateUserWithContext(c.Request.Context(), userID, req.Name, req.DisplayName, req.Email, req.PictureURL)
 	if err != nil {
 		unifyerror.Fail(c, err)
 		return
@@ -151,7 +157,7 @@ func (h *HeadscaleController) RenameUser(c *gin.Context) {
 		return
 	}
 
-	user, err := services.HeadscaleService.RenameUserWithContext(c.Request.Context(), actorUserID, targetUserID, req.NewName)
+	user, err := services.HeadscaleService.RenameUserWithContext(c.Request.Context(), actorUserID, targetUserID, req.NewName, req.DisplayName, req.Email, req.PictureURL)
 	if err != nil {
 		unifyerror.Fail(c, err)
 		return

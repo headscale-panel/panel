@@ -33,8 +33,10 @@ func NewAuthController() *AuthController {
 
 // In-memory state storage for OIDC login flow
 var (
-	oidcStates   = make(map[string]time.Time)
-	oidcStatesMu sync.Mutex
+	oidcStates              = make(map[string]time.Time)
+	oidcStatesMu            sync.Mutex
+	oidcHeadscaleUserStates = make(map[string]time.Time)
+	oidcHeadscaleStatesMu   sync.Mutex
 )
 
 // cleanExpiredStates removes expired entries from the state map.
@@ -43,6 +45,15 @@ func cleanExpiredStates() {
 	for k, v := range oidcStates {
 		if now.After(v) {
 			delete(oidcStates, k)
+		}
+	}
+}
+
+func cleanExpiredHeadscaleUserStates() {
+	now := time.Now()
+	for k, v := range oidcHeadscaleUserStates {
+		if now.After(v) {
+			delete(oidcHeadscaleUserStates, k)
 		}
 	}
 }
@@ -135,6 +146,65 @@ func (a *AuthController) OIDCLogin(c *gin.Context) {
 	unifyerror.Success(c, gin.H{
 		"redirect_url": authURL,
 	})
+}
+
+// OIDCHeadscaleUserLogin godoc
+// @Summary Initiate OIDC flow for creating a Headscale user
+// @Tags auth
+// @Produce json
+// @Success 200 {object} unifyerror.Response{data=object} "redirect_url"
+// @Failure 500 {object} unifyerror.Response
+// @Security BearerAuth
+// @Router /auth/oidc/headscale-user/login [get]
+func (a *AuthController) OIDCHeadscaleUserLogin(c *gin.Context) {
+	oidcCfg := services.PanelSettingsService.GetOIDCConfig()
+	if oidcCfg == nil || !oidcCfg.Enabled || oidcCfg.Issuer == "" || oidcCfg.ClientID == "" {
+		failOIDCAuth(c)
+		return
+	}
+
+	stateBytes := make([]byte, 32)
+	if _, err := rand.Read(stateBytes); err != nil {
+		unifyerror.Fail(c, fmt.Errorf("failed to generate random state: %w", err))
+		return
+	}
+	state := hex.EncodeToString(stateBytes)
+
+	oidcHeadscaleStatesMu.Lock()
+	cleanExpiredHeadscaleUserStates()
+	oidcHeadscaleUserStates[state] = time.Now().Add(10 * time.Minute)
+	oidcHeadscaleStatesMu.Unlock()
+
+	scopes := oidcCfg.Scope
+	if len(scopes) == 0 {
+		scopes = []string{"openid", "profile", "email"}
+	}
+
+	redirectURI, err := oidcRedirectURI()
+	if err != nil {
+		unifyerror.Fail(c, unifyerror.New(http.StatusInternalServerError, unifyerror.CodeServerErr, "invalid OIDC redirect base URL"))
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 15*time.Second)
+	defer cancel()
+
+	provider, err := oidc.NewProvider(ctx, oidcCfg.Issuer)
+	if err != nil {
+		failOIDCAuth(c)
+		return
+	}
+
+	oauthCfg := oauth2.Config{
+		ClientID:     oidcCfg.ClientID,
+		ClientSecret: oidcCfg.ClientSecret,
+		RedirectURL:  redirectURI,
+		Endpoint:     provider.Endpoint(),
+		Scopes:       scopes,
+	}
+
+	authURL := oauthCfg.AuthCodeURL(state)
+	unifyerror.Success(c, gin.H{"redirect_url": authURL})
 }
 
 // OIDCCallbackQuery is the query parameter struct for OIDCCallback.
@@ -286,6 +356,121 @@ func (a *AuthController) OIDCCallback(c *gin.Context) {
 	})
 }
 
+// OIDCHeadscaleUserCallback godoc
+// @Summary Handle OIDC callback and create Headscale user from OIDC claims
+// @Tags auth
+// @Produce json
+// @Param code query string true "Authorization code"
+// @Param state query string true "State parameter"
+// @Success 200 {object} unifyerror.Response{data=object}
+// @Failure 400 {object} unifyerror.Response
+// @Security BearerAuth
+// @Router /auth/oidc/headscale-user/callback [get]
+func (a *AuthController) OIDCHeadscaleUserCallback(c *gin.Context) {
+	var q OIDCCallbackQuery
+	if err := c.ShouldBindQuery(&q); err != nil {
+		unifyerror.Fail(c, unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "missing code or state parameter"))
+		return
+	}
+
+	oidcHeadscaleStatesMu.Lock()
+	expiry, exists := oidcHeadscaleUserStates[q.State]
+	if exists {
+		delete(oidcHeadscaleUserStates, q.State)
+	}
+	oidcHeadscaleStatesMu.Unlock()
+
+	if !exists || time.Now().After(expiry) {
+		unifyerror.Fail(c, unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "invalid or expired state parameter"))
+		return
+	}
+
+	oidcCfg := services.PanelSettingsService.GetOIDCConfig()
+	if oidcCfg == nil || !oidcCfg.Enabled || oidcCfg.Issuer == "" || oidcCfg.ClientID == "" {
+		failOIDCAuth(c)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 15*time.Second)
+	defer cancel()
+
+	claims, err := exchangeOIDCClaims(ctx, oidcCfg, q.Code)
+	if err != nil {
+		failOIDCAuth(c)
+		return
+	}
+
+	if claims.Sub == "" {
+		failOIDCAuth(c)
+		return
+	}
+	if oidcCfg.EmailVerifiedRequired && !claims.EmailVerified {
+		failOIDCAuth(c)
+		return
+	}
+
+	actorUserID := c.GetUint("userID")
+	derivedName := deriveUsername(claims.PreferredUser, claims.Name, claims.Email, claims.Sub)
+
+	users, err := services.HeadscaleService.ListHeadscaleUsersWithContext(c.Request.Context(), actorUserID)
+	if err != nil {
+		unifyerror.Fail(c, err)
+		return
+	}
+
+	for _, existing := range users {
+		if !strings.EqualFold(strings.TrimSpace(existing.Name), strings.TrimSpace(derivedName)) {
+			continue
+		}
+		if !oidcClaimsMatchHeadscaleUser(existing, claims.Name, claims.Email) {
+			unifyerror.Fail(c, unifyerror.Conflict("existing headscale user does not match OIDC claims"))
+			return
+		}
+
+		updates := map[string]interface{}{"provider": "oidc", "provider_id": claims.Sub}
+		if claims.Name != "" {
+			updates["display_name"] = claims.Name
+		}
+		if claims.Email != "" {
+			updates["email"] = claims.Email
+		}
+		if claims.Picture != "" {
+			updates["profile_pic_url"] = claims.Picture
+		}
+		_ = model.DB.Model(&model.User{}).Where("headscale_name = ?", existing.Name).Updates(updates).Error
+
+		existing.Provider = "oidc"
+		if claims.Name != "" {
+			existing.DisplayName = claims.Name
+		}
+		if claims.Email != "" {
+			existing.Email = claims.Email
+		}
+		if claims.Picture != "" {
+			existing.ProfilePicURL = claims.Picture
+		}
+
+		unifyerror.Success(c, gin.H{
+			"created":          false,
+			"updated_existing": true,
+			"user":             existing,
+		})
+		return
+	}
+
+	createdUser, err := services.HeadscaleService.CreateUserWithContext(c.Request.Context(), actorUserID, derivedName, claims.Name, claims.Email, claims.Picture)
+	if err != nil {
+		unifyerror.Fail(c, err)
+		return
+	}
+
+	unifyerror.Success(c, gin.H{
+		"created":          true,
+		"updated_existing": false,
+		"user":             createdUser,
+	})
+}
+
 // findOrCreateOIDCUser looks up an existing panel user by OIDC provider+sub,
 // falling back to email lookup (with allowlist guard), and finally creating a new user if none exists.
 func findOrCreateOIDCUser(oidcCfg *services.OIDCSettingsPayload, sub, email, name, preferredUsername, picture string) (*model.User, error) {
@@ -345,24 +530,55 @@ func findOrCreateOIDCUser(oidcCfg *services.OIDCSettingsPayload, sub, email, nam
 		}
 	}
 
-	// Try 2: Find by email (link existing non-local account)
+	// Try 2: Find by email and upgrade existing account to OIDC source.
 	if email != "" {
 		err = model.DB.Preload("Group").
 			Where("email = ? AND email != ''", email).
 			First(&user).Error
-		if err == nil && user.Provider != "" && user.Provider != "local" {
-			// Link the OIDC identity to the existing account
-			if err := model.DB.Model(&user).Updates(map[string]interface{}{
+		if err == nil {
+			updates := map[string]interface{}{
 				"provider":        "oidc",
 				"provider_id":     sub,
 				"profile_pic_url": picture,
-			}).Error; err != nil {
+			}
+			if email != "" {
+				updates["email"] = email
+			}
+			if name != "" {
+				updates["display_name"] = name
+			}
+			if err := model.DB.Model(&user).Updates(updates).Error; err != nil {
 				return nil, fmt.Errorf("failed to link oidc account: %w", err)
 			}
-			if name != "" && user.DisplayName == "" {
-				if err := model.DB.Model(&user).Update("display_name", name).Error; err != nil {
-					return nil, fmt.Errorf("failed to update display name: %w", err)
-				}
+			if err := model.DB.Preload("Group").First(&user, user.ID).Error; err != nil {
+				return nil, fmt.Errorf("failed to reload linked oidc user: %w", err)
+			}
+			return &user, nil
+		}
+		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, err
+		}
+	}
+
+	if preferredUsername != "" {
+		err = model.DB.Preload("Group").Where("username = ?", preferredUsername).First(&user).Error
+		if err == nil {
+			updates := map[string]interface{}{
+				"provider":        "oidc",
+				"provider_id":     sub,
+				"profile_pic_url": picture,
+			}
+			if email != "" {
+				updates["email"] = email
+			}
+			if name != "" {
+				updates["display_name"] = name
+			}
+			if err := model.DB.Model(&user).Updates(updates).Error; err != nil {
+				return nil, fmt.Errorf("failed to link oidc account by username: %w", err)
+			}
+			if err := model.DB.Preload("Group").First(&user, user.ID).Error; err != nil {
+				return nil, fmt.Errorf("failed to reload linked oidc user: %w", err)
 			}
 			return &user, nil
 		}
@@ -411,6 +627,84 @@ func findOrCreateOIDCUser(oidcCfg *services.OIDCSettingsPayload, sub, email, nam
 
 func failOIDCAuth(c *gin.Context) {
 	unifyerror.Fail(c, unifyerror.New(http.StatusForbidden, unifyerror.CodeForbidden, "OIDC authentication failed"))
+}
+
+func oidcClaimsMatchHeadscaleUser(user services.HeadscaleUser, oidcName, oidcEmail string) bool {
+	if strings.TrimSpace(oidcEmail) != "" && !strings.EqualFold(strings.TrimSpace(user.Email), strings.TrimSpace(oidcEmail)) {
+		return false
+	}
+	if strings.TrimSpace(oidcName) != "" {
+		if strings.EqualFold(strings.TrimSpace(user.DisplayName), strings.TrimSpace(oidcName)) {
+			return true
+		}
+		if strings.EqualFold(strings.TrimSpace(user.Name), strings.TrimSpace(oidcName)) {
+			return true
+		}
+		return false
+	}
+	return true
+}
+
+func exchangeOIDCClaims(ctx context.Context, oidcCfg *services.OIDCSettingsPayload, code string) (*struct {
+	Sub           string `json:"sub"`
+	Email         string `json:"email"`
+	EmailVerified bool   `json:"email_verified"`
+	Name          string `json:"name"`
+	PreferredUser string `json:"preferred_username"`
+	Picture       string `json:"picture"`
+}, error) {
+	provider, err := oidc.NewProvider(ctx, oidcCfg.Issuer)
+	if err != nil {
+		return nil, err
+	}
+
+	scopes := oidcCfg.Scope
+	if len(scopes) == 0 {
+		scopes = []string{"openid", "profile", "email"}
+	}
+
+	redirectURI, err := oidcRedirectURI()
+	if err != nil {
+		return nil, err
+	}
+
+	oauthCfg := oauth2.Config{
+		ClientID:     oidcCfg.ClientID,
+		ClientSecret: oidcCfg.ClientSecret,
+		RedirectURL:  redirectURI,
+		Endpoint:     provider.Endpoint(),
+		Scopes:       scopes,
+	}
+
+	oauthToken, err := oauthCfg.Exchange(ctx, code)
+	if err != nil {
+		return nil, err
+	}
+
+	rawIDToken, ok := oauthToken.Extra("id_token").(string)
+	if !ok {
+		return nil, errors.New("missing id_token")
+	}
+
+	verifier := provider.Verifier(&oidc.Config{ClientID: oidcCfg.ClientID})
+	idToken, err := verifier.Verify(ctx, rawIDToken)
+	if err != nil {
+		return nil, err
+	}
+
+	claims := &struct {
+		Sub           string `json:"sub"`
+		Email         string `json:"email"`
+		EmailVerified bool   `json:"email_verified"`
+		Name          string `json:"name"`
+		PreferredUser string `json:"preferred_username"`
+		Picture       string `json:"picture"`
+	}{}
+	if err := idToken.Claims(claims); err != nil {
+		return nil, err
+	}
+
+	return claims, nil
 }
 
 // deriveUsername picks the best available username string from OIDC claims.

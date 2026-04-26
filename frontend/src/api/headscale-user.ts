@@ -26,8 +26,7 @@ export const headscaleUserApi = {
       },
     }),
   create: (req: CreateHeadscaleUserReq) => request.post<any, CreateHeadscaleUserRes>('/headscale/users', req),
-  rename: (req: RenameHeadscaleUserReq) =>
-    request.put<any, RenameHeadscaleUserRes>('/headscale/users/rename', { old_name: req.old_name, new_name: req.new_name }),
+  rename: (req: RenameHeadscaleUserReq) => request.put<any, RenameHeadscaleUserRes>('/headscale/users/rename', req),
   delete: (req: DeleteHeadscaleUserReq) => request.delete<any, DeleteHeadscaleUserRes>('/headscale/users', { params: { name: req.name } }),
   getPreAuthKeys: (req: GetPreAuthKeysReq) => request.get<any, GetPreAuthKeysRes>('/headscale/preauthkeys', { params: req }),
   createPreAuthKey: (req: CreatePreAuthKeyReq) => request.post<any, CreatePreAuthKeyRes>('/headscale/preauthkeys', req),

@@ -63,6 +63,9 @@ func InitRouter() *gin.Engine {
 		auth := api.Group("/")
 		auth.Use(middleware.AuthMiddleware())
 		{
+			auth.GET("/auth/oidc/headscale-user/login", middleware.PermissionMiddleware("headscale:user:create"), authController.OIDCHeadscaleUserLogin)
+			auth.GET("/auth/oidc/headscale-user/callback", middleware.PermissionMiddleware("headscale:user:create"), authController.OIDCHeadscaleUserCallback)
+
 			auth.GET("/user/info", userController.GetInfo)
 			auth.POST("/user/guide-tour/seen", userController.MarkGuideTourSeen)
 			auth.POST("/user/totp/generate", userController.GenerateTOTP)

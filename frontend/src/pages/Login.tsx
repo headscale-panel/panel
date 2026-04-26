@@ -8,7 +8,12 @@ import { useState, useEffect, useCallback } from 'react';
 import { useLocation, useSearch } from 'wouter';
 import { message } from 'antd';
 import { useRequest } from 'ahooks';
-import { consumeAuthNotice, normalizeLoginReturnUrl } from '@/lib/auth';
+import {
+  clearOidcCreateHeadscaleUserIntent,
+  consumeAuthNotice,
+  hasOidcCreateHeadscaleUserIntent,
+  normalizeLoginReturnUrl,
+} from '@/lib/auth';
 import { getDefaultRouteForUser } from '@/lib/permissions';
 
 const { Title, Text } = Typography;
@@ -85,17 +90,31 @@ export default function Login() {
   const handleOIDCCallback = useCallback(async (code: string, state: string) => {
     setOidcLoading(true);
     try {
-      const data: any = await authApi.oidcCallback({ code, state });
-      if (data?.token && data?.user) {
-        const nextUser = parseUserAuth(data);
-        message.success(t.login.oidcLoginSuccess);
-        setLocation(getDefaultRouteForUser(nextUser));
+      const isCreateHeadscaleUserFlow = hasOidcCreateHeadscaleUserIntent();
+      if (isCreateHeadscaleUserFlow) {
+        const data: any = await authApi.oidcCreateHeadscaleUserCallback({ code, state });
+        if (data?.user) {
+          const username = data.user.name || data.user.display_name || 'OIDC';
+          const notice = data.updated_existing ? t.users.updateUserSuccess : t.users.createUserSuccess.replace('{username}', username);
+          message.success(notice);
+          setLocation('/users');
+        } else {
+          message.error(t.login.oidcVerifyFailed);
+        }
       } else {
-        message.error(t.login.oidcVerifyFailed);
+        const data: any = await authApi.oidcCallback({ code, state });
+        if (data?.token && data?.user) {
+          const nextUser = parseUserAuth(data);
+          message.success(t.login.oidcLoginSuccess);
+          setLocation(getDefaultRouteForUser(nextUser));
+        } else {
+          message.error(t.login.oidcVerifyFailed);
+        }
       }
     } catch {
       message.error(t.login.oidcLoginFailed);
     } finally {
+      clearOidcCreateHeadscaleUserIntent();
       setOidcLoading(false);
       window.history.replaceState({}, '', window.location.pathname);
     }

@@ -40,7 +40,7 @@ export default function CreateUserModal({ open, groups, onCancel, onSuccess, onC
     const displayName = form.displayName.trim();
     const email = form.email.trim();
     if (!username || !displayName || !email) {
-      message.error(t.users.requiredFieldsOidc);
+      message.error(t.users.requiredCreateFields);
       return;
     }
 

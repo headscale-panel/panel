@@ -13,11 +13,13 @@ interface EditUserModalProps {
   currentGroupName?: string;
   onCancel: () => void;
   onSuccess: () => void;
-  onSave: (payload: { oldName: string; newName: string; groupName?: string }) => Promise<void>;
+  onSave: (payload: { oldName: string; newName: string; displayName: string; email: string; groupName?: string }) => Promise<void>;
 }
 
 const DEFAULT_FORM = {
   username: '',
+  displayName: '',
+  email: '',
   groupName: undefined as string | undefined,
 };
 
@@ -38,6 +40,8 @@ export default function EditUserModal({
     if (open && user) {
       setForm({
         username: user.headscale_name || user.username,
+        displayName: user.display_name || '',
+        email: user.email || '',
         groupName: currentGroupName,
       });
     }
@@ -47,8 +51,10 @@ export default function EditUserModal({
     if (!user) return;
 
     const newName = form.username.trim();
-    if (!newName) {
-      message.error(t.users.requiredFieldsOidc);
+    const displayName = form.displayName.trim();
+    const email = form.email.trim();
+    if (!newName || !displayName || !email) {
+      message.error(t.users.requiredEditFields);
       return;
     }
 
@@ -57,6 +63,8 @@ export default function EditUserModal({
       await onSave({
         oldName: user.headscale_name || user.username,
         newName,
+        displayName,
+        email,
         groupName: form.groupName,
       });
       message.success(t.users.updateUserSuccess);
@@ -88,6 +96,23 @@ export default function EditUserModal({
             value={form.username}
             onChange={(e) => setForm({ ...form, username: e.target.value })}
             placeholder={t.users.usernamePlaceholder}
+          />
+        </div>
+        <div className="form-grid-row">
+          <Text className="text-right text-13px">{t.users.displayNameLabel} *</Text>
+          <Input
+            value={form.displayName}
+            onChange={(e) => setForm({ ...form, displayName: e.target.value })}
+            placeholder={t.users.displayNameLabel}
+          />
+        </div>
+        <div className="form-grid-row">
+          <Text className="text-right text-13px">{t.users.emailLabel} *</Text>
+          <Input
+            type="email"
+            value={form.email}
+            onChange={(e) => setForm({ ...form, email: e.target.value })}
+            placeholder="user@example.com"
           />
         </div>
         <div className="form-grid-row">

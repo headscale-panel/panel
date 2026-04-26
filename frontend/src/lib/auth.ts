@@ -5,6 +5,7 @@ import { AUTH_STORAGE_KEY, AUTH_NOTICE_STORAGE_KEY } from './storage-keys';
 export { AUTH_STORAGE_KEY, AUTH_NOTICE_STORAGE_KEY };
 export const PANEL_BASE_PATH = '/panel';
 export const PANEL_LOGIN_PATH = `${PANEL_BASE_PATH}/login`;
+export const OIDC_CREATE_HEADSCALE_USER_INTENT_KEY = 'oidc-create-headscale-user-intent';
 
 export type AuthNoticeKey = 'sessionExpired';
 
@@ -121,6 +122,30 @@ export function normalizeLoginReturnUrl(raw: string | null): string | null {
   }
 
   return null;
+}
+
+export function setOidcCreateHeadscaleUserIntent() {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  window.sessionStorage.setItem(OIDC_CREATE_HEADSCALE_USER_INTENT_KEY, '1');
+}
+
+export function hasOidcCreateHeadscaleUserIntent(): boolean {
+  if (typeof window === 'undefined') {
+    return false;
+  }
+
+  return window.sessionStorage.getItem(OIDC_CREATE_HEADSCALE_USER_INTENT_KEY) === '1';
+}
+
+export function clearOidcCreateHeadscaleUserIntent() {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  window.sessionStorage.removeItem(OIDC_CREATE_HEADSCALE_USER_INTENT_KEY);
 }
 
 export function redirectToLogin() {

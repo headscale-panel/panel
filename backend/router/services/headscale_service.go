@@ -426,11 +426,11 @@ func (s *headscaleService) SetMachineTagsWithContext(ctx context.Context, actorU
 }
 
 // CreateUser creates a user in Headscale
-func (s *headscaleService) CreateUser(actorUserID uint, name string) (*HeadscaleUser, error) {
-	return s.CreateUserWithContext(context.Background(), actorUserID, name)
+func (s *headscaleService) CreateUser(actorUserID uint, name, displayName, email, pictureURL string) (*HeadscaleUser, error) {
+	return s.CreateUserWithContext(context.Background(), actorUserID, name, displayName, email, pictureURL)
 }
 
-func (s *headscaleService) CreateUserWithContext(ctx context.Context, actorUserID uint, name string) (*HeadscaleUser, error) {
+func (s *headscaleService) CreateUserWithContext(ctx context.Context, actorUserID uint, name, displayName, email, pictureURL string) (*HeadscaleUser, error) {
 	if err := RequirePermission(actorUserID, "headscale:user:create"); err != nil {
 		return nil, err
 	}
@@ -443,14 +443,22 @@ func (s *headscaleService) CreateUserWithContext(ctx context.Context, actorUserI
 	defer cancel()
 
 	resp, err := client.CreateUser(queryCtx, &v1.CreateUserRequest{
-		Name: name,
+		Name:        name,
+		DisplayName: displayName,
+		Email:       email,
+		PictureUrl:  pictureURL,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create user: %w", err)
 	}
 	user := HeadscaleUser{
-		ID:   resp.User.Id,
-		Name: resp.User.Name,
+		ID:            resp.User.Id,
+		Name:          resp.User.Name,
+		DisplayName:   resp.User.DisplayName,
+		Email:         resp.User.Email,
+		Provider:      normalizeHeadscaleProvider(resp.User.Provider),
+		ProviderID:    resp.User.ProviderId,
+		ProfilePicURL: resp.User.ProfilePicUrl,
 	}
 	if resp.User.CreatedAt != nil {
 		user.CreatedAt = resp.User.CreatedAt.AsTime().Format(time.RFC3339)
@@ -459,11 +467,11 @@ func (s *headscaleService) CreateUserWithContext(ctx context.Context, actorUserI
 }
 
 // RenameUser renames a user in Headscale
-func (s *headscaleService) RenameUser(actorUserID uint, oldID uint64, newName string) (*HeadscaleUser, error) {
-	return s.RenameUserWithContext(context.Background(), actorUserID, oldID, newName)
+func (s *headscaleService) RenameUser(actorUserID uint, oldID uint64, newName, displayName, email, pictureURL string) (*HeadscaleUser, error) {
+	return s.RenameUserWithContext(context.Background(), actorUserID, oldID, newName, displayName, email, pictureURL)
 }
 
-func (s *headscaleService) RenameUserWithContext(ctx context.Context, actorUserID uint, oldID uint64, newName string) (*HeadscaleUser, error) {
+func (s *headscaleService) RenameUserWithContext(ctx context.Context, actorUserID uint, oldID uint64, newName, displayName, email, pictureURL string) (*HeadscaleUser, error) {
 	if err := RequirePermission(actorUserID, "headscale:user:update"); err != nil {
 		return nil, err
 	}
@@ -483,8 +491,22 @@ func (s *headscaleService) RenameUserWithContext(ctx context.Context, actorUserI
 		return nil, fmt.Errorf("failed to rename user: %w", err)
 	}
 	user := HeadscaleUser{
-		ID:   resp.User.Id,
-		Name: resp.User.Name,
+		ID:            resp.User.Id,
+		Name:          resp.User.Name,
+		DisplayName:   resp.User.DisplayName,
+		Email:         resp.User.Email,
+		Provider:      normalizeHeadscaleProvider(resp.User.Provider),
+		ProviderID:    resp.User.ProviderId,
+		ProfilePicURL: resp.User.ProfilePicUrl,
+	}
+	if user.DisplayName == "" && strings.TrimSpace(displayName) != "" {
+		user.DisplayName = strings.TrimSpace(displayName)
+	}
+	if user.Email == "" && strings.TrimSpace(email) != "" {
+		user.Email = strings.TrimSpace(email)
+	}
+	if user.ProfilePicURL == "" && strings.TrimSpace(pictureURL) != "" {
+		user.ProfilePicURL = strings.TrimSpace(pictureURL)
 	}
 	return &user, nil
 }
