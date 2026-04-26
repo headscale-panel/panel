@@ -3,7 +3,8 @@ package services
 import (
 	"context"
 	"headscale-panel/model"
-	"headscale-panel/pkg/utils/serializer"
+	"headscale-panel/pkg/unifyerror"
+	"net/http"
 	"net/netip"
 	"strconv"
 	"strings"
@@ -29,7 +30,7 @@ type UpdateResourceRequest struct {
 }
 
 type ListResourceRequest struct {
-	serializer.PaginationQuery
+	unifyerror.PaginationQuery
 	Keyword string `form:"keyword"`
 }
 
@@ -40,25 +41,25 @@ func (s *resourceService) Create(userID uint, req *CreateResourceRequest) error 
 
 	name := strings.TrimSpace(req.Name)
 	if name == "" {
-		return serializer.NewError(serializer.CodeParamErr, "resource name is required", nil)
+		return unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "resource name is required")
 	}
 	if len(name) > 64 {
-		return serializer.NewError(serializer.CodeParamErr, "resource name exceeds 64 characters", nil)
+		return unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "resource name exceeds 64 characters")
 	}
 
 	ipAddress, err := normalizeIPAddress(req.IPAddress)
 	if err != nil {
-		return serializer.NewError(serializer.CodeParamErr, "invalid IP address format", err)
+		return unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "invalid IP address format")
 	}
 
 	port := strings.TrimSpace(req.Port)
 	if err := validatePortSpec(port); err != nil {
-		return serializer.NewError(serializer.CodeParamErr, "invalid port format", err)
+		return unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "invalid port format")
 	}
 
 	description := strings.TrimSpace(req.Description)
 	if len(description) > 500 {
-		return serializer.NewError(serializer.CodeParamErr, "resource description exceeds 500 characters", nil)
+		return unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "resource description exceeds 500 characters")
 	}
 
 	resource := model.Resource{
@@ -70,7 +71,7 @@ func (s *resourceService) Create(userID uint, req *CreateResourceRequest) error 
 	}
 
 	if err := model.DB.Create(&resource).Error; err != nil {
-		return serializer.ErrDatabase.WithError(err)
+		return unifyerror.DbError(err)
 	}
 	return nil
 }
@@ -92,7 +93,7 @@ func (s *resourceService) List(userID uint, req *ListResourceRequest) ([]model.R
 	// Fetch all matching resources for ACL filtering
 	var allResources []model.Resource
 	if err := query.Order("created_at DESC").Find(&allResources).Error; err != nil {
-		return nil, 0, serializer.ErrDatabase.WithError(err)
+		return nil, 0, unifyerror.DbError(err)
 	}
 
 	// Apply ACL-based filtering for non-admin users
@@ -129,7 +130,7 @@ func (s *resourceService) Get(userID uint, id uint) (*model.Resource, error) {
 
 	var resource model.Resource
 	if err := model.DB.First(&resource, id).Error; err != nil {
-		return nil, serializer.NewError(serializer.CodeNotFound, "resource not found", err)
+		return nil, unifyerror.New(http.StatusNotFound, unifyerror.CodeNotFound, "resource not found")
 	}
 
 	allowed, err := CanActorAccessIP(context.Background(), userID, resource.IPAddress)
@@ -137,7 +138,7 @@ func (s *resourceService) Get(userID uint, id uint) (*model.Resource, error) {
 		return nil, err
 	}
 	if !allowed {
-		return nil, serializer.ErrPermissionDenied
+		return nil, unifyerror.Forbidden()
 	}
 
 	return &resource, nil
@@ -150,7 +151,7 @@ func (s *resourceService) Update(userID uint, req *UpdateResourceRequest) error 
 
 	var resource model.Resource
 	if err := model.DB.First(&resource, req.ID).Error; err != nil {
-		return serializer.NewError(serializer.CodeNotFound, "resource not found", err)
+		return unifyerror.New(http.StatusNotFound, unifyerror.CodeNotFound, "resource not found")
 	}
 
 	allowed, err := canManageResource(userID, &resource)
@@ -158,16 +159,16 @@ func (s *resourceService) Update(userID uint, req *UpdateResourceRequest) error 
 		return err
 	}
 	if !allowed {
-		return serializer.ErrPermissionDenied
+		return unifyerror.Forbidden()
 	}
 
 	if req.Name != "" {
 		name := strings.TrimSpace(req.Name)
 		if name == "" {
-			return serializer.NewError(serializer.CodeParamErr, "resource name is required", nil)
+			return unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "resource name is required")
 		}
 		if len(name) > 64 {
-			return serializer.NewError(serializer.CodeParamErr, "resource name exceeds 64 characters", nil)
+			return unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "resource name exceeds 64 characters")
 		}
 		resource.Name = name
 	}
@@ -175,25 +176,25 @@ func (s *resourceService) Update(userID uint, req *UpdateResourceRequest) error 
 	if req.IPAddress != "" {
 		ipAddress, err := normalizeIPAddress(req.IPAddress)
 		if err != nil {
-			return serializer.NewError(serializer.CodeParamErr, "invalid IP address format", err)
+			return unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "invalid IP address format")
 		}
 		resource.IPAddress = ipAddress
 	}
 
 	port := strings.TrimSpace(req.Port)
 	if err := validatePortSpec(port); err != nil {
-		return serializer.NewError(serializer.CodeParamErr, "invalid port format", err)
+		return unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "invalid port format")
 	}
 	resource.Port = port
 
 	description := strings.TrimSpace(req.Description)
 	if len(description) > 500 {
-		return serializer.NewError(serializer.CodeParamErr, "resource description exceeds 500 characters", nil)
+		return unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "resource description exceeds 500 characters")
 	}
 	resource.Description = description
 
 	if err := model.DB.Save(&resource).Error; err != nil {
-		return serializer.ErrDatabase.WithError(err)
+		return unifyerror.DbError(err)
 	}
 	return nil
 }
@@ -205,7 +206,7 @@ func (s *resourceService) Delete(userID uint, id uint) error {
 
 	var resource model.Resource
 	if err := model.DB.First(&resource, id).Error; err != nil {
-		return serializer.NewError(serializer.CodeNotFound, "resource not found", err)
+		return unifyerror.New(http.StatusNotFound, unifyerror.CodeNotFound, "resource not found")
 	}
 
 	allowed, err := canManageResource(userID, &resource)
@@ -213,11 +214,11 @@ func (s *resourceService) Delete(userID uint, id uint) error {
 		return err
 	}
 	if !allowed {
-		return serializer.ErrPermissionDenied
+		return unifyerror.Forbidden()
 	}
 
 	if err := model.DB.Delete(&resource).Error; err != nil {
-		return serializer.ErrDatabase.WithError(err)
+		return unifyerror.DbError(err)
 	}
 	return nil
 }
@@ -226,7 +227,7 @@ func (s *resourceService) Delete(userID uint, id uint) error {
 func (s *resourceService) GetAllAsHosts() (map[string]string, error) {
 	var resources []model.Resource
 	if err := model.DB.Find(&resources).Error; err != nil {
-		return nil, serializer.ErrDatabase.WithError(err)
+		return nil, unifyerror.DbError(err)
 	}
 
 	hosts := make(map[string]string)
@@ -243,10 +244,10 @@ func canManageResource(userID uint, resource *model.Resource) (bool, error) {
 
 	var user model.User
 	if err := model.DB.Preload("Group").First(&user, userID).Error; err != nil {
-		return false, serializer.NewError(serializer.CodeUserNotFound, "user not found", err)
+		return false, unifyerror.New(http.StatusNotFound, unifyerror.CodeNotFound, "user not found")
 	}
 
-	if strings.EqualFold(strings.TrimSpace(user.Group.Name), "admin") {
+	if IsAdminGroupName(user.Group.Name) {
 		return true, nil
 	}
 	return false, nil
@@ -255,20 +256,20 @@ func canManageResource(userID uint, resource *model.Resource) (bool, error) {
 func normalizeIPAddress(input string) (string, error) {
 	raw := strings.TrimSpace(input)
 	if raw == "" {
-		return "", serializer.NewError(serializer.CodeParamErr, "IP address is required", nil)
+		return "", unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "IP address is required")
 	}
 
 	if strings.Contains(raw, "/") {
 		prefix, err := netip.ParsePrefix(raw)
 		if err != nil {
-			return "", serializer.NewError(serializer.CodeParamErr, "invalid IP/CIDR format", err)
+			return "", unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "invalid IP/CIDR format")
 		}
 		return prefix.Masked().String(), nil
 	}
 
 	ip, err := netip.ParseAddr(raw)
 	if err != nil {
-		return "", serializer.NewError(serializer.CodeParamErr, "invalid IP format", err)
+		return "", unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "invalid IP format")
 	}
 
 	bits := 32
@@ -287,31 +288,31 @@ func validatePortSpec(portSpec string) error {
 	for _, part := range parts {
 		item := strings.TrimSpace(part)
 		if item == "" {
-			return serializer.NewError(serializer.CodeParamErr, "invalid port format", nil)
+			return unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "invalid port format")
 		}
 
 		if strings.Contains(item, "-") {
 			rangeParts := strings.Split(item, "-")
 			if len(rangeParts) != 2 {
-				return serializer.NewError(serializer.CodeParamErr, "invalid port range format", nil)
+				return unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "invalid port range format")
 			}
 			start, err := strconv.Atoi(strings.TrimSpace(rangeParts[0]))
 			if err != nil || start < 1 || start > 65535 {
-				return serializer.NewError(serializer.CodeParamErr, "invalid port range start value", nil)
+				return unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "invalid port range start value")
 			}
 			end, err := strconv.Atoi(strings.TrimSpace(rangeParts[1]))
 			if err != nil || end < 1 || end > 65535 {
-				return serializer.NewError(serializer.CodeParamErr, "invalid port range end value", nil)
+				return unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "invalid port range end value")
 			}
 			if start > end {
-				return serializer.NewError(serializer.CodeParamErr, "port range start must not exceed end", nil)
+				return unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "port range start must not exceed end")
 			}
 			continue
 		}
 
 		p, err := strconv.Atoi(item)
 		if err != nil || p < 1 || p > 65535 {
-			return serializer.NewError(serializer.CodeParamErr, "invalid port value", nil)
+			return unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "invalid port value")
 		}
 	}
 

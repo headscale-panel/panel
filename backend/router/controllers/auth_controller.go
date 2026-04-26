@@ -7,6 +7,8 @@ import (
 	"errors"
 	"fmt"
 	"headscale-panel/pkg/conf"
+	"headscale-panel/pkg/constants"
+	"headscale-panel/pkg/unifyerror"
 	"net/http"
 	"net/url"
 	"strings"
@@ -15,7 +17,6 @@ import (
 
 	"headscale-panel/model"
 	"headscale-panel/pkg/utils/jwt"
-	"headscale-panel/pkg/utils/serializer"
 	"headscale-panel/router/services"
 
 	oidc "github.com/coreos/go-oidc/v3/oidc"
@@ -50,13 +51,13 @@ func cleanExpiredStates() {
 // @Summary Get OIDC login availability
 // @Tags auth
 // @Produce json
-// @Success 200 {object} serializer.Response{data=object}
+// @Success 200 {object} unifyerror.Response{data=object}
 // @Router /auth/oidc/status [get]
 // OIDCStatus returns whether OIDC login is available and provider metadata.
 func (a *AuthController) OIDCStatus(c *gin.Context) {
 	oidcCfg := services.PanelSettingsService.GetOIDCConfig()
 	if oidcCfg != nil && oidcCfg.Enabled && oidcCfg.Issuer != "" && oidcCfg.ClientID != "" {
-		serializer.Success(c, gin.H{
+		unifyerror.Success(c, gin.H{
 			"enabled":       true,
 			"builtin":       false,
 			"provider_name": "OIDC",
@@ -65,7 +66,7 @@ func (a *AuthController) OIDCStatus(c *gin.Context) {
 		return
 	}
 
-	serializer.Success(c, gin.H{
+	unifyerror.Success(c, gin.H{
 		"enabled":       false,
 		"builtin":       false,
 		"provider_name": "",
@@ -76,8 +77,8 @@ func (a *AuthController) OIDCStatus(c *gin.Context) {
 // @Summary Initiate OIDC authorization code flow
 // @Tags auth
 // @Produce json
-// @Success 200 {object} serializer.Response{data=object} "redirect_url"
-// @Failure 500 {object} serializer.Response
+// @Success 200 {object} unifyerror.Response{data=object} "redirect_url"
+// @Failure 500 {object} unifyerror.Response
 // @Router /auth/oidc/login [get]
 // OIDCLogin initiates the OIDC authorization code flow by returning the
 // authorization URL the frontend should redirect the user to.
@@ -91,7 +92,7 @@ func (a *AuthController) OIDCLogin(c *gin.Context) {
 	// 32 random bytes → 64 hex chars
 	stateBytes := make([]byte, 32)
 	if _, err := rand.Read(stateBytes); err != nil {
-		serializer.Fail(c, fmt.Errorf("failed to generate random state: %w", err))
+		unifyerror.Fail(c, fmt.Errorf("failed to generate random state: %w", err))
 		return
 	}
 	state := hex.EncodeToString(stateBytes)
@@ -108,7 +109,7 @@ func (a *AuthController) OIDCLogin(c *gin.Context) {
 
 	redirectURI, err := oidcRedirectURI()
 	if err != nil {
-		serializer.Fail(c, serializer.NewError(serializer.CodeInternalError, "invalid OIDC redirect base URL", err))
+		unifyerror.Fail(c, unifyerror.New(http.StatusInternalServerError, unifyerror.CodeServerErr, "invalid OIDC redirect base URL"))
 		return
 	}
 
@@ -131,7 +132,7 @@ func (a *AuthController) OIDCLogin(c *gin.Context) {
 
 	authURL := oauthCfg.AuthCodeURL(state)
 
-	serializer.Success(c, gin.H{
+	unifyerror.Success(c, gin.H{
 		"redirect_url": authURL,
 	})
 }
@@ -148,15 +149,15 @@ type OIDCCallbackQuery struct {
 // @Produce json
 // @Param code query string true "Authorization code"
 // @Param state query string true "State parameter"
-// @Success 200 {object} serializer.Response{data=object} "token"
-// @Failure 400 {object} serializer.Response
+// @Success 200 {object} unifyerror.Response{data=object} "token"
+// @Failure 400 {object} unifyerror.Response
 // @Router /auth/oidc/callback [get]
 // OIDCCallback handles the authorization code callback from the OIDC provider,
 // exchanges the code for tokens, extracts user info, and returns a panel JWT.
 func (a *AuthController) OIDCCallback(c *gin.Context) {
 	var q OIDCCallbackQuery
 	if err := c.ShouldBindQuery(&q); err != nil {
-		serializer.FailWithCode(c, serializer.CodeParamErr, "missing code or state parameter")
+		unifyerror.Fail(c, unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "missing code or state parameter"))
 		return
 	}
 
@@ -168,7 +169,7 @@ func (a *AuthController) OIDCCallback(c *gin.Context) {
 	oidcStatesMu.Unlock()
 
 	if !exists || time.Now().After(expiry) {
-		serializer.FailWithCode(c, serializer.CodeParamErr, "invalid or expired state parameter")
+		unifyerror.Fail(c, unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "invalid or expired state parameter"))
 		return
 	}
 
@@ -268,7 +269,7 @@ func (a *AuthController) OIDCCallback(c *gin.Context) {
 	c.SetSameSite(http.SameSiteLaxMode)
 	c.SetCookie("headscale_panel_token", token, int(conf.Conf.JWT.Expire*3600), "/", "", secure, true)
 
-	serializer.Success(c, gin.H{
+	unifyerror.Success(c, gin.H{
 		"token": token,
 		"user": gin.H{
 			"id":                 user.ID,
@@ -382,7 +383,7 @@ func findOrCreateOIDCUser(oidcCfg *services.OIDCSettingsPayload, sub, email, nam
 
 	// Look up the "User" group (default group for OIDC users)
 	var userGroup model.Group
-	if err := model.DB.Where("name = ?", "User").First(&userGroup).Error; err != nil {
+	if err := model.DB.Where("name = ?", constants.GROUP_USER).First(&userGroup).Error; err != nil {
 		return nil, fmt.Errorf("default User group not found: %w", err)
 	}
 
@@ -409,7 +410,7 @@ func findOrCreateOIDCUser(oidcCfg *services.OIDCSettingsPayload, sub, email, nam
 }
 
 func failOIDCAuth(c *gin.Context) {
-	serializer.Fail(c, serializer.NewError(serializer.CodeNoPermissionErr, "OIDC authentication failed", nil))
+	unifyerror.Fail(c, unifyerror.New(http.StatusForbidden, unifyerror.CodeForbidden, "OIDC authentication failed"))
 }
 
 // deriveUsername picks the best available username string from OIDC claims.

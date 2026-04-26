@@ -1,6 +1,7 @@
 export * from './acl';
 export * from './auth';
 export * from './dashboard';
+export * from './derp';
 export * from './device';
 export * from './dns';
 export * from './group';
@@ -11,4 +12,5 @@ export * from './panel-account';
 export * from './panel-settings';
 export * from './resource';
 export * from './route';
+export * from './status';
 export * from './system-user';

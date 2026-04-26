@@ -27,7 +27,7 @@ import {
 } from '@ant-design/icons';
 import DashboardLayout from '@/components/DashboardLayout';
 import PageHeaderStatCards from '@/components/PageHeaderStatCards';
-import { devicesAPI } from '@/lib/api';
+import { deviceApi } from '@/api';
 import { normalizeDeviceListResponse, type NormalizedDevice } from '@/lib/normalizers';
 import AddDeviceModal from '@/components/devices/AddDeviceModal';
 import RenameDeviceModal from '@/components/shared/RenameDeviceModal';
@@ -61,7 +61,7 @@ export default function Devices() {
       if (!canListDevices) {
         return { list: [] };
       }
-      const devicesRes = await devicesAPI.list({ all: true });
+      const devicesRes = await deviceApi.list({ all: true });
       const { list } = normalizeDeviceListResponse(devicesRes);
       return { list };
     },
@@ -111,7 +111,7 @@ export default function Devices() {
       cancelText: t.common.actions.cancel,
       onOk: async () => {
         try {
-          await devicesAPI.delete(device.id);
+          await deviceApi.delete({ id: device.id });
           message.success(t.devices.deleteSuccess);
           refresh();
         } catch (error: any) {

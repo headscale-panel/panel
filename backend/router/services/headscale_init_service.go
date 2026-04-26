@@ -1,13 +1,14 @@
 package services
 
 import (
+	"net/http"
+	"headscale-panel/pkg/unifyerror"
 	"context"
 	"crypto/tls"
 	"fmt"
 	"headscale-panel/pkg/conf"
 	"headscale-panel/pkg/headscale"
 	v1 "headscale-panel/pkg/proto/headscale/v1"
-	"headscale-panel/pkg/utils/serializer"
 	"strings"
 	"sync"
 	"time"
@@ -70,7 +71,7 @@ func (s *headscaleInitService) CheckCurrentConfigConnectivity(ctx context.Contex
 		conf.Conf.Headscale.Insecure,
 	)
 	if !ok {
-		return serializer.NewError(serializer.CodeThirdPartyServiceError, detail, nil)
+		return unifyerror.New(http.StatusBadGateway, unifyerror.CodeGRPCErr, detail)
 	}
 
 	return nil
@@ -87,11 +88,11 @@ func (s *headscaleInitService) InitializeFromCurrentConfig(ctx context.Context) 
 
 	headscale.Close()
 	if err := headscale.Init(); err != nil {
-		return serializer.NewError(serializer.CodeThirdPartyServiceError, "failed to initialize headscale client", err)
+		return unifyerror.New(http.StatusBadGateway, unifyerror.CodeGRPCErr, "failed to initialize headscale client")
 	}
 
 	if err := ACLService.InitPolicyWithContext(ctx); err != nil {
-		return serializer.NewError(serializer.CodeThirdPartyServiceError, "failed to initialize ACL policy", err)
+		return unifyerror.New(http.StatusBadGateway, unifyerror.CodeGRPCErr, "failed to initialize ACL policy")
 	}
 
 	return nil
@@ -102,12 +103,12 @@ func (s *headscaleInitService) InitializeFromCurrentConfig(ctx context.Context) 
 func SaveConnectionAndInitialize(ctx context.Context, grpcAddr, apiKey string, insecure bool) error {
 	grpcAddr = strings.TrimSpace(grpcAddr)
 	if grpcAddr == "" {
-		return serializer.NewError(serializer.CodeParamErr, "headscale grpc address is required", nil)
+		return unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "headscale grpc address is required")
 	}
 
 	apiKey = strings.TrimSpace(apiKey)
 	if apiKey == "" {
-		return serializer.NewError(serializer.CodeParamErr, "headscale api key is required", nil)
+		return unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "headscale api key is required")
 	}
 
 	old := conf.Conf.Headscale
@@ -117,7 +118,7 @@ func SaveConnectionAndInitialize(ctx context.Context, grpcAddr, apiKey string, i
 
 	if err := PersistHeadscaleConnection(grpcAddr, apiKey, insecure); err != nil {
 		conf.Conf.Headscale = old
-		return serializer.NewError(serializer.CodeDBError, "failed to persist Headscale connection settings to DB", err)
+		return unifyerror.New(http.StatusInternalServerError, unifyerror.CodeDBErr, "failed to persist Headscale connection settings to DB")
 	}
 
 	if err := HeadscaleInitService.InitializeFromCurrentConfig(ctx); err != nil {

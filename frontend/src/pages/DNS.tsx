@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useTranslation } from '@/i18n/index';
-import { dnsAPI, DNSRecord } from '@/lib/api';
+import { dnsApi } from '@/api';
+import type { DNSRecord } from '@/api/entities';
 import RecordModal from '@/components/dns/RecordModal';
 import DashboardLayout from '@/components/DashboardLayout';
 import PageHeaderStatCards from '@/components/PageHeaderStatCards';
@@ -26,7 +27,7 @@ export default function DNS() {
   const [hasTriedAutoImport, setHasTriedAutoImport] = useState(false);
 
   const { data: listData, loading, refresh } = useRequest(
-    async () => dnsAPI.list({ page, pageSize, keyword, type: typeFilter }),
+    async () => dnsApi.list({ page, pageSize, keyword, type: typeFilter }),
     {
       refreshDeps: [page, pageSize, keyword, typeFilter],
       onError: (error) => {
@@ -49,7 +50,7 @@ export default function DNS() {
   const handleImportFromFile = async (silent = false) => {
     setImporting(true);
     try {
-      const res: any = await dnsAPI.import();
+      const res: any = await dnsApi.import();
       const imported = res?.imported || 0;
       if (imported > 0) {
         message.success(t.dns.importSuccess.replace('{count}', String(imported)));
@@ -85,7 +86,7 @@ export default function DNS() {
       cancelText: t.common.actions.cancel,
       onOk: async () => {
         try {
-          await dnsAPI.delete(record.id);
+          await dnsApi.delete({ id: record.id });
           message.success(t.dns.recordDeleted);
           refresh();
         } catch (error: any) {
@@ -103,7 +104,7 @@ export default function DNS() {
       cancelText: t.common.actions.cancel,
       onOk: async () => {
         try {
-          await dnsAPI.sync();
+          await dnsApi.sync();
           message.success(t.dns.applySuccess);
         } catch (error: any) {
           message.error(error.message || t.dns.applyFailed);
@@ -114,7 +115,7 @@ export default function DNS() {
 
   const handleExportJson = async () => {
     try {
-      const res = await dnsAPI.getFile();
+      const res = await dnsApi.getFile();
       const blob = new Blob([JSON.stringify(res || [], null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');

@@ -17,9 +17,9 @@ export interface ListSystemUsersRes {
 export interface CreateSystemUserReq {
   username: string;
   password?: string;
-  email?: string;
+  email: string;
   group_id?: number;
-  display_name?: string;
+  display_name: string;
 }
 
 export interface CreateSystemUserRes extends User {}

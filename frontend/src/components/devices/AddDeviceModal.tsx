@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Button, Card, Input, Modal, Space, Switch, Tabs, Tag, Typography, message } from 'antd';
 import { CopyOutlined } from '@ant-design/icons';
-import { devicesAPI, usersAPI } from '@/lib/api';
+import { deviceApi, headscaleUserApi } from '@/api';
 import { useTranslation } from '@/i18n/index';
 
 const { Text } = Typography;
@@ -45,7 +45,7 @@ export default function AddDeviceModal({
   const handleGenerateKey = async () => {
     try {
       const expiration = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
-      const res: any = await usersAPI.createPreAuthKey(owner, reusable, ephemeral, expiration);
+      const res: any = await headscaleUserApi.createPreAuthKey({ user: owner, reusable, ephemeral, expiration });
       const key = res?.preAuthKey?.key || res?.key || res?.preauthkey?.key || '';
       if (!key) {
         message.error(t.devices.keyGenerateFailed);
@@ -65,7 +65,7 @@ export default function AddDeviceModal({
     }
     setRegistering(true);
     try {
-      await devicesAPI.registerNode(owner, machineKey.trim());
+      await deviceApi.registerNode({ user: owner, key: machineKey.trim() });
       message.success(t.devices.registerNodeSuccess);
       onCancel();
       onSuccess();

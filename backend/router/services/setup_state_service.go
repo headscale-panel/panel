@@ -4,7 +4,8 @@ import (
 	"errors"
 	"headscale-panel/model"
 	"headscale-panel/pkg/constants"
-	"headscale-panel/pkg/utils/serializer"
+	"headscale-panel/pkg/unifyerror"
+	"net/http"
 	"sync"
 	"time"
 
@@ -59,7 +60,7 @@ func (s *setupStateService) RequireSetupWindow() (*model.SetupState, error) {
 		return nil, err
 	}
 	if !s.IsWindowOpen(state, time.Now()) {
-		return nil, serializer.NewError(serializer.CodeNoPermissionErr, "setup window closed", nil)
+		return nil, unifyerror.New(http.StatusForbidden, unifyerror.CodeForbidden, "setup window closed")
 	}
 	return state, nil
 }
@@ -78,7 +79,7 @@ func (s *setupStateService) MarkInitialized() error {
 	state.WindowDeadline = nil
 	state.InitializedAt = &now
 	if err := model.DB.Save(state).Error; err != nil {
-		return serializer.ErrDatabase.WithError(err)
+		return unifyerror.DbError(err)
 	}
 
 	return nil
@@ -101,12 +102,12 @@ func (s *setupStateService) loadOrCreateLocked() (*model.SetupState, error) {
 			State: model.SetupStateUninitialized,
 		}
 		if err := model.DB.Create(&state).Error; err != nil {
-			return nil, serializer.ErrDatabase.WithError(err)
+			return nil, unifyerror.DbError(err)
 		}
 		return &state, nil
 	}
 	if err != nil {
-		return nil, serializer.ErrDatabase.WithError(err)
+		return nil, unifyerror.DbError(err)
 	}
 	return &state, nil
 }
@@ -114,7 +115,7 @@ func (s *setupStateService) loadOrCreateLocked() (*model.SetupState, error) {
 func (s *setupStateService) refreshLocked(state *model.SetupState, now time.Time) error {
 	var userCount int64
 	if err := model.DB.Model(&model.User{}).Count(&userCount).Error; err != nil {
-		return serializer.ErrDatabase.WithError(err)
+		return unifyerror.DbError(err)
 	}
 
 	changed := false
@@ -163,7 +164,7 @@ func (s *setupStateService) refreshLocked(state *model.SetupState, now time.Time
 
 	if changed {
 		if err := model.DB.Save(state).Error; err != nil {
-			return serializer.ErrDatabase.WithError(err)
+			return unifyerror.DbError(err)
 		}
 	}
 	return nil

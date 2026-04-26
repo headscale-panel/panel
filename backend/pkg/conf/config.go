@@ -16,6 +16,7 @@ type Config struct {
 	JWT       JWTConfig       `mapstructure:"jwt"`
 	Headscale HeadscaleConfig `mapstructure:"headscale"`
 	InfluxDB  InfluxDBConfig  `mapstructure:"influxdb"`
+	Docker    DockerConfig    `mapstructure:"docker"`
 }
 
 type SystemConfig struct {
@@ -41,6 +42,18 @@ type InfluxDBConfig struct {
 	Token  string `mapstructure:"token"`
 	Org    string `mapstructure:"org"`
 	Bucket string `mapstructure:"bucket"`
+}
+
+// DockerConfig holds Docker-in-Docker (DinD) settings used to restart the
+// Headscale container when configuration changes require a reload.
+type DockerConfig struct {
+	// DinDEnabled controls whether the panel is allowed to restart the
+	// Headscale container automatically after config file changes.
+	// Set DOCKER_DIND_ENABLED=true to enable.
+	DinDEnabled bool `mapstructure:"dind_enabled"`
+	// HeadscaleContainerName is the name of the Headscale Docker container
+	// to restart. Set via DOCKER_HEADSCALE_CONTAINER_NAME.
+	HeadscaleContainerName string `mapstructure:"headscale_container_name"`
 }
 
 var Conf Config
@@ -81,6 +94,10 @@ func Init(path string) {
 	viper.BindEnv("influxdb.org", "INFLUXDB_ORG")
 	viper.BindEnv("influxdb.bucket", "INFLUXDB_BUCKET")
 	viper.BindEnv("headscale.extra_records_path", "HEADSCALE_EXTRA_RECORDS_PATH")
+	viper.BindEnv("docker.dind_enabled", "DOCKER_DIND_ENABLED")
+	viper.BindEnv("docker.headscale_container_name", "DOCKER_HEADSCALE_CONTAINER_NAME")
+	viper.SetDefault("docker.dind_enabled", false)
+	viper.SetDefault("docker.headscale_container_name", "")
 
 	if err := viper.Unmarshal(&Conf); err != nil {
 		log.Fatalf("Unable to decode into struct, %v", err)

@@ -59,6 +59,11 @@ const (
 
 	ServiceRequestTimeout = 30 * time.Second
 
+	// GRPCConnectionTTL is the maximum lifetime of a single gRPC connection to
+	// Headscale. After this duration the connection is transparently recreated
+	// on the next service call to prevent stale connections.
+	GRPCConnectionTTL = 24 * time.Hour
+
 	OIDCAuthCodeTTL     = 10 * time.Minute
 	OIDCTokenTTL        = 1 * time.Hour
 	OIDCRefreshTokenTTL = 30 * 24 * time.Hour

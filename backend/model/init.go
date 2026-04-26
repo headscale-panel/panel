@@ -159,9 +159,9 @@ func initDefaultData() {
 
 	// 管理员组
 	var adminGroup Group
-	if err := DB.Where("name = ?", "Admin").First(&adminGroup).Error; err != nil {
+	if err := DB.Where("name = ?", constants.GROUP_ADMIN).First(&adminGroup).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			adminGroup = Group{Name: "Admin"}
+			adminGroup = Group{Name: constants.GROUP_ADMIN}
 			if err := DB.Create(&adminGroup).Error; err != nil {
 				log.Fatalf("failed to bootstrap Admin group: %v", err)
 			}
@@ -172,9 +172,9 @@ func initDefaultData() {
 
 	// 普通用户组
 	var userGroup Group
-	if err := DB.Where("name = ?", "User").First(&userGroup).Error; err != nil {
+	if err := DB.Where("name = ?", constants.GROUP_USER).First(&userGroup).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			userGroup = Group{Name: "User"}
+			userGroup = Group{Name: constants.GROUP_USER}
 			if err := DB.Create(&userGroup).Error; err != nil {
 				log.Fatalf("failed to bootstrap User group: %v", err)
 			}
@@ -192,9 +192,8 @@ func initDefaultData() {
 		log.Fatalf("failed to assign Admin group permissions: %v", err)
 	}
 
-	// 禁止保留默认管理员弱口令路径：admin/admin123
 	var adminUser User
-	err := DB.Where("username = ?", "admin").First(&adminUser).Error
+	err := DB.Where("username = ?", constants.USERNAME_DEFAULT_ADMIN).First(&adminUser).Error
 	if err != nil && err != gorm.ErrRecordNotFound {
 		log.Fatalf("failed to check admin user: %v", err)
 	}

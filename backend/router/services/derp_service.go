@@ -1,8 +1,10 @@
 package services
 
 import (
+	"context"
 	"fmt"
 	"headscale-panel/pkg/constants"
+	"headscale-panel/pkg/headscale"
 	"os"
 	"path/filepath"
 
@@ -70,13 +72,20 @@ func (s *derpService) getDERPMap() (*DERPMapFile, error) {
 	return &derpMap, nil
 }
 
-// SaveDERPMap writes the DERP map to the YAML file
-func (s *derpService) SaveDERPMap(actorUserID uint, derpMap *DERPMapFile) error {
+// SaveDERPMap writes the DERP map to the YAML file. When restart is true and
+// DinD mode is enabled the Headscale container will be restarted afterward.
+func (s *derpService) SaveDERPMap(actorUserID uint, derpMap *DERPMapFile, restart bool) error {
 	if err := RequirePermission(actorUserID, "headscale:derp:update"); err != nil {
 		return err
 	}
 
-	return s.saveDERPMap(derpMap)
+	if err := s.saveDERPMap(derpMap); err != nil {
+		return err
+	}
+	if restart {
+		headscale.TryRestartHeadscale(context.Background(), "derp map write")
+	}
+	return nil
 }
 
 func (s *derpService) saveDERPMap(derpMap *DERPMapFile) error {

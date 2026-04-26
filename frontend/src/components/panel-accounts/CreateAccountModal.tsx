@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Input, Modal, Select, Typography, message } from 'antd';
 import { UserAddOutlined } from '@ant-design/icons';
-import { panelAccountsAPI } from '@/lib/api';
+import { panelAccountApi } from '@/api';
 import type { NormalizedGroup } from '@/lib/normalizers';
 import { useTranslation } from '@/i18n/index';
 
@@ -42,7 +42,7 @@ export default function CreateAccountModal({ open, groups, onCancel, onSuccess }
     }
     setSaving(true);
     try {
-      await panelAccountsAPI.create({
+      await panelAccountApi.create({
         username: form.username,
         password: form.password,
         email: form.email || undefined,

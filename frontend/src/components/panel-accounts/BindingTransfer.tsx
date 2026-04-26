@@ -16,7 +16,7 @@ import {
   CloseOutlined,
 } from '@ant-design/icons';
 import { useRequest } from 'ahooks';
-import { panelAccountsAPI } from '@/lib/api';
+import { panelAccountApi } from '@/api';
 import type { NetworkBinding, NetworkIdentityItem } from '@/api/panel-account.types';
 import { useTranslation } from '@/i18n/index';
 
@@ -40,7 +40,7 @@ export default function BindingTransfer({ accountId, bindings, onUpdated }: Prop
 
   // Load available network identities when editing
   const { data: available, run: loadAvailable } = useRequest(
-    () => panelAccountsAPI.listAvailableNetworkIdentities({ exclude_account_id: accountId }),
+    () => panelAccountApi.listAvailableNetworkIdentities({ exclude_account_id: accountId }),
     { manual: true },
   );
 
@@ -58,7 +58,7 @@ export default function BindingTransfer({ accountId, bindings, onUpdated }: Prop
   const handleSave = useCallback(async () => {
     setSaving(true);
     try {
-      await panelAccountsAPI.updateNetworkBindings(accountId, {
+      await panelAccountApi.updateNetworkBindings(accountId, {
         bindings: targetKeys.map((name) => ({
           headscale_name: name,
           is_primary: name === primaryName,
@@ -77,7 +77,7 @@ export default function BindingTransfer({ accountId, bindings, onUpdated }: Prop
   const handleSetPrimary = useCallback(
     async (bindingId: number) => {
       try {
-        await panelAccountsAPI.setPrimaryBinding(accountId, { binding_id: bindingId });
+        await panelAccountApi.setPrimaryBinding(accountId, { binding_id: bindingId });
         message.success(pa.toast.primaryBindingSuccess);
         onUpdated();
       } catch (error: any) {

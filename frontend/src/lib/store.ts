@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { UserRole } from './enums';
+import type { SystemStatus } from '@/api/status.types';
 
 export interface User {
   id: number;
@@ -70,3 +71,21 @@ export const useUIStore = create<UIState>()(
     }
   )
 );
+
+// ─── System Status ────────────────────────────────────────────────────────────
+
+interface SystemStatusState {
+  status: SystemStatus | null;
+  loading: boolean;
+  lastFetchedAt: number | null;
+  setStatus: (status: SystemStatus) => void;
+  setLoading: (loading: boolean) => void;
+}
+
+export const useSystemStatusStore = create<SystemStatusState>()((set) => ({
+  status: null,
+  loading: false,
+  lastFetchedAt: null,
+  setStatus: (status) => set({ status, lastFetchedAt: Date.now() }),
+  setLoading: (loading) => set({ loading }),
+}));

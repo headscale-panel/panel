@@ -20,11 +20,13 @@ import DNS from "./pages/DNS";
 import PanelAccounts from "./pages/PanelAccounts";
 import Profile from "./pages/Profile";
 import SetupWelcome from "./pages/SetupWelcome";
-import api from "./lib/api";
+import api from "./lib/request";
+import { statusApi } from "./api";
 import { useState, useEffect, type ReactNode } from "react";
 import { Spin } from "antd";
 import { LoadingOutlined } from "@ant-design/icons";
 import { DASHBOARD_PERMISSIONS, METRICS_PERMISSIONS, SELF_DEVICE_PERMISSIONS } from "./lib/permissions";
+import { useAuthStore, useSystemStatusStore } from "./lib/store";
 
 const BASE = '/panel';
 
@@ -82,6 +84,25 @@ function SetupGuard({ children }: { children: ReactNode }) {
   if (!initialized && !location.startsWith('/setup')) return null;
 
   return <>{children}</>;
+}
+
+/** Fetches the global system status once after the user is authenticated. */
+function SystemStatusLoader() {
+  const { isAuthenticated } = useAuthStore();
+  const { setStatus, setLoading, lastFetchedAt } = useSystemStatusStore();
+
+  useEffect(() => {
+    if (!isAuthenticated || lastFetchedAt !== null) return;
+
+    setLoading(true);
+    statusApi
+      .getSystemStatus()
+      .then((data) => setStatus(data))
+      .catch(() => {/* non-fatal – components handle missing status gracefully */})
+      .finally(() => setLoading(false));
+  }, [isAuthenticated]);
+
+  return null;
 }
 
 function AppRoutes() {
@@ -145,6 +166,7 @@ function App() {
         <ThemedApp>
           <WouterRouter base={BASE}>
             <SetupGuard>
+              <SystemStatusLoader />
               <AppRoutes />
               <GuideTour />
             </SetupGuard>

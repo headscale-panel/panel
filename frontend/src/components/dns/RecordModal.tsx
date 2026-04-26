@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Input, Modal, Select, Space, Typography, message } from 'antd';
-import { dnsAPI, DNSRecord } from '@/lib/api';
+import { dnsApi } from '@/api';
+import type { DNSRecord } from '@/api/entities';
 import { DNSRecordType } from '@/lib/enums';
 import { useTranslation } from '@/i18n/index';
 
@@ -45,10 +46,10 @@ export default function RecordModal({ open, editingRecord, onCancel, onSuccess }
   const handleSubmit = async () => {
     try {
       if (editingRecord) {
-        await dnsAPI.update({ id: editingRecord.id, ...formData });
+        await dnsApi.update({ id: editingRecord.id, ...formData });
         message.success(t.dns.recordUpdated);
       } else {
-        await dnsAPI.create(formData);
+        await dnsApi.create(formData);
         message.success(t.dns.recordCreated);
       }
       onSuccess();

@@ -1,7 +1,7 @@
 package middleware
 
 import (
-	"headscale-panel/pkg/utils/serializer"
+	"headscale-panel/pkg/unifyerror"
 	"net/http"
 	"sync"
 	"time"
@@ -81,7 +81,7 @@ func (rl *RateLimiter) allow(ip string) bool {
 func RateLimitMiddleware(limiter *RateLimiter) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if !limiter.allow(c.ClientIP()) {
-			c.JSON(http.StatusTooManyRequests, serializer.Response{
+			c.JSON(http.StatusTooManyRequests, unifyerror.Response{
 				Code: http.StatusTooManyRequests,
 				Msg:  "too many requests, please try again later",
 			})

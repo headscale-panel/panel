@@ -1,7 +1,3 @@
-/**
- * Shared entity types derived from OpenAPI spec (auto-generated from swaggo).
- * These correspond directly to backend model/service structs.
- */
 import type { DNSRecordType } from '@/lib/enums';
 
 // ─── Core response wrappers ───────────────────────────────────────────────────

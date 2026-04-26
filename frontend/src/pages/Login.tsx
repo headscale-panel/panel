@@ -1,7 +1,7 @@
 import { Card, Input, Button, Typography, Divider, Spin, Space, theme } from 'antd';
 import { UserOutlined, LockOutlined, EyeInvisibleOutlined, EyeTwoTone, GlobalOutlined, SafetyCertificateOutlined, LoadingOutlined } from '@ant-design/icons';
 import { useTranslation, useI18n, availableLocales, locales } from '@/i18n/index';
-import { authAPI, publicAuthAPI } from '@/lib/api';
+import { authApi, publicAuthApi } from '@/api';
 import { useAuthStore } from '@/lib/store';
 import { UserRole } from '@/lib/enums';
 import { useState, useEffect, useCallback } from 'react';
@@ -41,7 +41,7 @@ export default function Login() {
   }, [t]);
 
   useRequest(
-    async () => publicAuthAPI.oidcStatus(),
+    async () => publicAuthApi.oidcStatus(),
     {
       onSuccess: (data: any) => {
         if (data?.enabled) setOidcStatus(data);
@@ -54,7 +54,7 @@ export default function Login() {
 
   const { runAsync: submitLogin, loading } = useRequest(
     async (payload: { username: string; password: string; totp_code?: string }) =>
-      authAPI.login(payload.username, payload.password, payload.totp_code),
+      authApi.login(payload),
     { manual: true },
   );
 
@@ -85,7 +85,7 @@ export default function Login() {
   const handleOIDCCallback = useCallback(async (code: string, state: string) => {
     setOidcLoading(true);
     try {
-      const data: any = await authAPI.oidcCallback(code, state);
+      const data: any = await authApi.oidcCallback({ code, state });
       if (data?.token && data?.user) {
         const nextUser = parseUserAuth(data);
         message.success(t.login.oidcLoginSuccess);
@@ -124,13 +124,11 @@ export default function Login() {
         returnUrl ? window.location.assign(returnUrl) : setLocation(getDefaultRouteForUser(nextUser));
       }
     } catch (err: any) {
-      const code = err?.response?.data?.code ?? err?.code;
-      if (code === 40004) {
-        if (!totpRequired) {
-          setTotpRequired(true);
-        } else {
-          message.error(t.login.totpInvalid);
-        }
+      const errorMessage = String(err?.response?.data?.msg || err?.message || '').toLowerCase();
+      const isTotpError = errorMessage.includes('totp');
+
+      if (isTotpError && !totpRequired && errorMessage.includes('required')) {
+        setTotpRequired(true);
       }
     }
   };
@@ -138,9 +136,9 @@ export default function Login() {
   const handleOIDCLogin = async () => {
     setOidcLoading(true);
     try {
-      const data: any = await authAPI.oidcLogin();
-      if (data?.redirect_url) {
-        window.location.href = data.redirect_url;
+      const data: any = await authApi.oidcLogin();
+      if (data?.url || data?.redirect_url) {
+        window.location.href = data.url || data.redirect_url;
       } else {
         message.error(t.login.oidcRedirectFailed);
         setOidcLoading(false);

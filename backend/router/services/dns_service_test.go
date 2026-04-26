@@ -1,6 +1,7 @@
 package services
 
 import (
+	"headscale-panel/pkg/unifyerror"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -8,7 +9,6 @@ import (
 
 	"headscale-panel/model"
 	"headscale-panel/pkg/constants"
-	"headscale-panel/pkg/utils/serializer"
 
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
@@ -80,7 +80,7 @@ func TestDNSListSyncsRecordsFromExtraRecordsFile(t *testing.T) {
 	}
 
 	records, total, err := DNSService.List(user.ID, &ListDNSRecordRequest{
-		PaginationQuery: serializer.PaginationQuery{Page: 1, PageSize: 50},
+		PaginationQuery: unifyerror.PaginationQuery{Page: 1, PageSize: 50},
 	})
 	if err != nil {
 		t.Fatalf("list dns records: %v", err)

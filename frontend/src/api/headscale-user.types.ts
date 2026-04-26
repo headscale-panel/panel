@@ -16,6 +16,8 @@ export interface ListHeadscaleUsersRes {
 
 export interface CreateHeadscaleUserReq {
   name: string;
+  display_name: string;
+  email: string;
 }
 export type CreateHeadscaleUserRes = HeadscaleUser;
 

@@ -2,7 +2,7 @@ package services
 
 import (
 	"headscale-panel/model"
-	"headscale-panel/pkg/utils/serializer"
+	"headscale-panel/pkg/unifyerror"
 )
 
 type permissionService struct{}
@@ -19,11 +19,11 @@ func (s *permissionService) List(actorUserID uint, page, pageSize int) ([]model.
 
 	db := model.DB.Model(&model.Permission{})
 	if err := db.Count(&total).Error; err != nil {
-		return nil, 0, serializer.ErrDatabase
+		return nil, 0, unifyerror.DbError(err)
 	}
 
 	if err := db.Offset((page - 1) * pageSize).Limit(pageSize).Find(&permissions).Error; err != nil {
-		return nil, 0, serializer.ErrDatabase
+		return nil, 0, unifyerror.DbError(err)
 	}
 
 	return permissions, total, nil
@@ -40,7 +40,7 @@ func (s *permissionService) Create(actorUserID uint, name, code, pType string) (
 		Type: pType,
 	}
 	if err := model.DB.Create(perm).Error; err != nil {
-		return nil, serializer.ErrDatabase
+		return nil, unifyerror.DbError(err)
 	}
 	return perm, nil
 }
@@ -52,7 +52,7 @@ func (s *permissionService) Update(actorUserID uint, id uint, name, code, pType 
 
 	var perm model.Permission
 	if err := model.DB.First(&perm, id).Error; err != nil {
-		return serializer.ErrDatabase
+		return unifyerror.DbError(err)
 	}
 	perm.Name = name
 	perm.Code = code
@@ -75,7 +75,7 @@ func (s *permissionService) GetAllPermissions(actorUserID uint) ([]model.Permiss
 
 	var permissions []model.Permission
 	if err := model.DB.Find(&permissions).Error; err != nil {
-		return nil, serializer.ErrDatabase
+		return nil, unifyerror.DbError(err)
 	}
 	return permissions, nil
 }

@@ -19,8 +19,8 @@ import { Button, Card, Input, Modal, Select, Space, Spin, Switch, Table, Tabs, T
 import type { ColumnsType } from 'antd/es/table';
 import DashboardLayout from '@/components/DashboardLayout';
 import { useTranslation } from '@/i18n/index';
-import { panelSettingsAPI, groupsAPI, headscaleConfigAPI } from '@/lib/api';
-import api from '@/lib/api';
+import { panelSettingsApi, groupApi, headscaleConfigApi } from '@/api';
+import api from '@/lib/request';
 import type { HeadscaleConfig } from '@/api/headscale-config.types';
 import { loadConnectionSettingsData, loadOIDCSettingsData } from '@/lib/page-data';
 import { useRequest } from 'ahooks';
@@ -29,6 +29,7 @@ import {
   type OIDCFormValues,
 } from '@/lib/normalizers';
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
+import DerpManagement from '@/components/settings/DerpManagement';
 
 const SETTINGS_TOUR_TAB_EVENT = 'guide-tour:settings-tab';
 
@@ -153,7 +154,7 @@ export default function Settings() {
   const [savingHsConfig, setSavingHsConfig] = useState(false);
 
   const { loading: loadingHsConfig, refresh: refreshHsConfig } = useRequest(
-    async () => headscaleConfigAPI.get(),
+    async () => headscaleConfigApi.get(),
     {
       onSuccess: (data) => setHsConfig(data ?? {}),
       onError: () => message.error(t.common.errors.requestFailed),
@@ -163,7 +164,7 @@ export default function Settings() {
   const handleSaveHsConfig = async () => {
     setSavingHsConfig(true);
     try {
-      await headscaleConfigAPI.update(hsConfig);
+      await headscaleConfigApi.update(hsConfig);
       message.success(t.settings.hsconfig.saveSuccess);
     } catch (err: any) {
       message.error(err?.message || t.common.errors.requestFailed);
@@ -179,13 +180,13 @@ export default function Settings() {
   const [savingGroup, setSavingGroup] = useState(false);
 
   const { data: groupsRawData, loading: loadingGroups, refresh: refreshGroups } = useRequest(
-    () => groupsAPI.list({ all: true }),
+    () => groupApi.list({ all: true }),
     { onError: () => message.error(t.settings.groups.loadFailed) },
   );
   const groupRows: any[] = useMemo(() => (groupsRawData as any)?.list ?? groupsRawData ?? [], [groupsRawData]);
 
   const { data: allPermsData } = useRequest(
-    () => groupsAPI.getPermissions(),
+    () => groupApi.getPermissions(),
     { cacheKey: 'all-permissions' },
   );
   const allPermissions: { id: number; code: string; name: string }[] = useMemo(() => {
@@ -215,10 +216,10 @@ export default function Settings() {
     try {
       const gid = editingGroup?.ID ?? editingGroup?.id;
       if (editingGroup && gid) {
-        await groupsAPI.update({ id: gid, name: groupForm.name.trim(), permission_ids: groupForm.permission_ids });
+        await groupApi.update({ id: gid, name: groupForm.name.trim(), permission_ids: groupForm.permission_ids });
         message.success(t.settings.groups.updateSuccess);
       } else {
-        await groupsAPI.create({ name: groupForm.name.trim(), permission_ids: groupForm.permission_ids });
+        await groupApi.create({ name: groupForm.name.trim(), permission_ids: groupForm.permission_ids });
         message.success(t.settings.groups.createSuccess);
       }
       setGroupModalOpen(false);
@@ -239,7 +240,7 @@ export default function Settings() {
       okButtonProps: { danger: true },
       onOk: async () => {
         try {
-          await groupsAPI.delete(gid);
+          await groupApi.delete({ id: gid });
           message.success(t.settings.groups.deleteSuccess);
           refreshGroups();
         } catch (error: any) {
@@ -322,7 +323,7 @@ export default function Settings() {
             pkce: { enabled: oidcForm.pkce_enabled, method: oidcForm.pkce_method },
           },
         };
-        const res = await headscaleConfigAPI.preview(mergedConfig);
+        const res = await headscaleConfigApi.preview(mergedConfig);
         setOidcYamlPreview((res as any)?.yaml ?? '');
       } catch {
         // silently ignore preview errors
@@ -366,7 +367,7 @@ export default function Settings() {
     }
     setSavingGrpc(true);
     try {
-      await panelSettingsAPI.saveConnection({
+      await panelSettingsApi.saveConnection({
         grpc_addr: grpcAddr.trim(),
         api_key: apiKeyInput.trim() || undefined,
         insecure,
@@ -387,7 +388,7 @@ export default function Settings() {
     if (enabled) {
       setBuiltinOidcLoading(true);
       try {
-        const data: any = await panelSettingsAPI.enableBuiltinOIDC();
+        const data: any = await panelSettingsApi.enableBuiltinOIDC();
         if (data) {
           setOidcForm(prev => ({
             ...prev,
@@ -418,7 +419,7 @@ export default function Settings() {
   const handleSyncData = async () => {
     setSyncing(true);
     try {
-      await panelSettingsAPI.syncData();
+      await panelSettingsApi.syncData();
       message.success(t.settings.toast.syncSuccess);
     } catch {
       message.error(t.settings.toast.syncFailed);
@@ -430,7 +431,7 @@ export default function Settings() {
   const handleSaveOidc = async () => {
     setSavingOidc(true);
     try {
-      await panelSettingsAPI.saveOIDCSettings(oidcForm);
+      await panelSettingsApi.saveOIDCSettings(oidcForm);
       message.success(t.settings.toast.oidcSettingsSaved);
     } catch {
       message.error(t.common.errors.requestFailed);
@@ -795,6 +796,18 @@ export default function Settings() {
                     </div>
                   </SectionCard>
                 </Space>
+              ),
+            },
+            {
+              key: 'derp',
+              label: t.settings.tabs.derp,
+              children: (
+                <SectionCard
+                  title="DERP Map Management"
+                  description="Configure custom DERP relay servers. Changes trigger a Headscale restart when DinD mode is enabled."
+                >
+                  <DerpManagement />
+                </SectionCard>
               ),
             },
           ]}

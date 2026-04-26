@@ -1,7 +1,7 @@
 import DashboardLayout from '@/components/DashboardLayout';
 import NetworkTopology from '@/components/NetworkTopology';
 import PageHeaderStatCards from '@/components/PageHeaderStatCards';
-import { dashboardAPI, devicesAPI, usersAPI } from '@/lib/api';
+import { dashboardApi, deviceApi, headscaleUserApi } from '@/api';
 import {
   applyRealtimeDeviceStatus,
   type DashboardStats,
@@ -64,10 +64,10 @@ export default function Dashboard() {
   const fetchDashboardData = async () => {
     // Fetch data from multiple APIs in parallel
     const [devicesRes, usersRes, topologyRes, overviewRes] = await Promise.allSettled([
-      devicesAPI.list({ all: true }),
-      usersAPI.list({ all: true }),
-      dashboardAPI.getTopologyWithACL(),
-      dashboardAPI.getOverview(),
+      deviceApi.list({ all: true }),
+      headscaleUserApi.list({ all: true }),
+      dashboardApi.getTopologyWithACL(),
+      dashboardApi.getOverview(),
     ]);
 
     // Process devices data for stats

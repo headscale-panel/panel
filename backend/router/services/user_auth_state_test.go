@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"headscale-panel/model"
-	"headscale-panel/pkg/utils/serializer"
+	"headscale-panel/pkg/unifyerror"
 
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
@@ -65,12 +65,12 @@ func TestLoginWithContextRejectsInactiveUser(t *testing.T) {
 		t.Fatal("expected inactive user login to fail")
 	}
 
-	var appErr serializer.AppError
-	if !errors.As(err, &appErr) {
+	var uniErr *unifyerror.UniErr
+	if !errors.As(err, &uniErr) {
 		t.Fatalf("expected AppError, got %T", err)
 	}
-	if appErr.ErrCode() != serializer.CodeUserBaned {
-		t.Fatalf("unexpected error code: got %d want %d", appErr.ErrCode(), serializer.CodeUserBaned)
+	if uniErr.Code != unifyerror.CodeUserNotActive {
+		t.Fatalf("unexpected error code: got %d want %d", uniErr.Code, unifyerror.CodeUserNotActive)
 	}
 }
 
@@ -99,12 +99,12 @@ func TestValidateSessionUserRejectsInactiveUser(t *testing.T) {
 		t.Fatal("expected inactive session validation to fail")
 	}
 
-	var appErr serializer.AppError
-	if !errors.As(err, &appErr) {
+	var uniErr *unifyerror.UniErr
+	if !errors.As(err, &uniErr) {
 		t.Fatalf("expected AppError, got %T", err)
 	}
-	if appErr.ErrCode() != serializer.CodeInvalidToken {
-		t.Fatalf("unexpected error code: got %d want %d", appErr.ErrCode(), serializer.CodeInvalidToken)
+	if uniErr.Code != unifyerror.CodeInvalidToken {
+		t.Fatalf("unexpected error code: got %d want %d", uniErr.Code, unifyerror.CodeInvalidToken)
 	}
 }
 

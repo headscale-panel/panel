@@ -27,10 +27,6 @@ export type RespPage<T = any> = {
   records: Array<T>;
 };
 
-enum AXIOS_ERR_E {
-  ERR_SERVER = 'ERR_SERVER',
-}
-
 enum RESP_CODE {
   SUCCESS = 0,
 }
@@ -70,14 +66,57 @@ interface AxiosCreateConfigCustom extends AxiosRequestConfig {
   responseInterceptorErrorHandler?: (error: AxiosError<RespType>) => Promise<any>;
 }
 
-const AUTH_ERROR_CODES = new Set([401, 40011, 40012]);
-const SILENT_ERROR_CODES = new Set([40004]);
-
 let axiosInstance: AxiosInstance;
 let unauthorizedHandler: (() => void) | null = null;
 
 export function setUnauthorizedHandler(handler: (() => void) | null) {
   unauthorizedHandler = handler;
+}
+
+function getResponseErrorMessage(response?: AxiosResponse<RespType>) {
+  const t = getTranslations();
+
+  if (!response) {
+    return t.common.errors.requestFailed;
+  }
+
+  return response.data?.msg || t.common.errors.requestFailed;
+}
+
+function showHttpErrorMessage(error: AxiosError<RespType>, isSetupRequest: boolean) {
+  if (isSetupRequest) {
+    return;
+  }
+
+  const t = getTranslations();
+  const status = error.response?.status;
+
+  if (status === 401) {
+    handleUnauthorized();
+    return;
+  }
+
+  if (status === 403) {
+    message.error(error.response?.data?.msg || t.common.errors.forbidden);
+    return;
+  }
+
+  if (status && status >= 500) {
+    message.error(error.response?.data?.msg || t.common.errors.serverError);
+    return;
+  }
+
+  if (error.response) {
+    message.error(getResponseErrorMessage(error.response));
+    return;
+  }
+
+  if (error.request) {
+    message.error(t.common.errors.networkError);
+    return;
+  }
+
+  message.error(error.message || t.common.errors.requestFailed);
 }
 
 const handleUnauthorized = () => {
@@ -110,11 +149,7 @@ const createAxiosInstance = (options?: AxiosCreateConfigCustom): AxiosInstance =
     return response.status === 200 && response.data?.code === RESP_CODE.SUCCESS;
   };
 
-  const defaultErrorMessageHandler = (response: AxiosResponse<RespType>) => {
-    const t = getTranslations();
-    const detail = response.data?.msg || t.common.errors.requestFailed;
-    return response.data?.error ? `${detail}\n\n${response.data.error}` : detail;
-  };
+  const defaultErrorMessageHandler = (response: AxiosResponse<RespType>) => getResponseErrorMessage(response);
 
   const successHandler = originalSuccessHandler || defaultSuccessHandler;
   const errorMessageHandler = originalErrorMessageHandler || defaultErrorMessageHandler;
@@ -158,22 +193,12 @@ const createAxiosInstance = (options?: AxiosCreateConfigCustom): AxiosInstance =
 
     const isSetupRequest = response.config?.url?.includes('/setup/');
     const messageText = errorMessageHandler(response);
-    const code = response.data?.code;
 
     if (!isSetupRequest) {
-      const t = getTranslations();
-      if (AUTH_ERROR_CODES.has(code ?? -1)) {
-        handleUnauthorized();
-      } else if (code === 403) {
-        message.error(t.common.errors.forbidden);
-      } else if (SILENT_ERROR_CODES.has(code ?? -1)) {
-        // Silently reject — let the caller handle it
-      } else {
-        message.error(messageText, code === 50000 ? 6 : undefined);
-      }
+      message.error(messageText);
     }
 
-    const error = new AxiosError(messageText, AXIOS_ERR_E.ERR_SERVER, response.config, response.request, response);
+    const error = new AxiosError(messageText, undefined, response.config, response.request, response);
     return Promise.reject(error);
   };
 
@@ -188,24 +213,11 @@ const createAxiosInstance = (options?: AxiosCreateConfigCustom): AxiosInstance =
 
   axiosInstance.interceptors.response.use(
     (response) => response.data?.data,
-    (error) => {
-      const t = getTranslations();
+    (error: AxiosError<RespType>) => {
       const isSetupRequest = error.config?.url?.includes('/setup/');
 
-      if (error.response) {
-        const { status } = error.response;
-        if (status === 401 && !isSetupRequest) {
-          handleUnauthorized();
-        } else if (status === 403 && !isSetupRequest) {
-          message.error(t.common.errors.forbidden);
-        } else if (status >= 500 && !isSetupRequest) {
-          message.error(t.common.errors.serverError);
-        } else if (!isSetupRequest) {
-          message.error(error.response.data?.msg || t.common.errors.requestFailed);
-        }
-      } else if (error.request && !isSetupRequest) {
-        message.error(t.common.errors.networkError);
-      }
+      showHttpErrorMessage(error, Boolean(isSetupRequest));
+
       return Promise.reject(error);
     },
   );

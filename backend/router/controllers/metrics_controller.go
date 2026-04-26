@@ -1,8 +1,9 @@
 package controllers
 
 import (
+	"net/http"
+	"headscale-panel/pkg/unifyerror"
 	"headscale-panel/pkg/influxdb"
-	"headscale-panel/pkg/utils/serializer"
 	"headscale-panel/router/services"
 	"strconv"
 	"time"
@@ -20,7 +21,7 @@ type MetricsController struct{}
 // @Param machine_id query string false "Machine ID"
 // @Param start query string false "Start date (YYYY-MM-DD)"
 // @Param end query string false "End date (YYYY-MM-DD)"
-// @Success 200 {object} serializer.Response{data=object}
+// @Success 200 {object} unifyerror.Response{data=object}
 // @Security BearerAuth
 // @Router /metrics/online-duration [get]
 // GetOnlineDuration gets online duration for a user or device
@@ -34,31 +35,31 @@ func (c *MetricsController) GetOnlineDuration(ctx *gin.Context) {
 
 	start, err := time.Parse("2006-01-02", startStr)
 	if err != nil {
-		serializer.FailWithCode(ctx, serializer.CodeParamErr, "Invalid start date format")
+		unifyerror.Fail(ctx, unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "Invalid start date format"))
 		return
 	}
 
 	end, err := time.Parse("2006-01-02", endStr)
 	if err != nil {
-		serializer.FailWithCode(ctx, serializer.CodeParamErr, "Invalid end date format")
+		unifyerror.Fail(ctx, unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "Invalid end date format"))
 		return
 	}
 	end = end.Add(24 * time.Hour) // Include the end date
 
 	if userIDParam != "" {
 		if _, err := strconv.ParseUint(userIDParam, 10, 64); err != nil {
-			serializer.FailWithCode(ctx, serializer.CodeParamErr, "Invalid user_id")
+			unifyerror.Fail(ctx, unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "Invalid user_id"))
 			return
 		}
 	}
 
 	duration, err := services.MetricsService.GetOnlineDuration(ctx.Request.Context(), actorUserID, userIDParam, machineID, start, end)
 	if err != nil {
-		serializer.Fail(ctx, err)
+		unifyerror.Fail(ctx, err)
 		return
 	}
 
-	serializer.Success(ctx, gin.H{
+	unifyerror.Success(ctx, gin.H{
 		"duration_seconds": duration.Seconds(),
 		"duration_hours":   duration.Hours(),
 		"duration_days":    duration.Hours() / 24,
@@ -71,7 +72,7 @@ func (c *MetricsController) GetOnlineDuration(ctx *gin.Context) {
 // @Produce json
 // @Param start query string false "Start date (YYYY-MM-DD)"
 // @Param end query string false "End date (YYYY-MM-DD)"
-// @Success 200 {object} serializer.Response{data=object}
+// @Success 200 {object} unifyerror.Response{data=object}
 // @Security BearerAuth
 // @Router /metrics/online-duration-stats [get]
 // GetOnlineDurationStats gets online duration statistics for all users
@@ -83,31 +84,31 @@ func (c *MetricsController) GetOnlineDurationStats(ctx *gin.Context) {
 
 	start, err := time.Parse("2006-01-02", startStr)
 	if err != nil {
-		serializer.FailWithCode(ctx, serializer.CodeParamErr, "Invalid start date format")
+		unifyerror.Fail(ctx, unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "Invalid start date format"))
 		return
 	}
 
 	end, err := time.Parse("2006-01-02", endStr)
 	if err != nil {
-		serializer.FailWithCode(ctx, serializer.CodeParamErr, "Invalid end date format")
+		unifyerror.Fail(ctx, unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "Invalid end date format"))
 		return
 	}
 	end = end.Add(24 * time.Hour)
 
 	stats, err := services.MetricsService.GetOnlineDurationStats(ctx.Request.Context(), actorUserID, start, end)
 	if err != nil {
-		serializer.Fail(ctx, err)
+		unifyerror.Fail(ctx, err)
 		return
 	}
 
-	serializer.Success(ctx, stats)
+	unifyerror.Success(ctx, stats)
 }
 
 // GetDeviceStatus godoc
 // @Summary Get current device status
 // @Tags metrics
 // @Produce json
-// @Success 200 {object} serializer.Response{data=object}
+// @Success 200 {object} unifyerror.Response{data=object}
 // @Security BearerAuth
 // @Router /metrics/device-status [get]
 // GetDeviceStatus gets current device status
@@ -116,11 +117,11 @@ func (c *MetricsController) GetDeviceStatus(ctx *gin.Context) {
 	actorUserID := ctx.GetUint("userID")
 	devices, err := services.MetricsService.GetDeviceStatus(ctx.Request.Context(), actorUserID)
 	if err != nil {
-		serializer.Fail(ctx, err)
+		unifyerror.Fail(ctx, err)
 		return
 	}
 
-	serializer.Success(ctx, devices)
+	unifyerror.Success(ctx, devices)
 }
 
 // GetDeviceStatusHistory godoc
@@ -130,8 +131,8 @@ func (c *MetricsController) GetDeviceStatus(ctx *gin.Context) {
 // @Param machine_id query string true "Machine ID"
 // @Param start query string false "Start date (YYYY-MM-DD)"
 // @Param end query string false "End date (YYYY-MM-DD)"
-// @Success 200 {object} serializer.Response{data=object}
-// @Failure 400 {object} serializer.Response
+// @Success 200 {object} unifyerror.Response{data=object}
+// @Failure 400 {object} unifyerror.Response
 // @Security BearerAuth
 // @Router /metrics/device-status-history [get]
 // GetDeviceStatusHistory gets device status history
@@ -140,7 +141,7 @@ func (c *MetricsController) GetDeviceStatusHistory(ctx *gin.Context) {
 	actorUserID := ctx.GetUint("userID")
 	machineID := ctx.Query("machine_id")
 	if machineID == "" {
-		serializer.FailWithCode(ctx, serializer.CodeParamErr, "machine_id is required")
+		unifyerror.Fail(ctx, unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "machine_id is required"))
 		return
 	}
 
@@ -149,24 +150,24 @@ func (c *MetricsController) GetDeviceStatusHistory(ctx *gin.Context) {
 
 	start, err := time.Parse("2006-01-02", startStr)
 	if err != nil {
-		serializer.FailWithCode(ctx, serializer.CodeParamErr, "Invalid start date format")
+		unifyerror.Fail(ctx, unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "Invalid start date format"))
 		return
 	}
 
 	end, err := time.Parse("2006-01-02", endStr)
 	if err != nil {
-		serializer.FailWithCode(ctx, serializer.CodeParamErr, "Invalid end date format")
+		unifyerror.Fail(ctx, unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "Invalid end date format"))
 		return
 	}
 	end = end.Add(24 * time.Hour)
 
 	history, err := services.MetricsService.GetDeviceStatusHistory(ctx.Request.Context(), actorUserID, machineID, start, end)
 	if err != nil {
-		serializer.Fail(ctx, err)
+		unifyerror.Fail(ctx, err)
 		return
 	}
 
-	serializer.Success(ctx, history)
+	unifyerror.Success(ctx, history)
 }
 
 // GetTrafficStats godoc
@@ -176,7 +177,7 @@ func (c *MetricsController) GetDeviceStatusHistory(ctx *gin.Context) {
 // @Param machine_id query string false "Machine ID"
 // @Param start query string false "Start date (YYYY-MM-DD)"
 // @Param end query string false "End date (YYYY-MM-DD)"
-// @Success 200 {object} serializer.Response{data=object}
+// @Success 200 {object} unifyerror.Response{data=object}
 // @Security BearerAuth
 // @Router /metrics/traffic [get]
 // GetTrafficStats gets traffic statistics
@@ -189,37 +190,37 @@ func (c *MetricsController) GetTrafficStats(ctx *gin.Context) {
 
 	start, err := time.Parse("2006-01-02", startStr)
 	if err != nil {
-		serializer.FailWithCode(ctx, serializer.CodeParamErr, "Invalid start date format")
+		unifyerror.Fail(ctx, unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "Invalid start date format"))
 		return
 	}
 
 	end, err := time.Parse("2006-01-02", endStr)
 	if err != nil {
-		serializer.FailWithCode(ctx, serializer.CodeParamErr, "Invalid end date format")
+		unifyerror.Fail(ctx, unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "Invalid end date format"))
 		return
 	}
 	end = end.Add(24 * time.Hour)
 
 	stats, err := services.MetricsService.GetTrafficStats(ctx.Request.Context(), actorUserID, machineID, start, end)
 	if err != nil {
-		serializer.Fail(ctx, err)
+		unifyerror.Fail(ctx, err)
 		return
 	}
 
-	serializer.Success(ctx, stats)
+	unifyerror.Success(ctx, stats)
 }
 
 // GetInfluxDBStatus godoc
 // @Summary Get InfluxDB connection status
 // @Tags metrics
 // @Produce json
-// @Success 200 {object} serializer.Response{data=object}
+// @Success 200 {object} unifyerror.Response{data=object}
 // @Security BearerAuth
 // @Router /metrics/influxdb-status [get]
 // GetInfluxDBStatus returns whether InfluxDB is connected
 // GET /api/metrics/influxdb-status
 func (c *MetricsController) GetInfluxDBStatus(ctx *gin.Context) {
-	serializer.Success(ctx, gin.H{
+	unifyerror.Success(ctx, gin.H{
 		"connected": influxdb.IsConnected(),
 	})
 }

@@ -23,7 +23,7 @@ import {
   PlusOutlined,
   StopOutlined,
 } from '@ant-design/icons';
-import { devicesAPI, usersAPI } from '@/lib/api';
+import { deviceApi, headscaleUserApi } from '@/api';
 import type { NormalizedHeadscaleUser } from '@/lib/normalizers';
 import { useTranslation } from '@/i18n/index';
 
@@ -97,7 +97,7 @@ export default function AddDeviceModal({ open, hsUsers, onCancel, onSuccess }: A
     if (!user) { setPreAuthKeysList([]); return; }
     setLoadingKeys(true);
     try {
-      const res: any = await usersAPI.getPreAuthKeys(user);
+      const res: any = await headscaleUserApi.getPreAuthKeys({ user });
       const keys = Array.isArray(res) ? res : (res?.preAuthKeys || res?.preAuthKey || res?.preauthkeys || res?.pre_auth_keys || []);
       setPreAuthKeysList(Array.isArray(keys) ? keys : []);
     } catch {
@@ -120,7 +120,7 @@ export default function AddDeviceModal({ open, hsUsers, onCancel, onSuccess }: A
     }
     try {
       const expiration = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
-      const res: any = await usersAPI.createPreAuthKey(selectedUser, reusable, ephemeral, expiration);
+      const res: any = await headscaleUserApi.createPreAuthKey({ user: selectedUser, reusable, ephemeral, expiration });
       const key = res?.preAuthKey?.key || res?.key || res?.preauthkey?.key || '';
       if (!key) {
         message.error(t.devices.keyGenerateFailed);
@@ -137,7 +137,7 @@ export default function AddDeviceModal({ open, hsUsers, onCancel, onSuccess }: A
   const handleExpireKey = async (key: string) => {
     if (!selectedUser) return;
     try {
-      await usersAPI.expirePreAuthKey(selectedUser, key);
+      await headscaleUserApi.expirePreAuthKey({ user: selectedUser, key });
       message.success(t.devices.expireKeySuccess);
       if (generatedKey === key) setGeneratedKey('');
       loadPreAuthKeys(selectedUser);
@@ -153,7 +153,7 @@ export default function AddDeviceModal({ open, hsUsers, onCancel, onSuccess }: A
     }
     setRegisteringNode(true);
     try {
-      await devicesAPI.registerNode(selectedUser, machineKey.trim());
+      await deviceApi.registerNode({ user: selectedUser, key: machineKey.trim() });
       message.success(t.devices.registerNodeSuccess);
       onCancel();
       onSuccess();

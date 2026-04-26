@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Button, Tour } from 'antd';
 import type { TourProps } from 'antd';
 import { useLocation } from 'wouter';
-import { authAPI } from '@/lib/api';
+import { authApi } from '@/api';
 import { useTranslation } from '@/i18n/index';
 import { getDefaultRouteForUser, canAccessTourSection, type TourSectionKey } from '@/lib/permissions';
 import { useAuthStore, useUIStore } from '@/lib/store';
@@ -503,7 +503,7 @@ export default function GuideTour() {
     const sessionKey = getAutoSessionKey(user.id);
     sessionStorage.setItem(sessionKey, '1');
 
-    authAPI.markGuideTourSeen()
+    authApi.markGuideTourSeen()
       .then(() => {
         updateUser({
           ...user,

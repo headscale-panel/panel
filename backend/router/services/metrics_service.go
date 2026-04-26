@@ -5,7 +5,8 @@ import (
 	"fmt"
 	"headscale-panel/pkg/influxdb"
 	v1 "headscale-panel/pkg/proto/headscale/v1"
-	"headscale-panel/pkg/utils/serializer"
+	"headscale-panel/pkg/unifyerror"
+	"net/http"
 	"strconv"
 	"strings"
 	"sync"
@@ -138,12 +139,12 @@ func (s *metricsService) GetOnlineDuration(ctx context.Context, actorUserID uint
 				return influxdb.QueryOnlineDuration(ctx, "", machineID, start, end)
 			}
 		}
-		return 0, serializer.ErrPermissionDenied
+		return 0, unifyerror.Forbidden()
 	}
 	if strings.TrimSpace(userID) != "" {
 		parsedUserID, err := strconv.ParseUint(strings.TrimSpace(userID), 10, 64)
 		if err != nil {
-			return 0, serializer.NewError(serializer.CodeParamErr, "invalid user_id", err)
+			return 0, unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "invalid user_id")
 		}
 		if err := ensureActorCanAccessHeadscaleUserID(ctx, actorUserID, parsedUserID); err != nil {
 			return 0, err
@@ -158,7 +159,7 @@ func (s *metricsService) GetDeviceStatusHistory(ctx context.Context, actorUserID
 		return nil, err
 	}
 	if strings.TrimSpace(machineID) == "" {
-		return nil, serializer.NewError(serializer.CodeParamErr, "machine_id is required", nil)
+		return nil, unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "machine_id is required")
 	}
 	nodes, _, err := listAccessibleNodes(ctx, actorUserID)
 	if err != nil {
@@ -169,7 +170,7 @@ func (s *metricsService) GetDeviceStatusHistory(ctx context.Context, actorUserID
 			return influxdb.GetDeviceStatusHistory(ctx, machineID, start, end)
 		}
 	}
-	return nil, serializer.ErrPermissionDenied
+	return nil, unifyerror.Forbidden()
 }
 
 // GetOnlineDurationStats gets online duration statistics for all users

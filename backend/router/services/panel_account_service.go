@@ -1,11 +1,12 @@
 package services
 
 import (
+	"net/http"
+	"headscale-panel/pkg/unifyerror"
 	"context"
 	"errors"
 	"headscale-panel/model"
 	v1 "headscale-panel/pkg/proto/headscale/v1"
-	"headscale-panel/pkg/utils/serializer"
 	"strings"
 
 	"google.golang.org/grpc/codes"
@@ -145,7 +146,7 @@ func (s *panelAccountService) List(actorUserID uint, q PanelAccountListQuery) ([
 
 	var total int64
 	if err := db.Count(&total).Error; err != nil {
-		return nil, 0, serializer.ErrDatabase.WithError(err)
+		return nil, 0, unifyerror.DbError(err)
 	}
 
 	var users []model.User
@@ -154,7 +155,7 @@ func (s *panelAccountService) List(actorUserID uint, q PanelAccountListQuery) ([
 		query = query.Offset((page - 1) * pageSize).Limit(pageSize)
 	}
 	if err := query.Order("id ASC").Find(&users).Error; err != nil {
-		return nil, 0, serializer.ErrDatabase.WithError(err)
+		return nil, 0, unifyerror.DbError(err)
 	}
 
 	items := make([]PanelAccountListItem, 0, len(users))
@@ -190,14 +191,14 @@ func (s *panelAccountService) GetDetail(actorUserID, accountID uint) (*PanelAcco
 	var user model.User
 	if err := model.DB.Preload("Group.Permissions").First(&user, accountID).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, serializer.NewError(serializer.CodeNotFound, "panel account not found", nil)
+			return nil, unifyerror.New(http.StatusNotFound, unifyerror.CodeNotFound, "panel account not found")
 		}
-		return nil, serializer.ErrDatabase.WithError(err)
+		return nil, unifyerror.DbError(err)
 	}
 
 	// Only panel accounts (local/oidc) can be viewed via this endpoint
 	if user.Provider == "headscale" {
-		return nil, serializer.NewError(serializer.CodeNotFound, "panel account not found", nil)
+		return nil, unifyerror.New(http.StatusNotFound, unifyerror.CodeNotFound, "panel account not found")
 	}
 
 	var bindings []model.UserIdentityBinding
@@ -225,18 +226,18 @@ func (s *panelAccountService) Create(actorUserID uint, username, password, email
 	}
 
 	if strings.TrimSpace(username) == "" {
-		return serializer.NewError(serializer.CodeParamErr, "username is required", nil)
+		return unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "username is required")
 	}
 	if strings.TrimSpace(password) == "" {
-		return serializer.NewError(serializer.CodeParamErr, "password is required for local panel accounts", nil)
+		return unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "password is required for local panel accounts")
 	}
 
 	var count int64
 	if err := model.DB.Model(&model.User{}).Where("username = ?", username).Count(&count).Error; err != nil {
-		return serializer.ErrDatabase.WithError(err)
+		return unifyerror.DbError(err)
 	}
 	if count > 0 {
-		return serializer.ErrUserNameExisted
+		return unifyerror.UserExists()
 	}
 
 	user := model.User{
@@ -249,7 +250,7 @@ func (s *panelAccountService) Create(actorUserID uint, username, password, email
 	}
 
 	if err := model.DB.Create(&user).Error; err != nil {
-		return serializer.ErrDatabase.WithError(err)
+		return unifyerror.DbError(err)
 	}
 	return nil
 }
@@ -267,19 +268,19 @@ func (s *panelAccountService) SetStatus(actorUserID, accountID uint, isActive bo
 	}
 
 	if actorUserID == accountID {
-		return serializer.NewError(serializer.CodeParamErr, "cannot change your own account status", nil)
+		return unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "cannot change your own account status")
 	}
 
 	var user model.User
 	if err := model.DB.First(&user, accountID).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return serializer.NewError(serializer.CodeNotFound, "panel account not found", nil)
+			return unifyerror.New(http.StatusNotFound, unifyerror.CodeNotFound, "panel account not found")
 		}
-		return serializer.ErrDatabase.WithError(err)
+		return unifyerror.DbError(err)
 	}
 
 	if err := model.DB.Model(&user).Update("is_active", isActive).Error; err != nil {
-		return serializer.ErrDatabase.WithError(err)
+		return unifyerror.DbError(err)
 	}
 	return nil
 }
@@ -292,20 +293,20 @@ func (s *panelAccountService) ResetTOTP(actorUserID, accountID uint) error {
 	var user model.User
 	if err := model.DB.First(&user, accountID).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return serializer.NewError(serializer.CodeNotFound, "panel account not found", nil)
+			return unifyerror.New(http.StatusNotFound, unifyerror.CodeNotFound, "panel account not found")
 		}
-		return serializer.ErrDatabase.WithError(err)
+		return unifyerror.DbError(err)
 	}
 
 	if !user.TOTPEnabled {
-		return serializer.NewError(serializer.CodeParamErr, "TOTP is not enabled for this account", nil)
+		return unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "TOTP is not enabled for this account")
 	}
 
 	if err := model.DB.Model(&user).Updates(map[string]interface{}{
 		"totp_enabled": false,
 		"totp_secret":  "",
 	}).Error; err != nil {
-		return serializer.ErrDatabase.WithError(err)
+		return unifyerror.DbError(err)
 	}
 	return nil
 }
@@ -318,9 +319,9 @@ func (s *panelAccountService) GetLoginIdentities(actorUserID, accountID uint) (*
 	var user model.User
 	if err := model.DB.First(&user, accountID).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, serializer.NewError(serializer.CodeNotFound, "panel account not found", nil)
+			return nil, unifyerror.New(http.StatusNotFound, unifyerror.CodeNotFound, "panel account not found")
 		}
-		return nil, serializer.ErrDatabase.WithError(err)
+		return nil, unifyerror.DbError(err)
 	}
 
 	return buildLoginIdentities(&user), nil
@@ -333,7 +334,7 @@ func (s *panelAccountService) GetNetworkBindings(actorUserID, accountID uint) ([
 
 	var bindings []model.UserIdentityBinding
 	if err := model.DB.Where("user_id = ?", accountID).Find(&bindings).Error; err != nil {
-		return nil, serializer.ErrDatabase.WithError(err)
+		return nil, unifyerror.DbError(err)
 	}
 
 	return buildNetworkBindings(bindings), nil
@@ -352,9 +353,9 @@ func (s *panelAccountService) UpdateNetworkBindings(actorUserID, accountID uint,
 	var user model.User
 	if err := model.DB.First(&user, accountID).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return serializer.NewError(serializer.CodeNotFound, "panel account not found", nil)
+			return unifyerror.New(http.StatusNotFound, unifyerror.CodeNotFound, "panel account not found")
 		}
-		return serializer.ErrDatabase.WithError(err)
+		return unifyerror.DbError(err)
 	}
 
 	// Validate: at most one primary
@@ -365,7 +366,7 @@ func (s *panelAccountService) UpdateNetworkBindings(actorUserID, accountID uint,
 		}
 	}
 	if primaryCount > 1 {
-		return serializer.NewError(serializer.CodeParamErr, "at most one primary binding is allowed", nil)
+		return unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "at most one primary binding is allowed")
 	}
 
 	validatedBindings, err := buildValidatedBindings(accountID, entries)
@@ -378,17 +379,17 @@ func (s *panelAccountService) UpdateNetworkBindings(actorUserID, accountID uint,
 	return model.DB.Transaction(func(tx *gorm.DB) error {
 		// Delete existing bindings
 		if err := tx.Where("user_id = ?", accountID).Delete(&model.UserIdentityBinding{}).Error; err != nil {
-			return serializer.ErrDatabase.WithError(err)
+			return unifyerror.DbError(err)
 		}
 
 		for _, binding := range validatedBindings {
 			if err := tx.Create(&binding).Error; err != nil {
-				return serializer.ErrDatabase.WithError(err)
+				return unifyerror.DbError(err)
 			}
 		}
 
 		if err := tx.Model(&model.User{}).Where("id = ?", accountID).Update("headscale_name", primaryName).Error; err != nil {
-			return serializer.ErrDatabase.WithError(err)
+			return unifyerror.DbError(err)
 		}
 
 		return nil
@@ -405,7 +406,7 @@ func (s *panelAccountService) SetPrimaryBinding(actorUserID, accountID uint, bin
 		if err := tx.Model(&model.UserIdentityBinding{}).
 			Where("user_id = ?", accountID).
 			Update("is_primary", false).Error; err != nil {
-			return serializer.ErrDatabase.WithError(err)
+			return unifyerror.DbError(err)
 		}
 
 		// Set the specified binding as primary
@@ -413,10 +414,10 @@ func (s *panelAccountService) SetPrimaryBinding(actorUserID, accountID uint, bin
 			Where("id = ? AND user_id = ?", bindingID, accountID).
 			Update("is_primary", true)
 		if result.Error != nil {
-			return serializer.ErrDatabase.WithError(result.Error)
+			return unifyerror.DbError(result.Error)
 		}
 		if result.RowsAffected == 0 {
-			return serializer.NewError(serializer.CodeNotFound, "binding not found", nil)
+			return unifyerror.New(http.StatusNotFound, unifyerror.CodeNotFound, "binding not found")
 		}
 
 		// Update User.HeadscaleName for backward compatibility
@@ -446,9 +447,9 @@ func (s *panelAccountService) ListAvailableNetworkIdentities(actorUserID uint, s
 	if err != nil {
 		st, ok := status.FromError(err)
 		if ok && st.Code() == codes.Unavailable {
-			return nil, serializer.NewError(serializer.CodeThirdPartyServiceError, "headscale service unavailable", err)
+			return nil, unifyerror.New(http.StatusBadGateway, unifyerror.CodeGRPCErr, "headscale service unavailable")
 		}
-		return nil, serializer.NewError(serializer.CodeThirdPartyServiceError, "failed to list headscale users", err)
+		return nil, unifyerror.New(http.StatusBadGateway, unifyerror.CodeGRPCErr, "failed to list headscale users")
 	}
 
 	// Get already-bound names for the specified account so we can exclude them
@@ -584,26 +585,26 @@ func (s *panelAccountService) Delete(actorUserID, accountID uint) error {
 		return err
 	}
 	if actorUserID == accountID {
-		return serializer.NewError(serializer.CodeParamErr, "cannot delete your own account", nil)
+		return unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "cannot delete your own account")
 	}
 
 	var user model.User
 	if err := model.DB.First(&user, accountID).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return serializer.NewError(serializer.CodeNotFound, "panel account not found", nil)
+			return unifyerror.New(http.StatusNotFound, unifyerror.CodeNotFound, "panel account not found")
 		}
-		return serializer.ErrDatabase.WithError(err)
+		return unifyerror.DbError(err)
 	}
 	if strings.EqualFold(strings.TrimSpace(user.Provider), "headscale") {
-		return serializer.NewError(serializer.CodeNotFound, "panel account not found", nil)
+		return unifyerror.New(http.StatusNotFound, unifyerror.CodeNotFound, "panel account not found")
 	}
 
 	return model.DB.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Where("user_id = ?", accountID).Delete(&model.UserIdentityBinding{}).Error; err != nil {
-			return serializer.ErrDatabase.WithError(err)
+			return unifyerror.DbError(err)
 		}
 		if err := tx.Delete(&model.User{}, accountID).Error; err != nil {
-			return serializer.ErrDatabase.WithError(err)
+			return unifyerror.DbError(err)
 		}
 		return nil
 	})
@@ -624,7 +625,7 @@ func buildValidatedBindings(accountID uint, entries []BindingEntry) ([]model.Use
 
 	resp, err := client.ListUsers(ctx, &v1.ListUsersRequest{})
 	if err != nil {
-		return nil, serializer.NewError(serializer.CodeThirdPartyServiceError, "failed to validate headscale users", err)
+		return nil, unifyerror.New(http.StatusBadGateway, unifyerror.CodeGRPCErr, "failed to validate headscale users")
 	}
 
 	hsUserMap := make(map[string]*HeadscaleUser, len(resp.Users))
@@ -647,17 +648,17 @@ func buildValidatedBindings(accountID uint, entries []BindingEntry) ([]model.Use
 	for _, entry := range entries {
 		headscaleName := strings.TrimSpace(entry.HeadscaleName)
 		if headscaleName == "" {
-			return nil, serializer.NewError(serializer.CodeParamErr, "headscale_name is required", nil)
+			return nil, unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "headscale_name is required")
 		}
 		key := strings.ToLower(headscaleName)
 		if _, exists := seen[key]; exists {
-			return nil, serializer.NewError(serializer.CodeParamErr, "duplicate network binding is not allowed", nil)
+			return nil, unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "duplicate network binding is not allowed")
 		}
 		seen[key] = struct{}{}
 
 		hsUser, ok := hsUserMap[key]
 		if !ok {
-			return nil, serializer.NewError(serializer.CodeParamErr, "headscale user not found: "+headscaleName, nil)
+			return nil, unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "headscale user not found: "+headscaleName)
 		}
 
 		bindings = append(bindings, model.UserIdentityBinding{

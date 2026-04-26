@@ -1,7 +1,7 @@
 package controllers
 
 import (
-	"headscale-panel/pkg/utils/serializer"
+	"headscale-panel/pkg/unifyerror"
 	"headscale-panel/router/services"
 
 	"github.com/gin-gonic/gin"
@@ -17,7 +17,7 @@ type RouteActionRequest struct {
 
 // ListRoutesQuery is the query parameter struct for ListRoutes.
 type ListRoutesQuery struct {
-	serializer.PaginationQuery
+	unifyerror.PaginationQuery
 	UserID    string `form:"user_id"`
 	MachineID string `form:"machine_id"`
 }
@@ -31,13 +31,13 @@ type ListRoutesQuery struct {
 // @Param all query bool false "Return all records"
 // @Param user_id query string false "Filter by user ID"
 // @Param machine_id query string false "Filter by machine ID"
-// @Success 200 {object} serializer.Response{data=serializer.PaginatedData}
+// @Success 200 {object} unifyerror.Response{data=unifyerror.PaginatedData}
 // @Security BearerAuth
 // @Router /routes [get]
 func (c *RouteController) ListRoutes(ctx *gin.Context) {
 	var q ListRoutesQuery
 	if err := ctx.ShouldBindQuery(&q); err != nil {
-		serializer.Fail(ctx, serializer.ErrBind)
+		unifyerror.Fail(ctx, unifyerror.ErrBind)
 		return
 	}
 	page, pageSize := q.Resolve()
@@ -45,11 +45,11 @@ func (c *RouteController) ListRoutes(ctx *gin.Context) {
 	userID := ctx.GetUint("userID")
 	routes, total, err := services.RouteService.ListRoutesWithContext(ctx.Request.Context(), userID, page, pageSize, q.UserID, q.MachineID)
 	if err != nil {
-		serializer.Fail(ctx, err)
+		unifyerror.Fail(ctx, err)
 		return
 	}
 
-	serializer.SuccessPage(ctx, routes, total, page, pageSize)
+	unifyerror.SuccessPage(ctx, routes, total, page, pageSize)
 }
 
 // EnableRoute godoc
@@ -58,24 +58,24 @@ func (c *RouteController) ListRoutes(ctx *gin.Context) {
 // @Accept json
 // @Produce json
 // @Param body body RouteActionRequest true "Route action"
-// @Success 200 {object} serializer.Response
-// @Failure 400 {object} serializer.Response
+// @Success 200 {object} unifyerror.Response
+// @Failure 400 {object} unifyerror.Response
 // @Security BearerAuth
 // @Router /routes/enable [post]
 func (c *RouteController) EnableRoute(ctx *gin.Context) {
 	var req RouteActionRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {
-		serializer.Fail(ctx, serializer.ErrBind)
+		unifyerror.Fail(ctx, unifyerror.ErrBind)
 		return
 	}
 
 	userID := ctx.GetUint("userID")
 	if err := services.RouteService.EnableRouteWithContext(ctx.Request.Context(), userID, req.MachineID, req.Destination); err != nil {
-		serializer.Fail(ctx, err)
+		unifyerror.Fail(ctx, err)
 		return
 	}
 
-	serializer.Success(ctx, nil)
+	unifyerror.Success(ctx, nil)
 }
 
 // DisableRoute godoc
@@ -84,22 +84,22 @@ func (c *RouteController) EnableRoute(ctx *gin.Context) {
 // @Accept json
 // @Produce json
 // @Param body body RouteActionRequest true "Route action"
-// @Success 200 {object} serializer.Response
-// @Failure 400 {object} serializer.Response
+// @Success 200 {object} unifyerror.Response
+// @Failure 400 {object} unifyerror.Response
 // @Security BearerAuth
 // @Router /routes/disable [post]
 func (c *RouteController) DisableRoute(ctx *gin.Context) {
 	var req RouteActionRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {
-		serializer.Fail(ctx, serializer.ErrBind)
+		unifyerror.Fail(ctx, unifyerror.ErrBind)
 		return
 	}
 
 	userID := ctx.GetUint("userID")
 	if err := services.RouteService.DisableRouteWithContext(ctx.Request.Context(), userID, req.MachineID, req.Destination); err != nil {
-		serializer.Fail(ctx, err)
+		unifyerror.Fail(ctx, err)
 		return
 	}
 
-	serializer.Success(ctx, nil)
+	unifyerror.Success(ctx, nil)
 }

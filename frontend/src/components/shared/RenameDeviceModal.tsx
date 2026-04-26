@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Input, Modal, Typography, message } from 'antd';
-import { devicesAPI } from '@/lib/api';
+import { deviceApi } from '@/api';
 import type { NormalizedDevice } from '@/lib/normalizers';
 import { useTranslation } from '@/i18n/index';
 
@@ -50,7 +50,7 @@ export default function RenameDeviceModal({ open, device, onCancel, onSuccess }:
 
     setSaving(true);
     try {
-      await devicesAPI.rename(device.id, newName.trim());
+      await deviceApi.rename({ id: device.id, name: newName.trim() });
       message.success(t.devices.renameSuccess);
       onCancel();
       onSuccess();

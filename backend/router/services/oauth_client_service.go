@@ -1,10 +1,11 @@
 package services
 
 import (
+	"net/http"
+	"headscale-panel/pkg/unifyerror"
 	"crypto/rand"
 	"encoding/hex"
 	"headscale-panel/model"
-	"headscale-panel/pkg/utils/serializer"
 	"strings"
 	"time"
 )
@@ -37,11 +38,11 @@ func (s *oauthClientService) List(actorUserID uint, page, pageSize int) ([]Oauth
 
 	db := model.DB.Model(&model.OauthClient{})
 	if err := db.Count(&total).Error; err != nil {
-		return nil, 0, serializer.ErrDatabase.WithError(err)
+		return nil, 0, unifyerror.DbError(err)
 	}
 
 	if err := db.Offset((page - 1) * pageSize).Limit(pageSize).Find(&clients).Error; err != nil {
-		return nil, 0, serializer.ErrDatabase.WithError(err)
+		return nil, 0, unifyerror.DbError(err)
 	}
 
 	result := make([]OauthClientView, 0, len(clients))
@@ -59,11 +60,11 @@ func (s *oauthClientService) Create(actorUserID uint, name, redirectURIs string)
 
 	trimmedName := strings.TrimSpace(name)
 	if trimmedName == "" {
-		return nil, serializer.NewError(serializer.CodeParamErr, "name is required", nil)
+		return nil, unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "name is required")
 	}
 	normalizedRedirectURIs, err := normalizeRedirectURIs(redirectURIs)
 	if err != nil {
-		return nil, serializer.NewError(serializer.CodeParamErr, "redirect_uris is invalid", err)
+		return nil, unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "redirect_uris is invalid")
 	}
 
 	clientID, err := generateRandomString(16)
@@ -76,7 +77,7 @@ func (s *oauthClientService) Create(actorUserID uint, name, redirectURIs string)
 	}
 	hashedSecret, err := hashOAuthClientSecret(clientSecret)
 	if err != nil {
-		return nil, serializer.NewError(serializer.CodeInternalError, "failed to secure client secret", err)
+		return nil, unifyerror.New(http.StatusInternalServerError, unifyerror.CodeServerErr, "failed to secure client secret")
 	}
 
 	client := &model.OauthClient{
@@ -87,7 +88,7 @@ func (s *oauthClientService) Create(actorUserID uint, name, redirectURIs string)
 	}
 
 	if err := model.DB.Create(client).Error; err != nil {
-		return nil, serializer.ErrDatabase.WithError(err)
+		return nil, unifyerror.DbError(err)
 	}
 
 	return &OauthClientCreated{
@@ -103,22 +104,22 @@ func (s *oauthClientService) Update(actorUserID uint, id uint, name, redirectURI
 
 	trimmedName := strings.TrimSpace(name)
 	if trimmedName == "" {
-		return serializer.NewError(serializer.CodeParamErr, "name is required", nil)
+		return unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "name is required")
 	}
 	normalizedRedirectURIs, err := normalizeRedirectURIs(redirectURIs)
 	if err != nil {
-		return serializer.NewError(serializer.CodeParamErr, "redirect_uris is invalid", err)
+		return unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "redirect_uris is invalid")
 	}
 
 	var client model.OauthClient
 	if err := model.DB.First(&client, id).Error; err != nil {
-		return serializer.NewError(serializer.CodeNotFound, "oauth client not found", err)
+		return unifyerror.New(http.StatusNotFound, unifyerror.CodeNotFound, "oauth client not found")
 	}
 
 	client.Name = trimmedName
 	client.RedirectURIs = normalizedRedirectURIs
 	if err := model.DB.Save(&client).Error; err != nil {
-		return serializer.ErrDatabase.WithError(err)
+		return unifyerror.DbError(err)
 	}
 	return nil
 }
@@ -129,7 +130,7 @@ func (s *oauthClientService) Delete(actorUserID uint, id uint) error {
 	}
 
 	if err := model.DB.Delete(&model.OauthClient{}, id).Error; err != nil {
-		return serializer.ErrDatabase.WithError(err)
+		return unifyerror.DbError(err)
 	}
 	return nil
 }
@@ -141,7 +142,7 @@ func (s *oauthClientService) RegenerateSecret(actorUserID uint, id uint) (string
 
 	var client model.OauthClient
 	if err := model.DB.First(&client, id).Error; err != nil {
-		return "", serializer.NewError(serializer.CodeNotFound, "oauth client not found", err)
+		return "", unifyerror.New(http.StatusNotFound, unifyerror.CodeNotFound, "oauth client not found")
 	}
 
 	newSecret, err := generateRandomString(32)
@@ -150,13 +151,13 @@ func (s *oauthClientService) RegenerateSecret(actorUserID uint, id uint) (string
 	}
 	hashedSecret, err := hashOAuthClientSecret(newSecret)
 	if err != nil {
-		return "", serializer.NewError(serializer.CodeInternalError, "failed to secure client secret", err)
+		return "", unifyerror.New(http.StatusInternalServerError, unifyerror.CodeServerErr, "failed to secure client secret")
 	}
 
 	client.ClientSecretHash = hashedSecret
 	client.ClientSecret = ""
 	if err := model.DB.Save(&client).Error; err != nil {
-		return "", serializer.ErrDatabase.WithError(err)
+		return "", unifyerror.DbError(err)
 	}
 
 	return newSecret, nil

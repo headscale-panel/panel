@@ -24,7 +24,7 @@ import { ACLAction } from '@/lib/enums';
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRequest } from 'ahooks';
 
-import { aclAPI } from '@/lib/api';
+import { aclApi } from '@/api';
 import RuleModal from '@/components/acl/RuleModal';
 import JsonEditorModal from '@/components/acl/JsonEditorModal';
 
@@ -202,7 +202,7 @@ export default function ACL() {
   const handleDeleteRule = async (index: number) => {
     setSaving(true);
     try {
-      await aclAPI.deleteRuleByIndex(index);
+      await aclApi.deleteRuleByIndex({ index });
       message.success(t.acl.deleteRuleSuccess);
       loadData();
     } catch (error) {
@@ -214,7 +214,7 @@ export default function ACL() {
 
   const handleExportJson = async () => {
     try {
-      const res = await aclAPI.getPolicy();
+      const res = await aclApi.getPolicy();
       if (res) {
         setJsonContent(JSON.stringify(res, null, 2));
         setShowJsonEditor(true);
@@ -227,7 +227,7 @@ export default function ACL() {
   const handleSyncResources = async () => {
     setSaving(true);
     try {
-      await aclAPI.syncResourcesAsHosts();
+      await aclApi.syncResourcesAsHosts();
       message.success(t.acl.syncSuccess);
       loadData();
     } catch (error) {
@@ -256,7 +256,7 @@ export default function ACL() {
         dst: rule.destinations,
       }));
       try {
-        await aclAPI.updatePolicy(newPolicy);
+        await aclApi.updatePolicy(newPolicy);
         message.success(t.acl.orderUpdated);
         loadData();
       } catch {

@@ -1,5 +1,5 @@
 import { useAuthStore } from '@/lib/store';
-import { authAPI } from '@/lib/api';
+import { authApi } from '@/api';
 import { useLocation } from 'wouter';
 import { useEffect, useRef, ReactNode } from 'react';
 import { redirectToLogin } from '@/lib/auth';
@@ -29,7 +29,7 @@ export default function ProtectedRoute({
   useEffect(() => {
     if (pendingProfile && !fetched.current) {
       fetched.current = true;
-      authAPI.getUserInfo().then((data: any) => {
+      authApi.getUserInfo().then((data: any) => {
         if (data?.user) {
           const u = data.user;
           const role = u.group?.name?.toLowerCase() === UserRole.Admin ? UserRole.Admin : UserRole.User;

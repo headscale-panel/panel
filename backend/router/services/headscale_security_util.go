@@ -6,7 +6,8 @@ import (
 	"headscale-panel/pkg/constants"
 	"headscale-panel/pkg/headscale"
 	v1 "headscale-panel/pkg/proto/headscale/v1"
-	"headscale-panel/pkg/utils/serializer"
+	"headscale-panel/pkg/unifyerror"
+	"net/http"
 	"strings"
 )
 
@@ -16,10 +17,14 @@ type actorScope struct {
 }
 
 func headscaleServiceClient() (v1.HeadscaleServiceClient, error) {
-	if headscale.GlobalClient == nil || headscale.GlobalClient.Service == nil {
-		return nil, serializer.NewError(serializer.CodeThirdPartyServiceError, "headscale service is unavailable", nil)
+	client, err := headscale.GetOrRefreshClient()
+	if err != nil {
+		return nil, unifyerror.GRPCError(err)
 	}
-	return headscale.GlobalClient.Service, nil
+	if client == nil || client.Service == nil {
+		return nil, unifyerror.New(http.StatusBadGateway, unifyerror.CodeGRPCErr, "headscale service is unavailable")
+	}
+	return client.Service, nil
 }
 
 func normalizePagination(page, pageSize int) (int, int) {
@@ -41,7 +46,7 @@ func normalizePagination(page, pageSize int) (int, int) {
 func loadActorScope(actorUserID uint) (*actorScope, error) {
 	var user model.User
 	if err := model.DB.Preload("Group").First(&user, actorUserID).Error; err != nil {
-		return nil, serializer.ErrPermissionDenied
+		return nil, unifyerror.Forbidden()
 	}
 
 	headscaleName := strings.TrimSpace(user.HeadscaleName)
@@ -50,7 +55,7 @@ func loadActorScope(actorUserID uint) (*actorScope, error) {
 	}
 
 	return &actorScope{
-		isAdmin:       strings.EqualFold(strings.TrimSpace(user.Group.Name), "admin"),
+		isAdmin:       IsAdminGroupName(user.Group.Name),
 		headscaleName: headscaleName,
 	}, nil
 }
@@ -77,7 +82,7 @@ func ensureActorCanAccessNode(actorUserID uint, node *v1.Node) error {
 		return err
 	}
 	if !actorCanAccessNode(scope, node) {
-		return serializer.ErrPermissionDenied
+		return unifyerror.Forbidden()
 	}
 	return nil
 }
@@ -98,7 +103,7 @@ func ensureActorCanAccessHeadscaleUserName(actorUserID uint, headscaleName strin
 		return err
 	}
 	if !actorCanAccessHeadscaleUser(scope, headscaleName) {
-		return serializer.ErrPermissionDenied
+		return unifyerror.Forbidden()
 	}
 	return nil
 }
@@ -114,7 +119,7 @@ func resolveHeadscaleUserNameByID(ctx context.Context, userID uint64) (string, e
 
 	resp, err := client.ListUsers(queryCtx, &v1.ListUsersRequest{})
 	if err != nil {
-		return "", serializer.NewError(serializer.CodeThirdPartyServiceError, "failed to list headscale users", err)
+		return "", unifyerror.New(http.StatusBadGateway, unifyerror.CodeGRPCErr, "failed to list headscale users")
 	}
 
 	for _, user := range resp.Users {
@@ -123,7 +128,7 @@ func resolveHeadscaleUserNameByID(ctx context.Context, userID uint64) (string, e
 		}
 	}
 
-	return "", serializer.NewError(serializer.CodeNotFound, "headscale user not found", nil)
+	return "", unifyerror.New(http.StatusNotFound, unifyerror.CodeNotFound, "headscale user not found")
 }
 
 func ensureActorCanAccessHeadscaleUserID(ctx context.Context, actorUserID uint, userID uint64) error {
@@ -137,7 +142,7 @@ func ensureActorCanAccessHeadscaleUserID(ctx context.Context, actorUserID uint, 
 func resolvePanelUserHeadscaleName(userID uint) (string, error) {
 	var user model.User
 	if err := model.DB.First(&user, userID).Error; err != nil {
-		return "", serializer.NewError(serializer.CodeUserNotFound, "user not found", err)
+		return "", unifyerror.New(http.StatusNotFound, unifyerror.CodeNotFound, "user not found")
 	}
 
 	headscaleName := strings.TrimSpace(user.HeadscaleName)
@@ -145,7 +150,7 @@ func resolvePanelUserHeadscaleName(userID uint) (string, error) {
 		headscaleName = strings.TrimSpace(user.Username)
 	}
 	if headscaleName == "" {
-		return "", serializer.NewError(serializer.CodeParamErr, "target user has no Headscale identity", nil)
+		return "", unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "target user has no Headscale identity")
 	}
 	return headscaleName, nil
 }
@@ -173,7 +178,7 @@ func listAccessibleNodes(ctx context.Context, actorUserID uint) ([]*v1.Node, *ac
 
 	resp, err := client.ListNodes(queryCtx, &v1.ListNodesRequest{})
 	if err != nil {
-		return nil, nil, serializer.NewError(serializer.CodeThirdPartyServiceError, "failed to list nodes from Headscale", err)
+		return nil, nil, unifyerror.New(http.StatusBadGateway, unifyerror.CodeGRPCErr, "failed to list nodes from Headscale")
 	}
 
 	nodes := make([]*v1.Node, 0, len(resp.Nodes))

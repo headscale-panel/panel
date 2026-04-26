@@ -22,7 +22,7 @@ import {
 } from '@ant-design/icons';
 import { QRCodeSVG } from 'qrcode.react';
 import { useAuthStore, useUIStore } from '@/lib/store';
-import { authAPI } from '@/lib/api';
+import { authApi } from '@/api';
 import { useTranslation } from '@/i18n/index';
 import DashboardLayout from '@/components/DashboardLayout';
 
@@ -46,7 +46,7 @@ export default function Profile() {
   const handleStartSetup = useCallback(async () => {
     setGenerating(true);
     try {
-      const res = await authAPI.generateTOTP();
+      const res = await authApi.generateTOTP();
       setTotpSecret(res.secret);
       setTotpUrl(res.url);
       setTotpStep(0);
@@ -63,7 +63,7 @@ export default function Profile() {
     if (!verifyCode.trim()) return;
     setEnabling(true);
     try {
-      await authAPI.enableTOTP(verifyCode.trim());
+      await authApi.enableTOTP({ code: verifyCode.trim() });
       message.success(pr.totp.enableSuccess);
       setTotpModalOpen(false);
       // Reload the page to reflect new totp_enabled state

@@ -39,7 +39,7 @@ import {
 import { loadUsersPageData } from '@/lib/page-data';
 import DashboardLayout from '@/components/DashboardLayout';
 import PageHeaderStatCards from '@/components/PageHeaderStatCards';
-import { aclAPI, devicesAPI, usersAPI } from '@/lib/api';
+import { aclApi, deviceApi, headscaleUserApi } from '@/api';
 import type {
   ACLPolicy,
   NormalizedDevice,
@@ -197,7 +197,7 @@ export default function UsersPage() {
   };
 
   const saveACLGroups = async (nextGroups: ACLGroup[]) => {
-    await aclAPI.updatePolicy(buildPolicyWithGroups(nextGroups));
+    await aclApi.updatePolicy(buildPolicyWithGroups(nextGroups));
   };
 
   const getPrimaryGroupNameForUser = (user: UserData | null | undefined) => {
@@ -227,7 +227,7 @@ export default function UsersPage() {
     });
 
     try {
-      const devicesRes = await devicesAPI.list({ all: true, userId: owner });
+      const devicesRes = await deviceApi.list({ all: true, userId: owner });
       const { list } = normalizeDeviceListResponse(devicesRes);
       setUserDevicesByOwner((current) => ({ ...current, [ownerKey]: list }));
     } catch (error: any) {
@@ -324,8 +324,8 @@ export default function UsersPage() {
   };
 
   const handleCreateHeadscaleUser = useCallback(
-    async ({ username, groupName }: { username: string; groupName?: string }) => {
-      await usersAPI.create(username);
+    async ({ username, displayName, email, groupName }: { username: string; displayName: string; email: string; groupName?: string }) => {
+      await headscaleUserApi.create({ name: username, display_name: displayName, email });
       if (!groupName) {
         return;
       }
@@ -347,7 +347,7 @@ export default function UsersPage() {
   const handleUpdateHeadscaleUser = useCallback(
     async ({ oldName, newName, groupName }: { oldName: string; newName: string; groupName?: string }) => {
       if (oldName !== newName) {
-        await usersAPI.rename(oldName, newName);
+        await headscaleUserApi.rename({ old_name: oldName, new_name: newName });
       }
 
       const oldToken = getGroupMemberToken(oldName);
@@ -381,7 +381,7 @@ export default function UsersPage() {
       cancelText: t.common.actions.cancel,
       onOk: async () => {
         try {
-          await usersAPI.delete(user.headscale_name || user.username);
+          await headscaleUserApi.delete({ name: user.headscale_name || user.username });
           const memberToken = getGroupMemberToken(user.headscale_name || user.username);
           const nextGroups = aclGroups.map((group) => ({
             ...group,
@@ -492,7 +492,7 @@ export default function UsersPage() {
       cancelText: t.common.actions.cancel,
       onOk: async () => {
         try {
-          await devicesAPI.delete(device.id);
+          await deviceApi.delete({ id: device.id });
           message.success(t.devices.deleteSuccess);
           loadData();
         } catch (error: any) {

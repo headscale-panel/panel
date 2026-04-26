@@ -1,10 +1,10 @@
 import {
-  aclAPI,
-  devicesAPI,
-  panelSettingsAPI,
-  resourcesAPI,
-  usersAPI,
-} from './api';
+  aclApi,
+  deviceApi,
+  headscaleUserApi,
+  panelSettingsApi,
+  resourceApi,
+} from '@/api';
 import {
   normalizeACLPolicy,
   normalizeDeviceListResponse,
@@ -16,9 +16,9 @@ import {
 } from './normalizers';
 export async function loadUsersPageData() {
   const [usersRes, policyRes, onlineDevicesRes] = await Promise.all([
-    usersAPI.list({ all: true }),
-    aclAPI.getPolicy().catch(() => null),
-    devicesAPI.list({ all: true, status: 'online' }).catch(() => null),
+    headscaleUserApi.list({ all: true }),
+    aclApi.getPolicy().catch(() => null),
+    deviceApi.list({ all: true, status: 'online' }).catch(() => null),
   ]);
 
   const devices = normalizeDeviceListResponse(onlineDevicesRes).list;
@@ -37,10 +37,10 @@ export async function loadUsersPageData() {
 
 export async function loadACLPageData() {
   const [policyRes, devicesRes, resourcesRes, usersRes] = await Promise.all([
-    aclAPI.getPolicy().catch(() => null),
-    devicesAPI.list({ all: true }).catch(() => null),
-    resourcesAPI.list({ all: true }).catch(() => null),
-    usersAPI.list({ all: true }).catch(() => null),
+    aclApi.getPolicy().catch(() => null),
+    deviceApi.list({ all: true }).catch(() => null),
+    resourceApi.list({ all: true }).catch(() => null),
+    headscaleUserApi.list({ all: true }).catch(() => null),
   ]);
 
   return {
@@ -52,14 +52,14 @@ export async function loadACLPageData() {
 }
 
 export async function loadConnectionSettingsData() {
-  const value = await panelSettingsAPI.getConnection();
+  const value = await panelSettingsApi.getConnection();
   return normalizePanelConnectionSettings(value);
 }
 
 export async function loadOIDCSettingsData(): Promise<{
   oidcForm: ReturnType<typeof normalizeOIDCForm>;
 }> {
-  const saved = await panelSettingsAPI.getOIDCSettings().catch(() => null);
+  const saved = await panelSettingsApi.getOIDCSettings().catch(() => null);
 
   return {
     oidcForm: normalizeOIDCForm(saved),

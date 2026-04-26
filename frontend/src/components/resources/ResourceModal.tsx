@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Input, Modal, Space, Typography, message } from 'antd';
-import { resourcesAPI } from '@/lib/api';
+import { resourceApi } from '@/api';
 import { useTranslation } from '@/i18n/index';
 
 const { Text } = Typography;
@@ -41,10 +41,10 @@ export default function ResourceModal({ open, editingResource, onCancel, onSucce
     }
     try {
       if (editingResource) {
-        await resourcesAPI.update(editingResource.ID, formData);
+        await resourceApi.update({ id: editingResource.ID, ...formData });
         message.success(t.resources.updateSuccess);
       } else {
-        await resourcesAPI.create(formData);
+        await resourceApi.create(formData);
         message.success(t.resources.createSuccess);
       }
       onSuccess();

@@ -24,7 +24,7 @@ import {
 import { useRequest } from 'ahooks';
 import DashboardLayout from '@/components/DashboardLayout';
 import PageHeaderStatCards from '@/components/PageHeaderStatCards';
-import { panelAccountsAPI, groupsAPI } from '@/lib/api';
+import { panelAccountApi, groupApi } from '@/api';
 import type { PanelAccountListItem } from '@/api/panel-account.types';
 import type { NormalizedGroup } from '@/lib/normalizers';
 import { useTranslation } from '@/i18n/index';
@@ -55,7 +55,7 @@ export default function PanelAccounts() {
     run: loadList,
   } = useRequest(
     () =>
-      panelAccountsAPI.list({
+      panelAccountApi.list({
         page,
         pageSize,
         search: search || undefined,
@@ -70,7 +70,7 @@ export default function PanelAccounts() {
   );
 
   const { data: groupsData } = useRequest(
-    () => groupsAPI.list({ all: true }),
+    () => groupApi.list({ all: true }),
     { cacheKey: 'panel-account-groups' },
   );
 

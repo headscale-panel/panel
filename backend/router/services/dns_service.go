@@ -6,8 +6,9 @@ import (
 	"fmt"
 	"headscale-panel/model"
 	"headscale-panel/pkg/constants"
-	"headscale-panel/pkg/utils/serializer"
+	"headscale-panel/pkg/unifyerror"
 	"net"
+	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -44,7 +45,7 @@ type UpdateDNSRecordRequest struct {
 }
 
 type ListDNSRecordRequest struct {
-	serializer.PaginationQuery
+	unifyerror.PaginationQuery
 	Keyword string `form:"keyword"`
 	Type    string `form:"type"`
 }
@@ -59,20 +60,20 @@ type ExtraRecord struct {
 // validateDNSRecord checks that name is a valid domain and value is a valid IP for the given type.
 func validateDNSRecord(name, recordType, value string) error {
 	if !dnsNameRegexp.MatchString(strings.TrimSpace(name)) {
-		return serializer.NewError(serializer.CodeParamErr, "invalid DNS record name: must be a valid domain name", nil)
+		return unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "invalid DNS record name: must be a valid domain name")
 	}
 	ip := net.ParseIP(strings.TrimSpace(value))
 	if ip == nil {
-		return serializer.NewError(serializer.CodeParamErr, "invalid DNS record value: must be a valid IP address", nil)
+		return unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "invalid DNS record value: must be a valid IP address")
 	}
 	switch strings.ToUpper(strings.TrimSpace(recordType)) {
 	case "A":
 		if ip.To4() == nil {
-			return serializer.NewError(serializer.CodeParamErr, "A record value must be an IPv4 address", nil)
+			return unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "A record value must be an IPv4 address")
 		}
 	case "AAAA":
 		if ip.To4() != nil {
-			return serializer.NewError(serializer.CodeParamErr, "AAAA record value must be an IPv6 address", nil)
+			return unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "AAAA record value must be an IPv6 address")
 		}
 	}
 	return nil
@@ -87,7 +88,7 @@ func (s *dnsService) Create(actorUserID uint, req *CreateDNSRecordRequest) (*mod
 	}
 	record := model.DNSRecord{Name: req.Name, Type: req.Type, Value: req.Value, Comment: req.Comment}
 	if err := model.DB.Create(&record).Error; err != nil {
-		return nil, serializer.ErrDatabase.WithError(err)
+		return nil, unifyerror.DbError(err)
 	}
 	if err := s.SyncToFile(actorUserID); err != nil {
 		return &record, err
@@ -115,11 +116,11 @@ func (s *dnsService) List(actorUserID uint, req *ListDNSRecordRequest) ([]model.
 		query = query.Where("type = ?", req.Type)
 	}
 	if err := query.Count(&total).Error; err != nil {
-		return nil, 0, serializer.ErrDatabase.WithError(err)
+		return nil, 0, unifyerror.DbError(err)
 	}
 	offset := (req.Page - 1) * req.PageSize
 	if err := query.Offset(offset).Limit(req.PageSize).Order("created_at DESC").Find(&records).Error; err != nil {
-		return nil, 0, serializer.ErrDatabase.WithError(err)
+		return nil, 0, unifyerror.DbError(err)
 	}
 	return records, total, nil
 }
@@ -130,7 +131,7 @@ func (s *dnsService) Update(actorUserID uint, req *UpdateDNSRecordRequest) (*mod
 	}
 	var record model.DNSRecord
 	if err := model.DB.First(&record, req.ID).Error; err != nil {
-		return nil, serializer.ErrDatabase.WithError(err)
+		return nil, unifyerror.DbError(err)
 	}
 	updates := map[string]interface{}{}
 	if req.Name != "" {
@@ -147,11 +148,11 @@ func (s *dnsService) Update(actorUserID uint, req *UpdateDNSRecordRequest) (*mod
 	}
 	if len(updates) > 0 {
 		if err := model.DB.Model(&record).Updates(updates).Error; err != nil {
-			return nil, serializer.ErrDatabase.WithError(err)
+			return nil, unifyerror.DbError(err)
 		}
 	}
 	if err := model.DB.First(&record, req.ID).Error; err != nil {
-		return nil, serializer.ErrDatabase.WithError(err)
+		return nil, unifyerror.DbError(err)
 	}
 	if err := s.SyncToFile(actorUserID); err != nil {
 		return &record, err
@@ -164,7 +165,7 @@ func (s *dnsService) Delete(actorUserID uint, id uint) error {
 		return err
 	}
 	if err := model.DB.Delete(&model.DNSRecord{}, id).Error; err != nil {
-		return serializer.ErrDatabase.WithError(err)
+		return unifyerror.DbError(err)
 	}
 	return s.SyncToFile(actorUserID)
 }
@@ -175,7 +176,7 @@ func (s *dnsService) Get(actorUserID uint, id uint) (*model.DNSRecord, error) {
 	}
 	var record model.DNSRecord
 	if err := model.DB.First(&record, id).Error; err != nil {
-		return nil, serializer.ErrDatabase.WithError(err)
+		return nil, unifyerror.DbError(err)
 	}
 	return &record, nil
 }
@@ -187,7 +188,7 @@ func (s *dnsService) SyncToFile(actorUserID uint) error {
 	}
 	var records []model.DNSRecord
 	if err := model.DB.Find(&records).Error; err != nil {
-		return serializer.ErrDatabase.WithError(err)
+		return unifyerror.DbError(err)
 	}
 	extraRecords := make([]ExtraRecord, len(records))
 	for i, r := range records {
@@ -282,17 +283,17 @@ func (s *dnsService) syncFileRecordsToDB() (int, error) {
 			if existing.Value != r.Value {
 				existing.Value = r.Value
 				if err := model.DB.Save(&existing).Error; err != nil {
-					return imported, serializer.ErrDatabase.WithError(err)
+					return imported, unifyerror.DbError(err)
 				}
 				imported++
 			}
 		} else {
 			if !errors.Is(result.Error, gorm.ErrRecordNotFound) {
-				return imported, serializer.ErrDatabase.WithError(result.Error)
+				return imported, unifyerror.DbError(result.Error)
 			}
 			newRecord := model.DNSRecord{Name: r.Name, Type: r.Type, Value: r.Value}
 			if err := model.DB.Create(&newRecord).Error; err != nil {
-				return imported, serializer.ErrDatabase.WithError(err)
+				return imported, unifyerror.DbError(err)
 			}
 			imported++
 		}

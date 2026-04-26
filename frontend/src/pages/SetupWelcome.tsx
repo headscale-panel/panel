@@ -1,7 +1,7 @@
 import { Alert, Card, Input, Button, Switch, Steps, Typography, Spin, Space, Descriptions, message, theme } from 'antd';
 import { SafetyCertificateOutlined, GlobalOutlined, LoadingOutlined, CheckCircleOutlined, CloseCircleOutlined, ArrowRightOutlined, SmileOutlined } from '@ant-design/icons';
 import { useTranslation, useI18n, availableLocales, locales } from '@/i18n/index';
-import api from '@/lib/api';
+import api from '@/lib/request';
 import { useState } from 'react';
 import { useRequest } from 'ahooks';
 import { useLocation } from 'wouter';

@@ -5,8 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"headscale-panel/model"
+	"headscale-panel/pkg/constants"
 	v1 "headscale-panel/pkg/proto/headscale/v1"
-	"headscale-panel/pkg/utils/serializer"
+	"headscale-panel/pkg/unifyerror"
+	"net/http"
 	"strings"
 	"sync"
 	"time"
@@ -105,7 +107,7 @@ func (s *systemService) syncHeadscaleUsers() {
 			// Reset group_id to 0 for headscale users that were auto-assigned to Admin.
 			if normalizedProvider == "headscale" && existing.GroupID != 0 {
 				var adminGroup model.Group
-				if err := model.DB.Where("name = ?", "Admin").First(&adminGroup).Error; err == nil {
+				if err := model.DB.Where("name = ?", constants.GROUP_ADMIN).First(&adminGroup).Error; err == nil {
 					if existing.GroupID == adminGroup.ID {
 						updates["group_id"] = 0
 					}
@@ -133,12 +135,12 @@ func (s *systemService) ListUsers(actorUserID uint, page, pageSize int) ([]model
 	db := model.DB.Model(&model.User{})
 
 	if err := db.Count(&total).Error; err != nil {
-		return nil, 0, serializer.ErrDatabase.WithError(err)
+		return nil, 0, unifyerror.DbError(err)
 	}
 
 	offset := (page - 1) * pageSize
 	if err := db.Offset(offset).Limit(pageSize).Preload("Group").Find(&users).Error; err != nil {
-		return nil, 0, serializer.ErrDatabase.WithError(err)
+		return nil, 0, unifyerror.DbError(err)
 	}
 
 	return users, total, nil
@@ -151,10 +153,10 @@ func (s *systemService) CreateUser(actorUserID uint, username, password, email s
 
 	var count int64
 	if err := model.DB.Model(&model.User{}).Where("username = ?", username).Count(&count).Error; err != nil {
-		return serializer.ErrDatabase.WithError(err)
+		return unifyerror.DbError(err)
 	}
 	if count > 0 {
-		return serializer.ErrUserNameExisted
+		return unifyerror.UserExists()
 	}
 
 	provider := "local"
@@ -169,15 +171,16 @@ func (s *systemService) CreateUser(actorUserID uint, username, password, email s
 		}
 		ctx, cancel := withServiceTimeout(context.Background())
 		defer cancel()
-		_, err = client.CreateUser(ctx, &v1.CreateUserRequest{Name: username})
+		_, err = client.CreateUser(ctx, &v1.CreateUserRequest{
+			Name:        username,
+			DisplayName: displayName,
+			Email:       email,
+		})
 		if err != nil {
 			// Ignore AlreadyExists errors
 			if st, ok := status.FromError(err); !ok || st.Code() != codes.AlreadyExists {
-				return serializer.NewError(
-					serializer.CodeThirdPartyServiceError,
-					"failed to create headscale user",
-					fmt.Errorf("headscale create user %q: %w", username, err),
-				)
+				return unifyerror.New(http.StatusBadGateway, unifyerror.CodeGRPCErr,
+					fmt.Sprintf("failed to create headscale user %q", username))
 			}
 		}
 	}
@@ -193,7 +196,7 @@ func (s *systemService) CreateUser(actorUserID uint, username, password, email s
 	}
 
 	if err := model.DB.Create(&user).Error; err != nil {
-		return serializer.ErrDatabase.WithError(err)
+		return unifyerror.DbError(err)
 	}
 	return nil
 }
@@ -205,16 +208,16 @@ func (s *systemService) UpdateUser(actorUserID uint, id uint, email string, grou
 
 	var user model.User
 	if err := model.DB.First(&user, id).Error; err != nil {
-		return serializer.ErrDatabase.WithError(err)
+		return unifyerror.DbError(err)
 	}
 
 	// Only admins can change group assignments; prevent privilege escalation
 	if groupID != user.GroupID {
 		if err := RequireAdmin(actorUserID); err != nil {
-			return serializer.NewError(serializer.CodeNoPermissionErr, "only admins can change user group", nil)
+			return unifyerror.New(http.StatusForbidden, unifyerror.CodeForbidden, "only admins can change user group")
 		}
 		if actorUserID == id {
-			return serializer.NewError(serializer.CodeParamErr, "cannot change your own group", nil)
+			return unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "cannot change your own group")
 		}
 		user.GroupID = groupID
 	}
@@ -226,7 +229,7 @@ func (s *systemService) UpdateUser(actorUserID uint, id uint, email string, grou
 	}
 
 	if err := model.DB.Save(&user).Error; err != nil {
-		return serializer.ErrDatabase.WithError(err)
+		return unifyerror.DbError(err)
 	}
 	return nil
 }
@@ -237,19 +240,19 @@ func (s *systemService) DeleteUser(actorUserID uint, id uint) error {
 	}
 
 	if actorUserID == id {
-		return serializer.NewError(serializer.CodeParamErr, "cannot delete your own account", nil)
+		return unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "cannot delete your own account")
 	}
 
 	var user model.User
 	if err := model.DB.First(&user, id).Error; err != nil {
-		if err == gorm.ErrRecordNotFound {
-			return serializer.NewError(serializer.CodeNotFound, "user not found", nil)
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return unifyerror.New(http.StatusNotFound, unifyerror.CodeNotFound, "user not found")
 		}
-		return serializer.ErrDatabase.WithError(err)
+		return unifyerror.DbError(err)
 	}
 
 	if isOIDCManagedPanelUser(user.Provider) {
-		return serializer.NewError(serializer.CodeConflict, "OIDC users are managed by the identity provider and cannot be deleted from the panel", nil)
+		return unifyerror.Conflict("OIDC users are managed by the identity provider and cannot be deleted from the panel")
 	}
 
 	headscaleName := strings.TrimSpace(user.HeadscaleName)
@@ -260,31 +263,31 @@ func (s *systemService) DeleteUser(actorUserID uint, id uint) error {
 	if headscaleName != "" {
 		deviceCount, err := HeadscaleService.CountUserMachinesWithContext(context.Background(), headscaleName)
 		if err != nil {
-			return serializer.NewError(serializer.CodeThirdPartyServiceError, "failed to validate headscale devices before deletion", err)
+			return unifyerror.New(http.StatusBadGateway, unifyerror.CodeGRPCErr, "failed to validate headscale devices before deletion")
 		}
 		if deviceCount > 0 {
-			return serializer.NewError(serializer.CodeConflict, fmt.Sprintf("cannot delete user %q because %d device(s) are still attached", headscaleName, deviceCount), nil)
+			return unifyerror.Conflict(fmt.Sprintf("cannot delete user %q because %d device(s) are still attached", headscaleName, deviceCount))
 		}
 
 		headscaleUserID, err := HeadscaleService.ResolveUserIDByNameWithContext(context.Background(), headscaleName)
 		if err == nil {
 			if err := HeadscaleService.DeleteUserWithContext(context.Background(), actorUserID, headscaleUserID); err != nil {
-				return serializer.NewError(serializer.CodeThirdPartyServiceError, "failed to delete headscale user", err)
+				return unifyerror.New(http.StatusBadGateway, unifyerror.CodeGRPCErr, "failed to delete headscale user")
 			}
 		} else {
-			var appErr serializer.AppError
-			if !errors.As(err, &appErr) || appErr.Code != serializer.CodeNotFound {
-				return serializer.NewError(serializer.CodeThirdPartyServiceError, "failed to resolve headscale user before deletion", err)
+			var uniErr *unifyerror.UniErr
+			if !errors.As(err, &uniErr) || uniErr.Code != unifyerror.CodeNotFound {
+				return unifyerror.New(http.StatusBadGateway, unifyerror.CodeGRPCErr, "failed to resolve headscale user before deletion")
 			}
 		}
 	}
 
 	if err := model.DB.Where("user_id = ?", id).Delete(&model.UserIdentityBinding{}).Error; err != nil {
-		return serializer.ErrDatabase.WithError(err)
+		return unifyerror.DbError(err)
 	}
 
 	if err := model.DB.Delete(&model.User{}, id).Error; err != nil {
-		return serializer.ErrDatabase.WithError(err)
+		return unifyerror.DbError(err)
 	}
 	return nil
 }
@@ -292,20 +295,20 @@ func (s *systemService) DeleteUser(actorUserID uint, id uint) error {
 // Group Management
 // Deprecated: Use GroupService instead
 func (s *systemService) ListGroups() ([]model.Group, error) {
-	return nil, serializer.NewError(serializer.CodeForbidden, "deprecated system group API is disabled; use GroupService", nil)
+	return nil, unifyerror.New(http.StatusForbidden, unifyerror.CodeForbidden, "deprecated system group API is disabled; use GroupService")
 }
 
 // Deprecated: Use GroupService instead
 func (s *systemService) CreateGroup(name string, permissionIDs []uint) error {
-	return serializer.NewError(serializer.CodeForbidden, "deprecated system group API is disabled; use GroupService", nil)
+	return unifyerror.New(http.StatusForbidden, unifyerror.CodeForbidden, "deprecated system group API is disabled; use GroupService")
 }
 
 // Deprecated: Use GroupService instead
 func (s *systemService) UpdateGroup(id uint, name string, permissionIDs []uint) error {
-	return serializer.NewError(serializer.CodeForbidden, "deprecated system group API is disabled; use GroupService", nil)
+	return unifyerror.New(http.StatusForbidden, unifyerror.CodeForbidden, "deprecated system group API is disabled; use GroupService")
 }
 
 // Deprecated: Use PermissionService instead
 func (s *systemService) ListPermissions() ([]model.Permission, error) {
-	return nil, serializer.NewError(serializer.CodeForbidden, "deprecated permission API is disabled; use PermissionService", nil)
+	return nil, unifyerror.New(http.StatusForbidden, unifyerror.CodeForbidden, "deprecated permission API is disabled; use PermissionService")
 }

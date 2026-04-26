@@ -1,7 +1,7 @@
 package controllers
 
 import (
-	"headscale-panel/pkg/utils/serializer"
+	"headscale-panel/pkg/unifyerror"
 	"headscale-panel/router/services"
 
 	"github.com/gin-gonic/gin"
@@ -24,7 +24,7 @@ type SaveConnectionRequest struct {
 // @Summary Get Headscale connection settings
 // @Tags panel-settings
 // @Produce json
-// @Success 200 {object} serializer.Response{data=object}
+// @Success 200 {object} unifyerror.Response{data=object}
 // @Security BearerAuth
 // @Router /panel/connection [get]
 // GetConnection returns current panel Headscale connection settings (API key masked).
@@ -32,10 +32,10 @@ func (c *PanelSettingsController) GetConnection(ctx *gin.Context) {
 	userID := ctx.GetUint("userID")
 	settings, err := services.PanelSettingsService.GetConnectionSettings(userID)
 	if err != nil {
-		serializer.Fail(ctx, err)
+		unifyerror.Fail(ctx, err)
 		return
 	}
-	serializer.Success(ctx, settings)
+	unifyerror.Success(ctx, settings)
 }
 
 // SaveConnection godoc
@@ -44,49 +44,49 @@ func (c *PanelSettingsController) GetConnection(ctx *gin.Context) {
 // @Accept json
 // @Produce json
 // @Param body body SaveConnectionRequest true "Connection settings"
-// @Success 200 {object} serializer.Response
-// @Failure 400 {object} serializer.Response
+// @Success 200 {object} unifyerror.Response
+// @Failure 400 {object} unifyerror.Response
 // @Security BearerAuth
 // @Router /panel/connection [put]
 // SaveConnection persists the Headscale connection settings.
 func (c *PanelSettingsController) SaveConnection(ctx *gin.Context) {
 	var req SaveConnectionRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {
-		serializer.Fail(ctx, serializer.ErrBind)
+		unifyerror.Fail(ctx, unifyerror.ErrBind)
 		return
 	}
 
 	userID := ctx.GetUint("userID")
 	if err := services.PanelSettingsService.SaveConnectionSettings(userID, req.GRPCAddr, req.APIKey, req.Insecure); err != nil {
-		serializer.Fail(ctx, err)
+		unifyerror.Fail(ctx, err)
 		return
 	}
 
-	serializer.Success(ctx, gin.H{"message": "连接设置已保存"})
+	unifyerror.Success(ctx, gin.H{"message": "连接设置已保存"})
 }
 
 // SyncData godoc
 // @Summary Trigger a data sync from Headscale
 // @Tags panel-settings
 // @Produce json
-// @Success 200 {object} serializer.Response
+// @Success 200 {object} unifyerror.Response
 // @Security BearerAuth
 // @Router /panel/sync [post]
 // SyncData triggers a data sync from Headscale to local database.
 func (c *PanelSettingsController) SyncData(ctx *gin.Context) {
 	userID := ctx.GetUint("userID")
 	if err := services.PanelSettingsService.SyncDataFromHeadscale(userID); err != nil {
-		serializer.Fail(ctx, err)
+		unifyerror.Fail(ctx, err)
 		return
 	}
-	serializer.Success(ctx, gin.H{"message": "数据同步完成"})
+	unifyerror.Success(ctx, gin.H{"message": "数据同步完成"})
 }
 
 // GetBuiltinOIDC godoc
 // @Summary Get built-in OIDC configuration
 // @Tags panel-settings
 // @Produce json
-// @Success 200 {object} serializer.Response{data=object}
+// @Success 200 {object} unifyerror.Response{data=object}
 // @Security BearerAuth
 // @Router /panel/builtin-oidc [get]
 // GetBuiltinOIDC returns the built-in OIDC configuration.
@@ -94,17 +94,17 @@ func (c *PanelSettingsController) GetBuiltinOIDC(ctx *gin.Context) {
 	userID := ctx.GetUint("userID")
 	config, err := services.PanelSettingsService.GetBuiltinOIDC(userID)
 	if err != nil {
-		serializer.Fail(ctx, err)
+		unifyerror.Fail(ctx, err)
 		return
 	}
-	serializer.Success(ctx, config)
+	unifyerror.Success(ctx, config)
 }
 
 // EnableBuiltinOIDC godoc
 // @Summary Enable the built-in OIDC client
 // @Tags panel-settings
 // @Produce json
-// @Success 200 {object} serializer.Response{data=object}
+// @Success 200 {object} unifyerror.Response{data=object}
 // @Security BearerAuth
 // @Router /panel/builtin-oidc [post]
 // EnableBuiltinOIDC creates the built-in OIDC client and returns the configuration.
@@ -112,17 +112,17 @@ func (c *PanelSettingsController) EnableBuiltinOIDC(ctx *gin.Context) {
 	userID := ctx.GetUint("userID")
 	config, err := services.PanelSettingsService.EnableBuiltinOIDC(userID)
 	if err != nil {
-		serializer.Fail(ctx, err)
+		unifyerror.Fail(ctx, err)
 		return
 	}
-	serializer.Success(ctx, config)
+	unifyerror.Success(ctx, config)
 }
 
 // GetOIDCSettings godoc
 // @Summary Get OIDC settings
 // @Tags panel-settings
 // @Produce json
-// @Success 200 {object} serializer.Response{data=object}
+// @Success 200 {object} unifyerror.Response{data=object}
 // @Security BearerAuth
 // @Router /panel/oidc-settings [get]
 // GetOIDCSettings returns saved OIDC form settings.
@@ -130,14 +130,14 @@ func (c *PanelSettingsController) GetOIDCSettings(ctx *gin.Context) {
 	userID := ctx.GetUint("userID")
 	payload, err := services.PanelSettingsService.GetOIDCSettings(userID)
 	if err != nil {
-		serializer.Fail(ctx, err)
+		unifyerror.Fail(ctx, err)
 		return
 	}
 	if payload == nil {
-		serializer.Success(ctx, nil)
+		unifyerror.Success(ctx, nil)
 		return
 	}
-	serializer.Success(ctx, payload)
+	unifyerror.Success(ctx, payload)
 }
 
 // SaveOIDCSettings godoc
@@ -146,31 +146,31 @@ func (c *PanelSettingsController) GetOIDCSettings(ctx *gin.Context) {
 // @Accept json
 // @Produce json
 // @Param body body services.OIDCSettingsPayload true "OIDC settings"
-// @Success 200 {object} serializer.Response
-// @Failure 400 {object} serializer.Response
+// @Success 200 {object} unifyerror.Response
+// @Failure 400 {object} unifyerror.Response
 // @Security BearerAuth
 // @Router /panel/oidc-settings [put]
 // SaveOIDCSettings persists OIDC form settings.
 func (c *PanelSettingsController) SaveOIDCSettings(ctx *gin.Context) {
 	var req services.OIDCSettingsPayload
 	if err := ctx.ShouldBindJSON(&req); err != nil {
-		serializer.Fail(ctx, serializer.ErrBind)
+		unifyerror.Fail(ctx, unifyerror.ErrBind)
 		return
 	}
 
 	userID := ctx.GetUint("userID")
 	if err := services.PanelSettingsService.SaveOIDCSettings(userID, &req); err != nil {
-		serializer.Fail(ctx, err)
+		unifyerror.Fail(ctx, err)
 		return
 	}
-	serializer.Success(ctx, gin.H{"message": "OIDC 设置已保存"})
+	unifyerror.Success(ctx, gin.H{"message": "OIDC 设置已保存"})
 }
 
 // GetOIDCStatus godoc
 // @Summary Get OIDC status and mode
 // @Tags panel-settings
 // @Produce json
-// @Success 200 {object} serializer.Response{data=object}
+// @Success 200 {object} unifyerror.Response{data=object}
 // @Security BearerAuth
 // @Router /panel/oidc-status [get]
 // GetOIDCStatus returns the current OIDC mode for the create-user form.
@@ -178,7 +178,7 @@ func (c *PanelSettingsController) SaveOIDCSettings(ctx *gin.Context) {
 func (c *PanelSettingsController) GetOIDCStatus(ctx *gin.Context) {
 	thirdParty := services.PanelSettingsService.IsThirdPartyOIDCEnabled()
 	builtin := services.PanelSettingsService.IsBuiltinOIDCEnabled()
-	serializer.Success(ctx, gin.H{
+	unifyerror.Success(ctx, gin.H{
 		"oidc_enabled":      thirdParty || builtin,
 		"third_party":       thirdParty,
 		"builtin":           builtin,

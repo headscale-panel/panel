@@ -602,6 +602,7 @@ const en: Translations = {
       oidc: 'OIDC Config',
       groups: 'Role Groups',
       hsconfig: 'Headscale Config',
+      derp: 'DERP Map',
     },
     groups: {
       title: 'Role Group Management',

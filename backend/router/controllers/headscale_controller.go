@@ -1,7 +1,8 @@
 package controllers
 
 import (
-	"headscale-panel/pkg/utils/serializer"
+	"net/http"
+	"headscale-panel/pkg/unifyerror"
 	"headscale-panel/router/services"
 	"strconv"
 
@@ -62,7 +63,7 @@ type DeleteUserQuery struct {
 
 // ListMachinesQuery is the query parameter struct for ListMachines.
 type ListMachinesQuery struct {
-	serializer.PaginationQuery
+	unifyerror.PaginationQuery
 	UserID string `form:"user_id"`
 	Status string `form:"status"`
 }
@@ -76,17 +77,17 @@ type GetPreAuthKeysQuery struct {
 // @Summary List Headscale users
 // @Tags headscale
 // @Produce json
-// @Success 200 {object} serializer.Response{data=[]services.HeadscaleUser}
+// @Success 200 {object} unifyerror.Response{data=[]services.HeadscaleUser}
 // @Security BearerAuth
 // @Router /headscale/users [get]
 func (h *HeadscaleController) ListUsers(c *gin.Context) {
 	actorUserID := c.GetUint("userID")
 	users, err := services.HeadscaleService.ListHeadscaleUsersWithContext(c.Request.Context(), actorUserID)
 	if err != nil {
-		serializer.Fail(c, err)
+		unifyerror.Fail(c, err)
 		return
 	}
-	serializer.Success(c, users)
+	unifyerror.Success(c, users)
 }
 
 // CreateUser godoc
@@ -95,23 +96,23 @@ func (h *HeadscaleController) ListUsers(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Param body body HeadscaleCreateUserRequest true "User name"
-// @Success 200 {object} serializer.Response{data=services.HeadscaleUser}
-// @Failure 400 {object} serializer.Response
+// @Success 200 {object} unifyerror.Response{data=services.HeadscaleUser}
+// @Failure 400 {object} unifyerror.Response
 // @Security BearerAuth
 // @Router /headscale/users [post]
 func (h *HeadscaleController) CreateUser(c *gin.Context) {
 	var req HeadscaleCreateUserRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		serializer.Fail(c, serializer.ErrBind)
+		unifyerror.Fail(c, unifyerror.ErrBind)
 		return
 	}
 	userID := c.GetUint("userID")
 	user, err := services.HeadscaleService.CreateUserWithContext(c.Request.Context(), userID, req.Name)
 	if err != nil {
-		serializer.Fail(c, err)
+		unifyerror.Fail(c, err)
 		return
 	}
-	serializer.Success(c, user)
+	unifyerror.Success(c, user)
 }
 
 // RenameUser godoc
@@ -120,14 +121,14 @@ func (h *HeadscaleController) CreateUser(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Param body body HeadscaleRenameUserRequest true "Old and new name"
-// @Success 200 {object} serializer.Response{data=services.HeadscaleUser}
-// @Failure 400 {object} serializer.Response
+// @Success 200 {object} unifyerror.Response{data=services.HeadscaleUser}
+// @Failure 400 {object} unifyerror.Response
 // @Security BearerAuth
 // @Router /headscale/users/rename [put]
 func (h *HeadscaleController) RenameUser(c *gin.Context) {
 	var req HeadscaleRenameUserRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		serializer.Fail(c, serializer.ErrBind)
+		unifyerror.Fail(c, unifyerror.ErrBind)
 		return
 	}
 
@@ -135,7 +136,7 @@ func (h *HeadscaleController) RenameUser(c *gin.Context) {
 	actorUserID := c.GetUint("userID")
 	users, err := services.HeadscaleService.ListHeadscaleUsersWithContext(c.Request.Context(), actorUserID)
 	if err != nil {
-		serializer.Fail(c, err)
+		unifyerror.Fail(c, err)
 		return
 	}
 	var targetUserID uint64
@@ -146,16 +147,16 @@ func (h *HeadscaleController) RenameUser(c *gin.Context) {
 		}
 	}
 	if targetUserID == 0 {
-		serializer.FailWithCode(c, serializer.CodeNotFound, "User not found")
+		unifyerror.Fail(c, unifyerror.New(http.StatusNotFound, unifyerror.CodeNotFound, "User not found"))
 		return
 	}
 
 	user, err := services.HeadscaleService.RenameUserWithContext(c.Request.Context(), actorUserID, targetUserID, req.NewName)
 	if err != nil {
-		serializer.Fail(c, err)
+		unifyerror.Fail(c, err)
 		return
 	}
-	serializer.Success(c, user)
+	unifyerror.Success(c, user)
 }
 
 // DeleteUser godoc
@@ -163,14 +164,14 @@ func (h *HeadscaleController) RenameUser(c *gin.Context) {
 // @Tags headscale
 // @Produce json
 // @Param name query string true "User name"
-// @Success 200 {object} serializer.Response
-// @Failure 404 {object} serializer.Response
+// @Success 200 {object} unifyerror.Response
+// @Failure 404 {object} unifyerror.Response
 // @Security BearerAuth
 // @Router /headscale/users [delete]
 func (h *HeadscaleController) DeleteUser(c *gin.Context) {
 	var q DeleteUserQuery
 	if err := c.ShouldBindQuery(&q); err != nil {
-		serializer.Fail(c, serializer.ErrBind)
+		unifyerror.Fail(c, unifyerror.ErrBind)
 		return
 	}
 
@@ -178,7 +179,7 @@ func (h *HeadscaleController) DeleteUser(c *gin.Context) {
 	actorUserID := c.GetUint("userID")
 	users, err := services.HeadscaleService.ListHeadscaleUsersWithContext(c.Request.Context(), actorUserID)
 	if err != nil {
-		serializer.Fail(c, err)
+		unifyerror.Fail(c, err)
 		return
 	}
 	var targetUserID uint64
@@ -189,15 +190,15 @@ func (h *HeadscaleController) DeleteUser(c *gin.Context) {
 		}
 	}
 	if targetUserID == 0 {
-		serializer.FailWithCode(c, serializer.CodeNotFound, "User not found")
+		unifyerror.Fail(c, unifyerror.New(http.StatusNotFound, unifyerror.CodeNotFound, "User not found"))
 		return
 	}
 
 	if err := services.HeadscaleService.DeleteUserWithContext(c.Request.Context(), actorUserID, targetUserID); err != nil {
-		serializer.Fail(c, err)
+		unifyerror.Fail(c, err)
 		return
 	}
-	serializer.Success(c, nil)
+	unifyerror.Success(c, nil)
 }
 
 // ListMachines godoc
@@ -209,13 +210,13 @@ func (h *HeadscaleController) DeleteUser(c *gin.Context) {
 // @Param all query bool false "Return all records"
 // @Param user_id query string false "Filter by user ID"
 // @Param status query string false "Filter by status (online/offline)"
-// @Success 200 {object} serializer.Response{data=serializer.PaginatedData{list=[]services.HeadscaleMachine}}
+// @Success 200 {object} unifyerror.Response{data=unifyerror.PaginatedData{list=[]services.HeadscaleMachine}}
 // @Security BearerAuth
 // @Router /headscale/machines [get]
 func (h *HeadscaleController) ListMachines(c *gin.Context) {
 	var q ListMachinesQuery
 	if err := c.ShouldBindQuery(&q); err != nil {
-		serializer.Fail(c, serializer.ErrBind)
+		unifyerror.Fail(c, unifyerror.ErrBind)
 		return
 	}
 	page, pageSize := q.Resolve()
@@ -223,11 +224,11 @@ func (h *HeadscaleController) ListMachines(c *gin.Context) {
 	userID := c.GetUint("userID")
 	machines, total, err := services.HeadscaleService.ListMachinesWithContext(c.Request.Context(), userID, page, pageSize, q.UserID, q.Status)
 	if err != nil {
-		serializer.Fail(c, err)
+		unifyerror.Fail(c, err)
 		return
 	}
 
-	serializer.SuccessPage(c, machines, total, page, pageSize)
+	unifyerror.SuccessPage(c, machines, total, page, pageSize)
 }
 
 // GetMachine godoc
@@ -235,25 +236,25 @@ func (h *HeadscaleController) ListMachines(c *gin.Context) {
 // @Tags headscale
 // @Produce json
 // @Param id path string true "Machine ID"
-// @Success 200 {object} serializer.Response{data=services.HeadscaleMachine}
-// @Failure 404 {object} serializer.Response
+// @Success 200 {object} unifyerror.Response{data=services.HeadscaleMachine}
+// @Failure 404 {object} unifyerror.Response
 // @Security BearerAuth
 // @Router /headscale/machines/{id} [get]
 func (h *HeadscaleController) GetMachine(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 64)
 	if err != nil {
-		serializer.FailWithCode(c, serializer.CodeParamErr, "Invalid machine ID")
+		unifyerror.Fail(c, unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "Invalid machine ID"))
 		return
 	}
 
 	userID := c.GetUint("userID")
 	machine, err := services.HeadscaleService.GetMachineWithContext(c.Request.Context(), userID, id)
 	if err != nil {
-		serializer.Fail(c, err)
+		unifyerror.Fail(c, err)
 		return
 	}
-	serializer.Success(c, machine)
+	unifyerror.Success(c, machine)
 }
 
 // RenameMachine godoc
@@ -263,31 +264,31 @@ func (h *HeadscaleController) GetMachine(c *gin.Context) {
 // @Produce json
 // @Param id path string true "Machine ID"
 // @Param body body HeadscaleRenameMachineRequest true "New name"
-// @Success 200 {object} serializer.Response{data=services.HeadscaleMachine}
-// @Failure 400 {object} serializer.Response
+// @Success 200 {object} unifyerror.Response{data=services.HeadscaleMachine}
+// @Failure 400 {object} unifyerror.Response
 // @Security BearerAuth
 // @Router /headscale/machines/{id}/rename [put]
 func (h *HeadscaleController) RenameMachine(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 64)
 	if err != nil {
-		serializer.FailWithCode(c, serializer.CodeParamErr, "Invalid machine ID")
+		unifyerror.Fail(c, unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "Invalid machine ID"))
 		return
 	}
 
 	var req HeadscaleRenameMachineRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		serializer.Fail(c, serializer.ErrBind)
+		unifyerror.Fail(c, unifyerror.ErrBind)
 		return
 	}
 
 	userID := c.GetUint("userID")
 	machine, err := services.HeadscaleService.RenameMachineWithContext(c.Request.Context(), userID, id, req.Name)
 	if err != nil {
-		serializer.Fail(c, err)
+		unifyerror.Fail(c, err)
 		return
 	}
-	serializer.Success(c, machine)
+	unifyerror.Success(c, machine)
 }
 
 // DeleteMachine godoc
@@ -295,24 +296,24 @@ func (h *HeadscaleController) RenameMachine(c *gin.Context) {
 // @Tags headscale
 // @Produce json
 // @Param id path string true "Machine ID"
-// @Success 200 {object} serializer.Response
-// @Failure 404 {object} serializer.Response
+// @Success 200 {object} unifyerror.Response
+// @Failure 404 {object} unifyerror.Response
 // @Security BearerAuth
 // @Router /headscale/machines/{id} [delete]
 func (h *HeadscaleController) DeleteMachine(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 64)
 	if err != nil {
-		serializer.FailWithCode(c, serializer.CodeParamErr, "Invalid machine ID")
+		unifyerror.Fail(c, unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "Invalid machine ID"))
 		return
 	}
 
 	userID := c.GetUint("userID")
 	if err := services.HeadscaleService.DeleteMachineWithContext(c.Request.Context(), userID, id); err != nil {
-		serializer.Fail(c, err)
+		unifyerror.Fail(c, err)
 		return
 	}
-	serializer.Success(c, nil)
+	unifyerror.Success(c, nil)
 }
 
 // ExpireMachine godoc
@@ -320,25 +321,25 @@ func (h *HeadscaleController) DeleteMachine(c *gin.Context) {
 // @Tags headscale
 // @Produce json
 // @Param id path string true "Machine ID"
-// @Success 200 {object} serializer.Response{data=services.HeadscaleMachine}
-// @Failure 404 {object} serializer.Response
+// @Success 200 {object} unifyerror.Response{data=services.HeadscaleMachine}
+// @Failure 404 {object} unifyerror.Response
 // @Security BearerAuth
 // @Router /headscale/machines/{id}/expire [post]
 func (h *HeadscaleController) ExpireMachine(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 64)
 	if err != nil {
-		serializer.FailWithCode(c, serializer.CodeParamErr, "Invalid machine ID")
+		unifyerror.Fail(c, unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "Invalid machine ID"))
 		return
 	}
 
 	userID := c.GetUint("userID")
 	machine, err := services.HeadscaleService.ExpireMachineWithContext(c.Request.Context(), userID, id)
 	if err != nil {
-		serializer.Fail(c, err)
+		unifyerror.Fail(c, err)
 		return
 	}
-	serializer.Success(c, machine)
+	unifyerror.Success(c, machine)
 }
 
 // SetMachineTags godoc
@@ -348,31 +349,31 @@ func (h *HeadscaleController) ExpireMachine(c *gin.Context) {
 // @Produce json
 // @Param id path string true "Machine ID"
 // @Param body body HeadscaleSetTagsRequest true "Tags list"
-// @Success 200 {object} serializer.Response{data=services.HeadscaleMachine}
-// @Failure 400 {object} serializer.Response
+// @Success 200 {object} unifyerror.Response{data=services.HeadscaleMachine}
+// @Failure 400 {object} unifyerror.Response
 // @Security BearerAuth
 // @Router /headscale/machines/{id}/tags [put]
 func (h *HeadscaleController) SetMachineTags(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 64)
 	if err != nil {
-		serializer.FailWithCode(c, serializer.CodeParamErr, "Invalid machine ID")
+		unifyerror.Fail(c, unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "Invalid machine ID"))
 		return
 	}
 
 	var req HeadscaleSetTagsRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		serializer.Fail(c, serializer.ErrBind)
+		unifyerror.Fail(c, unifyerror.ErrBind)
 		return
 	}
 
 	userID := c.GetUint("userID")
 	machine, err := services.HeadscaleService.SetMachineTagsWithContext(c.Request.Context(), userID, id, req.Tags)
 	if err != nil {
-		serializer.Fail(c, err)
+		unifyerror.Fail(c, err)
 		return
 	}
-	serializer.Success(c, machine)
+	unifyerror.Success(c, machine)
 }
 
 // GetMachineRoutes godoc
@@ -380,14 +381,14 @@ func (h *HeadscaleController) SetMachineTags(c *gin.Context) {
 // @Tags headscale
 // @Produce json
 // @Param id path string true "Machine ID"
-// @Success 200 {object} serializer.Response{data=[]object}
+// @Success 200 {object} unifyerror.Response{data=[]object}
 // @Security BearerAuth
 // @Router /headscale/machines/{id}/routes [get]
 func (h *HeadscaleController) GetMachineRoutes(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 64)
 	if err != nil {
-		serializer.FailWithCode(c, serializer.CodeParamErr, "Invalid machine ID")
+		unifyerror.Fail(c, unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "Invalid machine ID"))
 		return
 	}
 
@@ -395,10 +396,10 @@ func (h *HeadscaleController) GetMachineRoutes(c *gin.Context) {
 	userID := c.GetUint("userID")
 	routes, _, err := services.RouteService.ListRoutesWithContext(c.Request.Context(), userID, 1, 1000, "", machineIDStr)
 	if err != nil {
-		serializer.Fail(c, err)
+		unifyerror.Fail(c, err)
 		return
 	}
-	serializer.Success(c, routes)
+	unifyerror.Success(c, routes)
 }
 
 // GetPreAuthKeys godoc
@@ -406,14 +407,14 @@ func (h *HeadscaleController) GetMachineRoutes(c *gin.Context) {
 // @Tags headscale
 // @Produce json
 // @Param user query string true "Headscale user name"
-// @Success 200 {object} serializer.Response{data=[]services.HeadscaleAuthKey}
-// @Failure 404 {object} serializer.Response
+// @Success 200 {object} unifyerror.Response{data=[]services.HeadscaleAuthKey}
+// @Failure 404 {object} unifyerror.Response
 // @Security BearerAuth
 // @Router /headscale/preauthkeys [get]
 func (h *HeadscaleController) GetPreAuthKeys(c *gin.Context) {
 	var q GetPreAuthKeysQuery
 	if err := c.ShouldBindQuery(&q); err != nil {
-		serializer.Fail(c, serializer.ErrBind)
+		unifyerror.Fail(c, unifyerror.ErrBind)
 		return
 	}
 
@@ -421,7 +422,7 @@ func (h *HeadscaleController) GetPreAuthKeys(c *gin.Context) {
 	actorUserID := c.GetUint("userID")
 	users, err := services.HeadscaleService.ListHeadscaleUsersWithContext(c.Request.Context(), actorUserID)
 	if err != nil {
-		serializer.Fail(c, err)
+		unifyerror.Fail(c, err)
 		return
 	}
 	var targetUserID uint64
@@ -432,16 +433,16 @@ func (h *HeadscaleController) GetPreAuthKeys(c *gin.Context) {
 		}
 	}
 	if targetUserID == 0 {
-		serializer.FailWithCode(c, serializer.CodeNotFound, "User not found")
+		unifyerror.Fail(c, unifyerror.New(http.StatusNotFound, unifyerror.CodeNotFound, "User not found"))
 		return
 	}
 
 	keys, err := services.HeadscaleService.GetPreAuthKeysWithContext(c.Request.Context(), actorUserID, targetUserID)
 	if err != nil {
-		serializer.Fail(c, err)
+		unifyerror.Fail(c, err)
 		return
 	}
-	serializer.Success(c, keys)
+	unifyerror.Success(c, keys)
 }
 
 // CreatePreAuthKey godoc
@@ -450,14 +451,14 @@ func (h *HeadscaleController) GetPreAuthKeys(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Param body body HeadscaleCreatePreAuthKeyRequest true "Pre-auth key parameters"
-// @Success 200 {object} serializer.Response{data=services.HeadscaleAuthKey}
-// @Failure 400 {object} serializer.Response
+// @Success 200 {object} unifyerror.Response{data=services.HeadscaleAuthKey}
+// @Failure 400 {object} unifyerror.Response
 // @Security BearerAuth
 // @Router /headscale/preauthkeys [post]
 func (h *HeadscaleController) CreatePreAuthKey(c *gin.Context) {
 	var req HeadscaleCreatePreAuthKeyRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		serializer.Fail(c, serializer.ErrBind)
+		unifyerror.Fail(c, unifyerror.ErrBind)
 		return
 	}
 
@@ -465,7 +466,7 @@ func (h *HeadscaleController) CreatePreAuthKey(c *gin.Context) {
 	actorUserID := c.GetUint("userID")
 	users, err := services.HeadscaleService.ListHeadscaleUsersWithContext(c.Request.Context(), actorUserID)
 	if err != nil {
-		serializer.Fail(c, err)
+		unifyerror.Fail(c, err)
 		return
 	}
 	var targetUserID uint64
@@ -476,16 +477,16 @@ func (h *HeadscaleController) CreatePreAuthKey(c *gin.Context) {
 		}
 	}
 	if targetUserID == 0 {
-		serializer.FailWithCode(c, serializer.CodeNotFound, "User not found")
+		unifyerror.Fail(c, unifyerror.New(http.StatusNotFound, unifyerror.CodeNotFound, "User not found"))
 		return
 	}
 
 	key, err := services.HeadscaleService.CreatePreAuthKeyWithContext(c.Request.Context(), actorUserID, targetUserID, req.Reusable, req.Ephemeral, req.Expiration)
 	if err != nil {
-		serializer.Fail(c, err)
+		unifyerror.Fail(c, err)
 		return
 	}
-	serializer.Success(c, key)
+	unifyerror.Success(c, key)
 }
 
 // ExpirePreAuthKey godoc
@@ -494,14 +495,14 @@ func (h *HeadscaleController) CreatePreAuthKey(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Param body body HeadscaleExpirePreAuthKeyRequest true "User and key"
-// @Success 200 {object} serializer.Response
-// @Failure 400 {object} serializer.Response
+// @Success 200 {object} unifyerror.Response
+// @Failure 400 {object} unifyerror.Response
 // @Security BearerAuth
 // @Router /headscale/preauthkeys/expire [post]
 func (h *HeadscaleController) ExpirePreAuthKey(c *gin.Context) {
 	var req HeadscaleExpirePreAuthKeyRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		serializer.Fail(c, serializer.ErrBind)
+		unifyerror.Fail(c, unifyerror.ErrBind)
 		return
 	}
 
@@ -509,7 +510,7 @@ func (h *HeadscaleController) ExpirePreAuthKey(c *gin.Context) {
 	actorUserID := c.GetUint("userID")
 	users, err := services.HeadscaleService.ListHeadscaleUsersWithContext(c.Request.Context(), actorUserID)
 	if err != nil {
-		serializer.Fail(c, err)
+		unifyerror.Fail(c, err)
 		return
 	}
 	var targetUserID uint64
@@ -520,35 +521,35 @@ func (h *HeadscaleController) ExpirePreAuthKey(c *gin.Context) {
 		}
 	}
 	if targetUserID == 0 {
-		serializer.FailWithCode(c, serializer.CodeNotFound, "User not found")
+		unifyerror.Fail(c, unifyerror.New(http.StatusNotFound, unifyerror.CodeNotFound, "User not found"))
 		return
 	}
 
 	if err := services.HeadscaleService.ExpirePreAuthKeyWithContext(c.Request.Context(), actorUserID, targetUserID, req.Key); err != nil {
-		serializer.Fail(c, err)
+		unifyerror.Fail(c, err)
 		return
 	}
-	serializer.Success(c, nil)
+	unifyerror.Success(c, nil)
 }
 
 // CheckAccess godoc
 // @Summary Check ACL access for the current user's machines
 // @Tags headscale
 // @Produce json
-// @Success 200 {object} serializer.Response{data=[]object}
+// @Success 200 {object} unifyerror.Response{data=[]object}
 // @Security BearerAuth
 // @Router /headscale/acl/access [get]
 func (h *HeadscaleController) CheckAccess(c *gin.Context) {
 	userID, exists := c.Get("userID")
 	if !exists {
-		serializer.Fail(c, serializer.ErrInvalidToken)
+		unifyerror.Fail(c, unifyerror.InvalidToken())
 		return
 	}
 
 	// Get permissions
 	perms, err := services.GroupService.GetUserPermissions(userID.(uint))
 	if err != nil {
-		serializer.Fail(c, err)
+		unifyerror.Fail(c, err)
 		return
 	}
 
@@ -563,11 +564,11 @@ func (h *HeadscaleController) CheckAccess(c *gin.Context) {
 
 	machines, err := services.HeadscaleService.GetAccessibleMachinesWithContext(c.Request.Context(), userID.(uint), userID.(uint), canAccessAll)
 	if err != nil {
-		serializer.Fail(c, err)
+		unifyerror.Fail(c, err)
 		return
 	}
 
-	serializer.Success(c, machines)
+	unifyerror.Success(c, machines)
 }
 
 // RegisterNode godoc
@@ -576,22 +577,22 @@ func (h *HeadscaleController) CheckAccess(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Param body body HeadscaleRegisterNodeRequest true "User and machine key"
-// @Success 200 {object} serializer.Response{data=services.HeadscaleMachine}
-// @Failure 400 {object} serializer.Response
+// @Success 200 {object} unifyerror.Response{data=services.HeadscaleMachine}
+// @Failure 400 {object} unifyerror.Response
 // @Security BearerAuth
 // @Router /headscale/machines/register [post]
 func (h *HeadscaleController) RegisterNode(c *gin.Context) {
 	var req HeadscaleRegisterNodeRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		serializer.Fail(c, serializer.ErrBind)
+		unifyerror.Fail(c, unifyerror.ErrBind)
 		return
 	}
 
 	actorUserID := c.GetUint("userID")
 	machine, err := services.HeadscaleService.RegisterNodeWithContext(c.Request.Context(), actorUserID, req.User, req.Key)
 	if err != nil {
-		serializer.Fail(c, err)
+		unifyerror.Fail(c, err)
 		return
 	}
-	serializer.Success(c, machine)
+	unifyerror.Success(c, machine)
 }

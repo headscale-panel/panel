@@ -1,4 +1,4 @@
-package serializer
+package unifyerror
 
 import (
 	"headscale-panel/pkg/constants"
@@ -34,6 +34,7 @@ func (q PaginationQuery) Resolve() (page, pageSize int) {
 	return page, pageSize
 }
 
+// PaginatedData is the JSON envelope for paginated list responses.
 type PaginatedData struct {
 	List      interface{} `json:"list"`
 	Total     int64       `json:"total"`
@@ -42,12 +43,13 @@ type PaginatedData struct {
 	PageCount int         `json:"page_count"`
 }
 
+// NewPaginatedData constructs a PaginatedData value.
 func NewPaginatedData(list interface{}, total int64, page, pageSize int) PaginatedData {
 	if page < 1 {
 		page = constants.DefaultPage
 	}
 	if pageSize <= 0 {
-		// all mode: single page containing everything
+		// "all" mode: single page containing everything
 		return PaginatedData{
 			List:      list,
 			Total:     total,
@@ -71,6 +73,7 @@ func NewPaginatedData(list interface{}, total int64, page, pageSize int) Paginat
 	}
 }
 
+// SuccessPage sends an HTTP 200 OK paginated list response.
 func SuccessPage(c *gin.Context, list interface{}, total int64, page, pageSize int) {
 	Success(c, NewPaginatedData(list, total, page, pageSize))
 }

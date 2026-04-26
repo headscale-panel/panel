@@ -6,7 +6,7 @@ import { ReloadOutlined, SearchOutlined, LaptopOutlined, CheckCircleOutlined, Cl
 import type { ColumnsType } from 'antd/es/table';
 import DashboardLayout from '@/components/DashboardLayout';
 import PageHeaderStatCards from '@/components/PageHeaderStatCards';
-import { routesAPI } from '@/lib/api';
+import { routeApi } from '@/api';
 import { useTranslation } from '@/i18n/index';
 
 const { Title, Text } = Typography;
@@ -38,7 +38,7 @@ export default function Routes() {
   const [filterStatus, setFilterStatus] = useState<string>('all');
 
   const { data: listData, loading, refresh } = useRequest(
-    async () => routesAPI.list({ all: true }),
+    async () => routeApi.list({ all: true }),
     {
       onError: (error: any) => {
         message.error(t.routes.loadFailed);
@@ -51,9 +51,9 @@ export default function Routes() {
   const handleToggle = async (route: Route) => {
     try {
       if (route.enabled) {
-        await routesAPI.disable(route.machine_id, route.destination);
+        await routeApi.disable({ machine_id: route.machine_id, destination: route.destination });
       } else {
-        await routesAPI.enable(route.machine_id, route.destination);
+        await routeApi.enable({ machine_id: route.machine_id, destination: route.destination });
       }
       const isExit = isExitNode(route.destination);
       message.success(isExit ? (route.enabled ? t.routes.exitNodeDisabled : t.routes.exitNodeEnabled) : (route.enabled ? t.routes.routeDisabled : t.routes.routeEnabled));

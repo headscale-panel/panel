@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Button, Modal, Typography, message, theme } from 'antd';
 import Editor from '@monaco-editor/react';
-import { aclAPI } from '@/lib/api';
+import { aclApi } from '@/api';
 import { useTranslation } from '@/i18n/index';
 
 const { Text } = Typography;
@@ -29,7 +29,7 @@ export default function JsonEditorModal({ open, initialJson, isDarkMode, onCance
   const handleOk = async () => {
     setSaving(true);
     try {
-      await aclAPI.setPolicyRaw(jsonContent);
+      await aclApi.setPolicyRaw({ policy: jsonContent });
       message.success(t.acl.importSuccess);
       onCancel();
       onSuccess();

@@ -6,7 +6,7 @@ import { EditOutlined, PlusOutlined, ReloadOutlined, SearchOutlined, DeleteOutli
 import type { ColumnsType } from 'antd/es/table';
 import DashboardLayout from '@/components/DashboardLayout';
 import PageHeaderStatCards from '@/components/PageHeaderStatCards';
-import { resourcesAPI } from '@/lib/api';
+import { resourceApi } from '@/api';
 import ResourceModal from '@/components/resources/ResourceModal';
 
 const { Title, Text } = Typography;
@@ -33,7 +33,7 @@ export default function Resources() {
 
 
   const { data: listData, loading, refresh } = useRequest(
-    async () => resourcesAPI.list({ page, pageSize, keyword: searchQuery || undefined }),
+    async () => resourceApi.list({ page, pageSize, keyword: searchQuery || undefined }),
     {
       refreshDeps: [page, pageSize, searchQuery],
       onError: (error: any) => {
@@ -57,7 +57,7 @@ export default function Resources() {
       okButtonProps: { danger: true },
       onOk: async () => {
         try {
-          await resourcesAPI.delete(resource.ID);
+          await resourceApi.delete({ id: resource.ID });
           message.success(t.resources.deleteSuccess);
           refresh();
         } catch (error: any) {

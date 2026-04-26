@@ -1,7 +1,7 @@
 package middleware
 
 import (
-	"headscale-panel/pkg/utils/serializer"
+	"headscale-panel/pkg/unifyerror"
 	"headscale-panel/router/services"
 
 	"github.com/gin-gonic/gin"
@@ -12,13 +12,13 @@ func PermissionMiddleware(requiredPermission string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userID := c.GetUint("userID")
 		if userID == 0 {
-			serializer.Fail(c, serializer.ErrInvalidToken)
+			unifyerror.Fail(c, unifyerror.InvalidToken())
 			c.Abort()
 			return
 		}
 
 		if err := services.RequirePermission(userID, requiredPermission); err != nil {
-			serializer.Fail(c, err)
+			unifyerror.Fail(c, err)
 			c.Abort()
 			return
 		}

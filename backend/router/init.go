@@ -68,6 +68,14 @@ func InitRouter() *gin.Engine {
 			auth.POST("/user/totp/generate", userController.GenerateTOTP)
 			auth.POST("/user/totp/enable", userController.EnableTOTP)
 
+			// Global system status endpoint
+			statusController := controllers.NewStatusController()
+			auth.GET("/status", statusController.GetSystemStatus)
+
+			// Headscale server liveness probe
+			headscaleStatusController := controllers.NewHeadscaleStatusController()
+			auth.GET("/headscale/status", headscaleStatusController.GetStatus)
+
 			resourceController := controllers.NewResourceController()
 			auth.GET("/resources", middleware.PermissionMiddleware("resource:list"), resourceController.List)
 			auth.GET("/resources/detail", middleware.PermissionMiddleware("resource:list"), resourceController.Get)
@@ -173,6 +181,13 @@ func InitRouter() *gin.Engine {
 
 			derpController := controllers.NewDERPController()
 			auth.GET("/headscale/derp", middleware.PermissionMiddleware("headscale:derp:view"), derpController.Get)
+			auth.PUT("/headscale/derp", middleware.PermissionMiddleware("headscale:derp:update"), derpController.Update)
+			auth.POST("/headscale/derp/regions", middleware.PermissionMiddleware("headscale:derp:update"), derpController.AddRegion)
+			auth.PUT("/headscale/derp/regions/:regionId", middleware.PermissionMiddleware("headscale:derp:update"), derpController.UpdateRegion)
+			auth.DELETE("/headscale/derp/regions/:regionId", middleware.PermissionMiddleware("headscale:derp:update"), derpController.DeleteRegion)
+			auth.POST("/headscale/derp/regions/:regionId/nodes", middleware.PermissionMiddleware("headscale:derp:update"), derpController.AddNode)
+			auth.PUT("/headscale/derp/regions/:regionId/nodes/:nodeIndex", middleware.PermissionMiddleware("headscale:derp:update"), derpController.UpdateNode)
+			auth.DELETE("/headscale/derp/regions/:regionId/nodes/:nodeIndex", middleware.PermissionMiddleware("headscale:derp:update"), derpController.DeleteNode)
 
 			dnsController := controllers.NewDNSController()
 			auth.GET("/dns/records", middleware.PermissionMiddleware("dns:record:list"), dnsController.List)

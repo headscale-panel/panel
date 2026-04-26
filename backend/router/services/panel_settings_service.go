@@ -13,7 +13,8 @@ import (
 	"headscale-panel/model"
 	"headscale-panel/pkg/conf"
 	"headscale-panel/pkg/headscale"
-	"headscale-panel/pkg/utils/serializer"
+	"headscale-panel/pkg/unifyerror"
+	"net/http"
 	"strings"
 )
 
@@ -56,7 +57,7 @@ func (s *panelSettingsService) SaveConnectionSettings(actorUserID uint, grpcAddr
 
 	grpcAddr = strings.TrimSpace(grpcAddr)
 	if grpcAddr == "" {
-		return serializer.NewError(serializer.CodeParamErr, "gRPC 地址不能为空", nil)
+		return unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "gRPC 地址不能为空")
 	}
 
 	// If no new API key provided, keep existing one
@@ -65,7 +66,7 @@ func (s *panelSettingsService) SaveConnectionSettings(actorUserID uint, grpcAddr
 		effectiveAPIKey = conf.Conf.Headscale.APIKey
 	}
 	if effectiveAPIKey == "" {
-		return serializer.NewError(serializer.CodeParamErr, "API Key 不能为空", nil)
+		return unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "API Key 不能为空")
 	}
 
 	if err := SaveConnectionAndInitialize(context.Background(), grpcAddr, effectiveAPIKey, insecure); err != nil {
@@ -236,7 +237,7 @@ func (s *panelSettingsService) SaveOIDCSettings(actorUserID uint, payload *OIDCS
 
 	data, err := marshalOIDCSettingsPayload(payload)
 	if err != nil {
-		return serializer.NewError(serializer.CodeInternalErr, "failed to serialize OIDC settings", err)
+		return unifyerror.ServerError(err)
 	}
 
 	var setting model.PanelSetting
@@ -268,12 +269,12 @@ func (s *panelSettingsService) SaveOIDCSettings(actorUserID uint, payload *OIDCS
 func (s *panelSettingsService) syncOIDCSettingsToHeadscaleConfig(payload *OIDCSettingsPayload) error {
 	cfg, err := HeadscaleConfigService.GetConfig()
 	if err != nil {
-		return serializer.NewError(serializer.CodeInternalErr, "failed to load headscale config", err)
+		return unifyerror.ServerError(err)
 	}
 
 	merged := mergeOIDCSettingsIntoHeadscaleConfig(cfg, payload)
-	if err := HeadscaleConfigService.SaveConfig(merged); err != nil {
-		return serializer.NewError(serializer.CodeInternalErr, "failed to update headscale config", err)
+	if err := HeadscaleConfigService.SaveConfig(merged, false); err != nil {
+		return unifyerror.ServerError(err)
 	}
 
 	return nil
@@ -429,7 +430,7 @@ func (s *panelSettingsService) EnableBuiltinOIDC(actorUserID uint) (*BuiltinOIDC
 
 	issuer := strings.TrimRight(conf.Conf.System.BaseURL, "/")
 	if issuer == "" {
-		return nil, serializer.NewError(serializer.CodeParamErr, "请先在环境变量中配置 BASE_URL", nil)
+		return nil, unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "请先在环境变量中配置 BASE_URL")
 	}
 
 	var client model.OauthClient
@@ -438,13 +439,13 @@ func (s *panelSettingsService) EnableBuiltinOIDC(actorUserID uint) (*BuiltinOIDC
 		// Generate a secure random secret
 		secretBytes := make([]byte, 32)
 		if _, err := rand.Read(secretBytes); err != nil {
-			return nil, serializer.NewError(serializer.CodeInternalErr, "生成密钥失败", err)
+			return nil, unifyerror.ServerError(err)
 		}
 		plainSecret := hex.EncodeToString(secretBytes)
 
 		hashedSecret, err := hashOAuthClientSecret(plainSecret)
 		if err != nil {
-			return nil, serializer.NewError(serializer.CodeInternalErr, "哈希密钥失败", err)
+			return nil, unifyerror.ServerError(err)
 		}
 
 		redirectURI := issuer + "/panel/api/v1/auth/oidc/callback"
@@ -455,7 +456,7 @@ func (s *panelSettingsService) EnableBuiltinOIDC(actorUserID uint) (*BuiltinOIDC
 			Name:             builtinOIDCClientName,
 		}
 		if err := model.DB.Create(&client).Error; err != nil {
-			return nil, serializer.ErrDatabase.WithError(err)
+			return nil, unifyerror.DbError(err)
 		}
 
 		return &BuiltinOIDCConfig{
@@ -470,19 +471,19 @@ func (s *panelSettingsService) EnableBuiltinOIDC(actorUserID uint) (*BuiltinOIDC
 	// Client already exists - regenerate secret so user can see it
 	secretBytes := make([]byte, 32)
 	if _, err := rand.Read(secretBytes); err != nil {
-		return nil, serializer.NewError(serializer.CodeInternalErr, "生成密钥失败", err)
+		return nil, unifyerror.ServerError(err)
 	}
 	plainSecret := hex.EncodeToString(secretBytes)
 
 	hashedSecret, err := hashOAuthClientSecret(plainSecret)
 	if err != nil {
-		return nil, serializer.NewError(serializer.CodeInternalErr, "哈希密钥失败", err)
+		return nil, unifyerror.ServerError(err)
 	}
 
 	client.ClientSecretHash = hashedSecret
 	client.RedirectURIs = issuer + "/panel/api/v1/auth/oidc/callback"
 	if err := model.DB.Save(&client).Error; err != nil {
-		return nil, serializer.ErrDatabase.WithError(err)
+		return nil, unifyerror.DbError(err)
 	}
 
 	return &BuiltinOIDCConfig{
@@ -529,12 +530,12 @@ func marshalOIDCSettingsPayload(payload *OIDCSettingsPayload) ([]byte, error) {
 func loadOIDCSettingsPayload(raw string) (*OIDCSettingsPayload, error) {
 	var persisted persistedOIDCSettingsPayload
 	if err := json.Unmarshal([]byte(raw), &persisted); err != nil {
-		return nil, serializer.NewError(serializer.CodeInternalErr, "failed to parse saved OIDC settings", err)
+		return nil, unifyerror.ServerError(err)
 	}
 
 	clientSecret, err := decryptPanelSecret(persisted.ClientSecretEncrypted, persisted.ClientSecret)
 	if err != nil {
-		return nil, serializer.NewError(serializer.CodeInternalErr, "failed to decrypt saved OIDC settings", err)
+		return nil, unifyerror.ServerError(err)
 	}
 
 	return &OIDCSettingsPayload{

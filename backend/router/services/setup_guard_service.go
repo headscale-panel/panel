@@ -5,7 +5,8 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"fmt"
-	"headscale-panel/pkg/utils/serializer"
+	"headscale-panel/pkg/unifyerror"
+	"net/http"
 	"strings"
 	"sync"
 	"time"
@@ -62,12 +63,12 @@ func (s *setupGuardService) RevokeAllTokens() {
 
 func (s *setupGuardService) issueToken(windowOpen bool, purpose, clientIP, userAgent string) (string, time.Time, error) {
 	if !windowOpen {
-		return "", time.Time{}, serializer.NewError(serializer.CodeNoPermissionErr, "setup window closed", nil)
+		return "", time.Time{}, unifyerror.New(http.StatusForbidden, unifyerror.CodeForbidden, "setup window closed")
 	}
 
 	token, err := generateSetupToken()
 	if err != nil {
-		return "", time.Time{}, serializer.NewError(serializer.CodeInternalError, "failed to issue setup token", err)
+		return "", time.Time{}, unifyerror.ServerError(err)
 	}
 
 	now := time.Now()
@@ -89,12 +90,12 @@ func (s *setupGuardService) issueToken(windowOpen bool, purpose, clientIP, userA
 
 func (s *setupGuardService) validateAndConsumeToken(windowOpen bool, purpose, token, clientIP, userAgent string) error {
 	if !windowOpen {
-		return serializer.NewError(serializer.CodeNoPermissionErr, "setup window closed", nil)
+		return unifyerror.New(http.StatusForbidden, unifyerror.CodeForbidden, "setup window closed")
 	}
 
 	token = strings.TrimSpace(token)
 	if token == "" {
-		return serializer.NewError(serializer.CodeNoPermissionErr, "missing setup token", nil)
+		return unifyerror.New(http.StatusForbidden, unifyerror.CodeForbidden, "missing setup token")
 	}
 
 	now := time.Now()
@@ -105,21 +106,21 @@ func (s *setupGuardService) validateAndConsumeToken(windowOpen bool, purpose, to
 
 	meta, ok := s.setupTokens[token]
 	if !ok {
-		return serializer.NewError(serializer.CodeNoPermissionErr, "invalid or expired setup token", nil)
+		return unifyerror.New(http.StatusForbidden, unifyerror.CodeForbidden, "invalid or expired setup token")
 	}
 	delete(s.setupTokens, token)
 
 	if meta.Purpose != purpose {
-		return serializer.NewError(serializer.CodeNoPermissionErr, "invalid setup token purpose", nil)
+		return unifyerror.New(http.StatusForbidden, unifyerror.CodeForbidden, "invalid setup token purpose")
 	}
 	if !now.Before(meta.ExpiresAt) {
-		return serializer.NewError(serializer.CodeNoPermissionErr, "setup token expired", nil)
+		return unifyerror.New(http.StatusForbidden, unifyerror.CodeForbidden, "setup token expired")
 	}
 	if meta.ClientIP != normalizeClientIP(clientIP) {
-		return serializer.NewError(serializer.CodeNoPermissionErr, "setup token client mismatch", nil)
+		return unifyerror.New(http.StatusForbidden, unifyerror.CodeForbidden, "setup token client mismatch")
 	}
 	if meta.UserAgentHash != hashUserAgent(userAgent) {
-		return serializer.NewError(serializer.CodeNoPermissionErr, "setup token agent mismatch", nil)
+		return unifyerror.New(http.StatusForbidden, unifyerror.CodeForbidden, "setup token agent mismatch")
 	}
 
 	return nil

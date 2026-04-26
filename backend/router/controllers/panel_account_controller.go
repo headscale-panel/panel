@@ -1,7 +1,8 @@
 package controllers
 
 import (
-	"headscale-panel/pkg/utils/serializer"
+	"net/http"
+	"headscale-panel/pkg/unifyerror"
 	"headscale-panel/router/services"
 	"strconv"
 
@@ -25,13 +26,13 @@ func NewPanelAccountController() *PanelAccountController {
 // @Param status query string false "Filter by status: active, inactive"
 // @Param group_id query int false "Filter by group ID"
 // @Param provider query string false "Filter by provider: local, oidc, headscale"
-// @Success 200 {object} serializer.Response{data=serializer.PaginatedData}
+// @Success 200 {object} unifyerror.Response{data=unifyerror.PaginatedData}
 // @Security BearerAuth
 // @Router /panel-accounts [get]
 func (ctrl *PanelAccountController) List(c *gin.Context) {
-	var q serializer.PaginationQuery
+	var q unifyerror.PaginationQuery
 	if err := c.ShouldBindQuery(&q); err != nil {
-		serializer.Fail(c, serializer.ErrBind)
+		unifyerror.Fail(c, unifyerror.ErrBind)
 		return
 	}
 	page, pageSize := q.Resolve()
@@ -56,11 +57,11 @@ func (ctrl *PanelAccountController) List(c *gin.Context) {
 	actorUserID := c.GetUint("userID")
 	items, total, err := services.PanelAccountService.List(actorUserID, query)
 	if err != nil {
-		serializer.Fail(c, err)
+		unifyerror.Fail(c, err)
 		return
 	}
 
-	serializer.SuccessPage(c, items, total, page, pageSize)
+	unifyerror.SuccessPage(c, items, total, page, pageSize)
 }
 
 // GetDetail godoc
@@ -68,24 +69,24 @@ func (ctrl *PanelAccountController) List(c *gin.Context) {
 // @Tags panel-accounts
 // @Produce json
 // @Param id path int true "Account ID"
-// @Success 200 {object} serializer.Response{data=services.PanelAccountDetail}
+// @Success 200 {object} unifyerror.Response{data=services.PanelAccountDetail}
 // @Security BearerAuth
 // @Router /panel-accounts/{id} [get]
 func (ctrl *PanelAccountController) GetDetail(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
-		serializer.Fail(c, serializer.NewError(serializer.CodeParamErr, "invalid account id", nil))
+		unifyerror.Fail(c, unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "invalid account id"))
 		return
 	}
 
 	actorUserID := c.GetUint("userID")
 	detail, svcErr := services.PanelAccountService.GetDetail(actorUserID, uint(id))
 	if svcErr != nil {
-		serializer.Fail(c, svcErr)
+		unifyerror.Fail(c, svcErr)
 		return
 	}
 
-	serializer.Success(c, detail)
+	unifyerror.Success(c, detail)
 }
 
 type createPanelAccountRequest struct {
@@ -101,23 +102,23 @@ type createPanelAccountRequest struct {
 // @Accept json
 // @Produce json
 // @Param body body createPanelAccountRequest true "Account data"
-// @Success 200 {object} serializer.Response
+// @Success 200 {object} unifyerror.Response
 // @Security BearerAuth
 // @Router /panel-accounts [post]
 func (ctrl *PanelAccountController) Create(c *gin.Context) {
 	var req createPanelAccountRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		serializer.Fail(c, serializer.ErrBind)
+		unifyerror.Fail(c, unifyerror.ErrBind)
 		return
 	}
 
 	actorUserID := c.GetUint("userID")
 	if err := services.PanelAccountService.Create(actorUserID, req.Username, req.Password, req.Email, req.GroupID); err != nil {
-		serializer.Fail(c, err)
+		unifyerror.Fail(c, err)
 		return
 	}
 
-	serializer.Success(c, nil)
+	unifyerror.Success(c, nil)
 }
 
 type updatePanelAccountRequest struct {
@@ -134,29 +135,29 @@ type updatePanelAccountRequest struct {
 // @Produce json
 // @Param id path int true "Account ID"
 // @Param body body updatePanelAccountRequest true "Account update data"
-// @Success 200 {object} serializer.Response
+// @Success 200 {object} unifyerror.Response
 // @Security BearerAuth
 // @Router /panel-accounts/{id} [put]
 func (ctrl *PanelAccountController) Update(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
-		serializer.Fail(c, serializer.NewError(serializer.CodeParamErr, "invalid account id", nil))
+		unifyerror.Fail(c, unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "invalid account id"))
 		return
 	}
 
 	var req updatePanelAccountRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		serializer.Fail(c, serializer.ErrBind)
+		unifyerror.Fail(c, unifyerror.ErrBind)
 		return
 	}
 
 	actorUserID := c.GetUint("userID")
 	if svcErr := services.PanelAccountService.Update(actorUserID, uint(id), req.Email, req.DisplayName, req.Password, req.GroupID); svcErr != nil {
-		serializer.Fail(c, svcErr)
+		unifyerror.Fail(c, svcErr)
 		return
 	}
 
-	serializer.Success(c, nil)
+	unifyerror.Success(c, nil)
 }
 
 type setStatusRequest struct {
@@ -170,29 +171,29 @@ type setStatusRequest struct {
 // @Produce json
 // @Param id path int true "Account ID"
 // @Param body body setStatusRequest true "Status"
-// @Success 200 {object} serializer.Response
+// @Success 200 {object} unifyerror.Response
 // @Security BearerAuth
 // @Router /panel-accounts/{id}/status [put]
 func (ctrl *PanelAccountController) SetStatus(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
-		serializer.Fail(c, serializer.NewError(serializer.CodeParamErr, "invalid account id", nil))
+		unifyerror.Fail(c, unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "invalid account id"))
 		return
 	}
 
 	var req setStatusRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		serializer.Fail(c, serializer.ErrBind)
+		unifyerror.Fail(c, unifyerror.ErrBind)
 		return
 	}
 
 	actorUserID := c.GetUint("userID")
 	if svcErr := services.PanelAccountService.SetStatus(actorUserID, uint(id), req.IsActive); svcErr != nil {
-		serializer.Fail(c, svcErr)
+		unifyerror.Fail(c, svcErr)
 		return
 	}
 
-	serializer.Success(c, nil)
+	unifyerror.Success(c, nil)
 }
 
 // ResetTOTP godoc
@@ -200,23 +201,23 @@ func (ctrl *PanelAccountController) SetStatus(c *gin.Context) {
 // @Tags panel-accounts
 // @Produce json
 // @Param id path int true "Account ID"
-// @Success 200 {object} serializer.Response
+// @Success 200 {object} unifyerror.Response
 // @Security BearerAuth
 // @Router /panel-accounts/{id}/reset-totp [put]
 func (ctrl *PanelAccountController) ResetTOTP(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
-		serializer.Fail(c, serializer.NewError(serializer.CodeParamErr, "invalid account id", nil))
+		unifyerror.Fail(c, unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "invalid account id"))
 		return
 	}
 
 	actorUserID := c.GetUint("userID")
 	if svcErr := services.PanelAccountService.ResetTOTP(actorUserID, uint(id)); svcErr != nil {
-		serializer.Fail(c, svcErr)
+		unifyerror.Fail(c, svcErr)
 		return
 	}
 
-	serializer.Success(c, nil)
+	unifyerror.Success(c, nil)
 }
 
 // GetLoginIdentities godoc
@@ -224,24 +225,24 @@ func (ctrl *PanelAccountController) ResetTOTP(c *gin.Context) {
 // @Tags panel-accounts
 // @Produce json
 // @Param id path int true "Account ID"
-// @Success 200 {object} serializer.Response{data=services.LoginIdentities}
+// @Success 200 {object} unifyerror.Response{data=services.LoginIdentities}
 // @Security BearerAuth
 // @Router /panel-accounts/{id}/login-identities [get]
 func (ctrl *PanelAccountController) GetLoginIdentities(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
-		serializer.Fail(c, serializer.NewError(serializer.CodeParamErr, "invalid account id", nil))
+		unifyerror.Fail(c, unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "invalid account id"))
 		return
 	}
 
 	actorUserID := c.GetUint("userID")
 	identities, svcErr := services.PanelAccountService.GetLoginIdentities(actorUserID, uint(id))
 	if svcErr != nil {
-		serializer.Fail(c, svcErr)
+		unifyerror.Fail(c, svcErr)
 		return
 	}
 
-	serializer.Success(c, identities)
+	unifyerror.Success(c, identities)
 }
 
 // GetNetworkBindings godoc
@@ -249,24 +250,24 @@ func (ctrl *PanelAccountController) GetLoginIdentities(c *gin.Context) {
 // @Tags panel-accounts
 // @Produce json
 // @Param id path int true "Account ID"
-// @Success 200 {object} serializer.Response{data=[]services.NetworkBinding}
+// @Success 200 {object} unifyerror.Response{data=[]services.NetworkBinding}
 // @Security BearerAuth
 // @Router /panel-accounts/{id}/network-bindings [get]
 func (ctrl *PanelAccountController) GetNetworkBindings(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
-		serializer.Fail(c, serializer.NewError(serializer.CodeParamErr, "invalid account id", nil))
+		unifyerror.Fail(c, unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "invalid account id"))
 		return
 	}
 
 	actorUserID := c.GetUint("userID")
 	bindings, svcErr := services.PanelAccountService.GetNetworkBindings(actorUserID, uint(id))
 	if svcErr != nil {
-		serializer.Fail(c, svcErr)
+		unifyerror.Fail(c, svcErr)
 		return
 	}
 
-	serializer.Success(c, bindings)
+	unifyerror.Success(c, bindings)
 }
 
 type updateNetworkBindingsRequest struct {
@@ -280,29 +281,29 @@ type updateNetworkBindingsRequest struct {
 // @Produce json
 // @Param id path int true "Account ID"
 // @Param body body updateNetworkBindingsRequest true "Bindings"
-// @Success 200 {object} serializer.Response
+// @Success 200 {object} unifyerror.Response
 // @Security BearerAuth
 // @Router /panel-accounts/{id}/network-bindings [put]
 func (ctrl *PanelAccountController) UpdateNetworkBindings(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
-		serializer.Fail(c, serializer.NewError(serializer.CodeParamErr, "invalid account id", nil))
+		unifyerror.Fail(c, unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "invalid account id"))
 		return
 	}
 
 	var req updateNetworkBindingsRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		serializer.Fail(c, serializer.ErrBind)
+		unifyerror.Fail(c, unifyerror.ErrBind)
 		return
 	}
 
 	actorUserID := c.GetUint("userID")
 	if svcErr := services.PanelAccountService.UpdateNetworkBindings(actorUserID, uint(id), req.Bindings); svcErr != nil {
-		serializer.Fail(c, svcErr)
+		unifyerror.Fail(c, svcErr)
 		return
 	}
 
-	serializer.Success(c, nil)
+	unifyerror.Success(c, nil)
 }
 
 type setPrimaryBindingRequest struct {
@@ -316,29 +317,29 @@ type setPrimaryBindingRequest struct {
 // @Produce json
 // @Param id path int true "Account ID"
 // @Param body body setPrimaryBindingRequest true "Primary binding"
-// @Success 200 {object} serializer.Response
+// @Success 200 {object} unifyerror.Response
 // @Security BearerAuth
 // @Router /panel-accounts/{id}/primary-binding [put]
 func (ctrl *PanelAccountController) SetPrimaryBinding(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
-		serializer.Fail(c, serializer.NewError(serializer.CodeParamErr, "invalid account id", nil))
+		unifyerror.Fail(c, unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "invalid account id"))
 		return
 	}
 
 	var req setPrimaryBindingRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		serializer.Fail(c, serializer.ErrBind)
+		unifyerror.Fail(c, unifyerror.ErrBind)
 		return
 	}
 
 	actorUserID := c.GetUint("userID")
 	if svcErr := services.PanelAccountService.SetPrimaryBinding(actorUserID, uint(id), req.BindingID); svcErr != nil {
-		serializer.Fail(c, svcErr)
+		unifyerror.Fail(c, svcErr)
 		return
 	}
 
-	serializer.Success(c, nil)
+	unifyerror.Success(c, nil)
 }
 
 // ListAvailableNetworkIdentities godoc
@@ -347,7 +348,7 @@ func (ctrl *PanelAccountController) SetPrimaryBinding(c *gin.Context) {
 // @Produce json
 // @Param search query string false "Search name or email"
 // @Param exclude_account_id query int false "Exclude identities already bound to this account"
-// @Success 200 {object} serializer.Response{data=[]services.NetworkIdentityItem}
+// @Success 200 {object} unifyerror.Response{data=[]services.NetworkIdentityItem}
 // @Security BearerAuth
 // @Router /network-identities/available [get]
 func (ctrl *PanelAccountController) ListAvailableNetworkIdentities(c *gin.Context) {
@@ -363,11 +364,11 @@ func (ctrl *PanelAccountController) ListAvailableNetworkIdentities(c *gin.Contex
 	actorUserID := c.GetUint("userID")
 	items, err := services.PanelAccountService.ListAvailableNetworkIdentities(actorUserID, search, excludeAccountID)
 	if err != nil {
-		serializer.Fail(c, err)
+		unifyerror.Fail(c, err)
 		return
 	}
 
-	serializer.Success(c, items)
+	unifyerror.Success(c, items)
 }
 
 // Delete godoc
@@ -376,21 +377,21 @@ func (ctrl *PanelAccountController) ListAvailableNetworkIdentities(c *gin.Contex
 // @Accept json
 // @Produce json
 // @Param id path int true "Account ID"
-// @Success 200 {object} serializer.Response
+// @Success 200 {object} unifyerror.Response
 // @Security BearerAuth
 // @Router /panel-accounts/{id} [delete]
 func (ctrl *PanelAccountController) Delete(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
-		serializer.Fail(c, serializer.NewError(serializer.CodeParamErr, "invalid account id", nil))
+		unifyerror.Fail(c, unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "invalid account id"))
 		return
 	}
 
 	actorUserID := c.GetUint("userID")
 	if svcErr := services.PanelAccountService.Delete(actorUserID, uint(id)); svcErr != nil {
-		serializer.Fail(c, svcErr)
+		unifyerror.Fail(c, svcErr)
 		return
 	}
 
-	serializer.Success(c, nil)
+	unifyerror.Success(c, nil)
 }

@@ -26,7 +26,7 @@ import {
   TeamOutlined,
 } from '@ant-design/icons';
 import { useRequest } from 'ahooks';
-import { panelAccountsAPI, groupsAPI } from '@/lib/api';
+import { panelAccountApi, groupApi } from '@/api';
 import type {
   PanelAccountDetail,
 } from '@/api/panel-account.types';
@@ -58,7 +58,7 @@ export default function AccountDetailDrawer({ accountId, open, onClose, onRefres
     loading,
     run: loadDetail,
   } = useRequest(
-    () => panelAccountsAPI.getDetail(accountId!),
+    () => panelAccountApi.getDetail(accountId!),
     {
       manual: true,
       onError: () => message.error(pa.toast.loadFailed),
@@ -66,7 +66,7 @@ export default function AccountDetailDrawer({ accountId, open, onClose, onRefres
   );
 
   const { data: groupsData } = useRequest(
-    () => groupsAPI.list({ all: true }),
+    () => groupApi.list({ all: true }),
     { cacheKey: 'drawer-groups' },
   );
   const groups: NormalizedGroup[] = (groupsData as any)?.list ?? groupsData ?? [];
@@ -99,7 +99,7 @@ export default function AccountDetailDrawer({ accountId, open, onClose, onRefres
     if (!detail) return;
     setSavingBasic(true);
     try {
-      await panelAccountsAPI.update(detail.id, {
+      await panelAccountApi.update(detail.id, {
         email: basicForm.email || undefined,
         display_name: basicForm.display_name || undefined,
         password: basicForm.password || undefined,
@@ -122,7 +122,7 @@ export default function AccountDetailDrawer({ accountId, open, onClose, onRefres
     const willDisable = detail.is_active;
     const doToggle = async () => {
       try {
-        await panelAccountsAPI.setStatus(detail.id, { is_active: !detail.is_active });
+        await panelAccountApi.setStatus(detail.id, { is_active: !detail.is_active });
         message.success(willDisable ? pa.toast.disableSuccess : pa.toast.enableSuccess);
         loadDetail();
         onRefreshList();
@@ -150,7 +150,7 @@ export default function AccountDetailDrawer({ accountId, open, onClose, onRefres
       okButtonProps: { danger: true },
       onOk: async () => {
         try {
-          await panelAccountsAPI.delete(detail.id);
+          await panelAccountApi.delete(detail.id);
           message.success(pa.toast.deleteSuccess);
           onClose();
           onRefreshList();
@@ -289,7 +289,7 @@ export default function AccountDetailDrawer({ accountId, open, onClose, onRefres
                             okButtonProps: { danger: true },
                             onOk: async () => {
                               try {
-                                await panelAccountsAPI.resetTOTP(d.id);
+                                await panelAccountApi.resetTOTP(d.id);
                                 message.success(pa.detail.login.resetTotpSuccess);
                                 loadDetail();
                               } catch {

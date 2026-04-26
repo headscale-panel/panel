@@ -1,8 +1,10 @@
 package services
 
 import (
+	"context"
 	"fmt"
 	"headscale-panel/pkg/constants"
+	"headscale-panel/pkg/headscale"
 	"os"
 	"path/filepath"
 	"strings"
@@ -243,9 +245,22 @@ func (s *headscaleConfigService) GetConfig() (*HeadscaleConfigFile, error) {
 	return &cfg, nil
 }
 
-// SaveConfig writes the config to the file.
-func (s *headscaleConfigService) SaveConfig(cfg *HeadscaleConfigFile) error {
-	return s.writeConfig(cfg)
+// SaveConfig writes the config to the file. When restart is true and DinD
+// mode is enabled the Headscale container will be restarted after writing.
+func (s *headscaleConfigService) SaveConfig(cfg *HeadscaleConfigFile, restart bool) error {
+	if err := s.writeConfig(cfg); err != nil {
+		return err
+	}
+	if restart {
+		s.tryRestartHeadscale()
+	}
+	return nil
+}
+
+// tryRestartHeadscale attempts to restart Headscale after writing config.
+// Failures are logged and do not block the successful config write path.
+func (s *headscaleConfigService) tryRestartHeadscale() {
+	headscale.TryRestartHeadscale(context.Background(), "config write")
 }
 
 // PreviewConfig returns the YAML string of the config.
@@ -266,11 +281,11 @@ func (s *headscaleConfigService) GetConfigWithAuth(actorUserID uint) (*Headscale
 }
 
 // SaveConfigWithAuth is SaveConfig with permission check.
-func (s *headscaleConfigService) SaveConfigWithAuth(actorUserID uint, cfg *HeadscaleConfigFile) error {
+func (s *headscaleConfigService) SaveConfigWithAuth(actorUserID uint, cfg *HeadscaleConfigFile, restart bool) error {
 	if err := RequirePermission(actorUserID, "headscale:config:update"); err != nil {
 		return err
 	}
-	return s.SaveConfig(cfg)
+	return s.SaveConfig(cfg, restart)
 }
 
 // PreviewConfigWithAuth is PreviewConfig with permission check.

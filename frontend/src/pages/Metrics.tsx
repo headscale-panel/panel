@@ -17,7 +17,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import { metricsAPI } from '@/lib/api';
+import { metricsApi } from '@/api';
 import { message } from 'antd';
 import { useTranslation } from '@/i18n/index';
 
@@ -31,7 +31,7 @@ export default function Metrics() {
   const { data: metricsData, loading } = useRequest(
     async () => {
       try {
-        const influxStatus: any = await metricsAPI.getInfluxDBStatus().catch(() => ({ connected: false }));
+        const influxStatus: any = await metricsApi.getInfluxDBStatus().catch(() => ({ connected: false }));
         const influxConnected = !!influxStatus?.connected;
 
         const end = new Date();
@@ -42,12 +42,12 @@ export default function Metrics() {
 
         const formatDate = (d: Date) => d.toISOString().split('T')[0];
 
-        const durationStats: any[] = await metricsAPI.getOnlineDurationStats({
+        const durationStats: any[] = await metricsApi.getOnlineDurationStats({
           start: formatDate(start),
           end: formatDate(end)
         }).then((r: any) => Array.isArray(r) ? r : r?.data || []).catch(() => []);
 
-        const deviceStatus: any[] = await metricsAPI.getDeviceStatus().then((r: any) => Array.isArray(r) ? r : r?.data || []).catch(() => []);
+        const deviceStatus: any[] = await metricsApi.getDeviceStatus().then((r: any) => Array.isArray(r) ? r : r?.data || []).catch(() => []);
 
         const totalDuration = durationStats.reduce((acc, curr) => acc + (curr.online_hours || 0), 0);
         const avgDuration = durationStats.length ? totalDuration / durationStats.length : 0;

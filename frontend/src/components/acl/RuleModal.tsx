@@ -25,7 +25,7 @@ import {
   TeamOutlined,
   UserOutlined,
 } from '@ant-design/icons';
-import { aclAPI } from '@/lib/api';
+import { aclApi } from '@/api';
 import { buildACLDeviceOptions } from '@/lib/acl';
 import type { ACLPolicy, HeadscaleUserOption, NormalizedResource } from '@/lib/normalizers';
 import { ACLAction } from '@/lib/enums';
@@ -220,7 +220,7 @@ export default function RuleModal({
     setSaving(true);
     try {
       if (editingRule) {
-        await aclAPI.updateRuleByIndex({
+        await aclApi.updateRuleByIndex({
           index: editingIndex,
           name: rule.name,
           sources: rule.sources,
@@ -229,7 +229,7 @@ export default function RuleModal({
         });
         message.success(t.acl.updateSuccess);
       } else {
-        await aclAPI.addRule({
+        await aclApi.addRule({
           name: rule.name,
           sources: rule.sources,
           destinations: rule.destinations,

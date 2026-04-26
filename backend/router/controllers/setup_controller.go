@@ -8,9 +8,11 @@ import (
 	"fmt"
 	"headscale-panel/model"
 	"headscale-panel/pkg/conf"
-	"headscale-panel/pkg/utils/serializer"
+	"headscale-panel/pkg/constants"
+	"headscale-panel/pkg/unifyerror"
 	"headscale-panel/router/services"
 	"net"
+	"net/http"
 	"strings"
 	"time"
 
@@ -27,13 +29,13 @@ func NewSetupController() *SetupController {
 // @Summary Get setup and initialization status
 // @Tags setup
 // @Produce json
-// @Success 200 {object} serializer.Response{data=object}
+// @Success 200 {object} unifyerror.Response{data=object}
 // @Router /setup/status [get]
 // GetStatus checks if the system has been initialized.
 func (s *SetupController) GetStatus(ctx *gin.Context) {
 	state, err := services.SetupStateService.GetState()
 	if err != nil {
-		serializer.Fail(ctx, err)
+		unifyerror.Fail(ctx, err)
 		return
 	}
 
@@ -62,7 +64,7 @@ func (s *SetupController) GetStatus(ctx *gin.Context) {
 		}
 	}
 
-	serializer.Success(ctx, resp)
+	unifyerror.Success(ctx, resp)
 }
 
 type SetupPreflightRequest struct {
@@ -76,13 +78,13 @@ type SetupPreflightRequest struct {
 // @Accept json
 // @Produce json
 // @Param body body SetupPreflightRequest false "Preflight options"
-// @Success 200 {object} serializer.Response{data=object}
+// @Success 200 {object} unifyerror.Response{data=object}
 // @Router /setup/preflight [post]
 func (s *SetupController) Preflight(ctx *gin.Context) {
 	var req SetupPreflightRequest
 	if ctx.Request.ContentLength > 0 {
 		if err := ctx.ShouldBindJSON(&req); err != nil {
-			serializer.Fail(ctx, serializer.ErrBind)
+			unifyerror.Fail(ctx, unifyerror.ErrBind)
 			return
 		}
 	}
@@ -100,7 +102,7 @@ func (s *SetupController) Preflight(ctx *gin.Context) {
 		})
 	}
 
-	serializer.Success(ctx, gin.H{
+	unifyerror.Success(ctx, gin.H{
 		"checks":               checks,
 		"bootstrap_configured": isSetupBootstrapConfigured(),
 	})
@@ -129,14 +131,14 @@ type ConnectivityPollRequest struct {
 // @Accept json
 // @Produce json
 // @Param body body ConnectivityCheckRequest false "Connectivity check options"
-// @Success 200 {object} serializer.Response{data=object}
+// @Success 200 {object} unifyerror.Response{data=object}
 // @Router /setup/connectivity-check [post]
 // ConnectivityCheck validates gRPC reachability and optional API access.
 func (s *SetupController) ConnectivityCheck(ctx *gin.Context) {
 	var req ConnectivityCheckRequest
 	if ctx.Request.ContentLength > 0 {
 		if err := ctx.ShouldBindJSON(&req); err != nil {
-			serializer.Fail(ctx, serializer.ErrBind)
+			unifyerror.Fail(ctx, unifyerror.ErrBind)
 			return
 		}
 	}
@@ -174,7 +176,7 @@ func (s *SetupController) ConnectivityCheck(ctx *gin.Context) {
 		}
 	}
 
-	serializer.Success(ctx, gin.H{
+	unifyerror.Success(ctx, gin.H{
 		"checks":        results,
 		"all_reachable": allReachable,
 	})
@@ -186,13 +188,13 @@ func (s *SetupController) ConnectivityCheck(ctx *gin.Context) {
 // @Accept json
 // @Produce json
 // @Param body body ConnectivityPollRequest true "Poll options"
-// @Success 200 {object} serializer.Response{data=object}
+// @Success 200 {object} unifyerror.Response{data=object}
 // @Router /setup/connectivity-poll [post]
 // ConnectivityPoll retries Headscale API access for a short period.
 func (s *SetupController) ConnectivityPoll(ctx *gin.Context) {
 	var req ConnectivityPollRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {
-		serializer.Fail(ctx, serializer.ErrBind)
+		unifyerror.Fail(ctx, unifyerror.ErrBind)
 		return
 	}
 
@@ -216,7 +218,7 @@ func (s *SetupController) ConnectivityPoll(ctx *gin.Context) {
 		ok, detail := services.CheckHeadscaleConnectivityWithConfig(ctx.Request.Context(), grpcAddr, req.APIKey, allowInsecure)
 		lastDetail = detail
 		if ok {
-			serializer.Success(ctx, gin.H{
+			unifyerror.Success(ctx, gin.H{
 				"ready":    true,
 				"attempts": i + 1,
 				"detail":   detail,
@@ -229,7 +231,7 @@ func (s *SetupController) ConnectivityPoll(ctx *gin.Context) {
 		time.Sleep(time.Duration(interval) * time.Second)
 	}
 
-	serializer.Success(ctx, gin.H{
+	unifyerror.Success(ctx, gin.H{
 		"ready":    false,
 		"attempts": maxAttempts,
 		"detail":   lastDetail,
@@ -242,8 +244,8 @@ func (s *SetupController) ConnectivityPoll(ctx *gin.Context) {
 // @Accept json
 // @Produce json
 // @Param body body InitializeRequest true "Initialize parameters"
-// @Success 200 {object} serializer.Response
-// @Failure 400 {object} serializer.Response
+// @Success 200 {object} unifyerror.Response
+// @Failure 400 {object} unifyerror.Response
 // @Router /setup/initialize [post]
 // Initialize saves the Headscale connection settings and creates the first admin.
 type InitializeRequest struct {
@@ -258,13 +260,13 @@ type InitializeRequest struct {
 
 func (s *SetupController) Initialize(ctx *gin.Context) {
 	if err := requireSetupBootstrap(ctx); err != nil {
-		serializer.Fail(ctx, err)
+		unifyerror.Fail(ctx, err)
 		return
 	}
 
 	state, err := services.SetupStateService.RequireSetupWindow()
 	if err != nil {
-		serializer.Fail(ctx, err)
+		unifyerror.Fail(ctx, err)
 		return
 	}
 
@@ -278,30 +280,30 @@ func (s *SetupController) Initialize(ctx *gin.Context) {
 		ctx.ClientIP(),
 		ctx.GetHeader("User-Agent"),
 	); err != nil {
-		serializer.Fail(ctx, err)
+		unifyerror.Fail(ctx, err)
 		return
 	}
 
 	var count int64
 	if err := model.DB.Model(&model.User{}).Count(&count).Error; err != nil {
-		serializer.Fail(ctx, serializer.ErrDatabase.WithError(err))
+		unifyerror.Fail(ctx, unifyerror.DbError(err))
 		return
 	}
 	if count > 0 {
-		serializer.Fail(ctx, serializer.NewError(serializer.CodeConflict, "system already initialized", nil))
+		unifyerror.Fail(ctx, unifyerror.New(http.StatusConflict, unifyerror.CodeConflict, "system already initialized"))
 		return
 	}
 
 	var req InitializeRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {
-		serializer.Fail(ctx, serializer.ErrBind)
+		unifyerror.Fail(ctx, unifyerror.ErrBind)
 		return
 	}
 
 	grpcAddr := normalizeGRPCAddress(req.HeadscaleGRPCAddr)
 	apiKey := strings.TrimSpace(req.APIKey)
 	if apiKey == "" {
-		serializer.Fail(ctx, serializer.NewError(serializer.CodeParamErr, "headscale api key is required", nil))
+		unifyerror.Fail(ctx, unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "headscale api key is required"))
 		return
 	}
 
@@ -312,18 +314,18 @@ func (s *SetupController) Initialize(ctx *gin.Context) {
 	allowInsecure := !enableTLS
 
 	if ok, detail := services.CheckHeadscaleConnectivityWithConfig(ctx.Request.Context(), grpcAddr, apiKey, allowInsecure); !ok {
-		serializer.Fail(ctx, serializer.NewError(serializer.CodeThirdPartyServiceError, detail, nil))
+		unifyerror.Fail(ctx, unifyerror.New(http.StatusBadGateway, unifyerror.CodeGRPCErr, detail))
 		return
 	}
 
 	if err := services.SaveConnectionAndInitialize(ctx.Request.Context(), grpcAddr, apiKey, allowInsecure); err != nil {
-		serializer.Fail(ctx, err)
+		unifyerror.Fail(ctx, err)
 		return
 	}
 
 	username := strings.TrimSpace(req.Username)
 	if username == "" {
-		username = "admin"
+		username = constants.USERNAME_DEFAULT_ADMIN
 	}
 
 	password := req.Password
@@ -331,7 +333,7 @@ func (s *SetupController) Initialize(ctx *gin.Context) {
 	if strings.TrimSpace(password) == "" {
 		generated, genErr := generateSecurePassword(24)
 		if genErr != nil {
-			serializer.Fail(ctx, serializer.NewError(serializer.CodeInternalError, "failed to generate admin password", genErr))
+			unifyerror.Fail(ctx, unifyerror.New(http.StatusInternalServerError, unifyerror.CodeServerErr, "failed to generate admin password"))
 			return
 		}
 		password = generated
@@ -339,8 +341,8 @@ func (s *SetupController) Initialize(ctx *gin.Context) {
 	}
 
 	var adminGroup model.Group
-	if err := model.DB.Where("name = ?", "Admin").First(&adminGroup).Error; err != nil {
-		serializer.Fail(ctx, serializer.NewError(serializer.CodeInternalError, "admin group not found, please check database initialization", err))
+	if err := model.DB.Where("name = ?", constants.GROUP_ADMIN).First(&adminGroup).Error; err != nil {
+		unifyerror.Fail(ctx, unifyerror.New(http.StatusInternalServerError, unifyerror.CodeServerErr, "admin group not found, please check database initialization"))
 		return
 	}
 
@@ -354,12 +356,12 @@ func (s *SetupController) Initialize(ctx *gin.Context) {
 	}
 
 	if err := model.DB.Create(&user).Error; err != nil {
-		serializer.Fail(ctx, serializer.ErrDatabase.WithError(err))
+		unifyerror.Fail(ctx, unifyerror.DbError(err))
 		return
 	}
 
 	if err := services.SetupStateService.MarkInitialized(); err != nil {
-		serializer.Fail(ctx, err)
+		unifyerror.Fail(ctx, err)
 		return
 	}
 
@@ -385,7 +387,7 @@ func (s *SetupController) Initialize(ctx *gin.Context) {
 		resp["generated_password"] = password
 	}
 
-	serializer.Success(ctx, resp)
+	unifyerror.Success(ctx, resp)
 }
 
 func generateSecurePassword(length int) (string, error) {
@@ -412,11 +414,11 @@ func requireSetupBootstrap(ctx *gin.Context) error {
 
 	provided := strings.TrimSpace(readSetupBootstrapCredential(ctx))
 	if provided == "" {
-		return serializer.NewError(serializer.CodeNoPermissionErr, "missing setup bootstrap credential", nil)
+		return unifyerror.New(http.StatusForbidden, unifyerror.CodeForbidden, "missing setup bootstrap credential")
 	}
 
 	if subtle.ConstantTimeCompare([]byte(provided), []byte(expected)) != 1 {
-		return serializer.NewError(serializer.CodeNoPermissionErr, "invalid setup bootstrap credential", nil)
+		return unifyerror.New(http.StatusForbidden, unifyerror.CodeForbidden, "invalid setup bootstrap credential")
 	}
 
 	return nil

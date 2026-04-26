@@ -6,7 +6,8 @@ import (
 	"fmt"
 	"headscale-panel/model"
 	v1 "headscale-panel/pkg/proto/headscale/v1"
-	"headscale-panel/pkg/utils/serializer"
+	"headscale-panel/pkg/unifyerror"
+	"net/http"
 	"strings"
 	"time"
 
@@ -561,7 +562,7 @@ func (s *headscaleService) ResolveUserIDByNameWithContext(ctx context.Context, u
 		}
 	}
 
-	return 0, serializer.NewError(serializer.CodeNotFound, "headscale user not found", nil)
+	return 0, unifyerror.New(http.StatusNotFound, unifyerror.CodeNotFound, "headscale user not found")
 }
 
 // GetPreAuthKeys gets pre-auth keys for a user
@@ -709,7 +710,7 @@ func (s *headscaleService) SyncACLWithContext(ctx context.Context) error {
 				Name: name,
 			}
 			if err := model.DB.Create(&group).Error; err != nil {
-				return serializer.ErrDatabase.WithError(err)
+				return unifyerror.DbError(err)
 			}
 		}
 	}
@@ -725,12 +726,12 @@ func (s *headscaleService) SyncACLWithContext(ctx context.Context) error {
 				CreatorID:   1,
 			}
 			if err := model.DB.Create(&resource).Error; err != nil {
-				return serializer.ErrDatabase.WithError(err)
+				return unifyerror.DbError(err)
 			}
 		} else {
 			resource.IPAddress = ip
 			if err := model.DB.Save(&resource).Error; err != nil {
-				return serializer.ErrDatabase.WithError(err)
+				return unifyerror.DbError(err)
 			}
 		}
 	}
@@ -896,10 +897,10 @@ func (s *headscaleService) RegisterNodeWithContext(ctx context.Context, actorUse
 		Key:  key,
 	})
 	if err != nil {
-		return nil, serializer.NewError(serializer.CodeThirdPartyServiceError, fmt.Sprintf("注册节点失败: %v", err), err)
+		return nil, unifyerror.New(http.StatusBadGateway, unifyerror.CodeGRPCErr, fmt.Sprintf("注册节点失败: %v", err))
 	}
 	if resp.Node == nil {
-		return nil, serializer.NewError(serializer.CodeThirdPartyServiceError, "注册节点失败: Headscale 返回空节点", nil)
+		return nil, unifyerror.New(http.StatusBadGateway, unifyerror.CodeGRPCErr, "注册节点失败: Headscale 返回空节点")
 	}
 
 	node := resp.Node
