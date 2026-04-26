@@ -410,7 +410,6 @@ func (a *AuthController) OIDCHeadscaleUserCallback(c *gin.Context) {
 	}
 
 	actorUserID := c.GetUint("userID")
-	derivedName := deriveUsername(claims.PreferredUser, claims.Name, claims.Email, claims.Sub)
 
 	users, err := services.HeadscaleService.ListHeadscaleUsersWithContext(c.Request.Context(), actorUserID)
 	if err != nil {
@@ -419,7 +418,7 @@ func (a *AuthController) OIDCHeadscaleUserCallback(c *gin.Context) {
 	}
 
 	for _, existing := range users {
-		if !strings.EqualFold(strings.TrimSpace(existing.Name), strings.TrimSpace(derivedName)) {
+		if !strings.EqualFold(strings.TrimSpace(existing.Name), strings.TrimSpace(claims.Name)) {
 			continue
 		}
 		if !oidcClaimsMatchHeadscaleUser(existing, claims.Name, claims.Email) {
@@ -451,7 +450,7 @@ func (a *AuthController) OIDCHeadscaleUserCallback(c *gin.Context) {
 		return
 	}
 
-	createdUser, err := services.HeadscaleService.CreateUserWithContext(c.Request.Context(), actorUserID, derivedName, claims.Name, claims.Email, claims.Picture)
+	createdUser, err := services.HeadscaleService.CreateUserWithContext(c.Request.Context(), actorUserID, claims.Name, claims.Name, claims.Email, claims.Picture)
 	if err != nil {
 		unifyerror.Fail(c, err)
 		return
