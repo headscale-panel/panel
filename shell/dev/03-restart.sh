@@ -10,3 +10,5 @@ mapfile -t services < <(dev_services)
 echo -e "${YELLOW}[dev]${NC} Restarting dev containers..."
 dc restart "${services[@]}"
 echo -e "${GREEN}[dev]${NC} Containers restarted."
+echo ""
+print_tailscale_login_instructions

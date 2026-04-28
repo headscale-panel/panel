@@ -160,10 +160,13 @@ services:
       - ./headscale/config:/app/headscale/etc
       - ./headscale/data:/app/headscale/lib
       - ./headscale/panel:/app/data
+      - /var/run/docker.sock:/var/run/docker.sock
     environment:
       - TZ=Asia/Shanghai
       - SYSTEM_BASE_URL=https://vpn.example.com
       - JWT_SECRET=random_str_len_32
+      - DOCKER_DIND_ENABLED=true
+      - DOCKER_HEADSCALE_CONTAINER_NAME=headscale
     depends_on:
       headscale:
         condition: service_healthy
@@ -247,18 +250,20 @@ regions:
 
 ### 环境变量
 
-| 变量名                         | 说明                                     | 默认值                  |
-| ------------------------------ | ---------------------------------------- | ----------------------- |
-| `SYSTEM_PORT`                  | 面板监听端口                             | `:8080`                 |
-| `SYSTEM_BASE_URL`              | 面板外部访问地址（用于 OIDC 回调等）     | `http://localhost:8080` |
-| `SYSTEM_SETUP_BOOTSTRAP_TOKEN` | 初始化引导令牌（≥32 字符，留空则不启用） | —                       |
-| `JWT_SECRET`                   | JWT 签名密钥（≥32 字符，留空自动生成）   | 自动生成                |
-| `JWT_EXPIRE`                   | JWT 过期时间（小时）                     | `24`                    |
-| `DB_PATH`                      | SQLite 数据库路径                        | `data/data.db`          |
-| `INFLUXDB_URL`                 | InfluxDB 地址（留空则禁用指标统计）      | —                       |
-| `INFLUXDB_TOKEN`               | InfluxDB 认证 Token                      | —                       |
-| `INFLUXDB_ORG`                 | InfluxDB 组织名                          | `headscale-panel`       |
-| `INFLUXDB_BUCKET`              | InfluxDB Bucket 名                       | `metrics`               |
+| 变量名                            | 说明                                     | 默认值                  |
+| --------------------------------- | ---------------------------------------- | ----------------------- |
+| `SYSTEM_PORT`                     | 面板监听端口                             | `:8080`                 |
+| `SYSTEM_BASE_URL`                 | 面板外部访问地址（用于 OIDC 回调等）     | `http://localhost:8080` |
+| `SYSTEM_SETUP_BOOTSTRAP_TOKEN`    | 初始化引导令牌（≥32 字符，留空则不启用） | —                       |
+| `JWT_SECRET`                      | JWT 签名密钥（≥32 字符，留空自动生成）   | 自动生成                |
+| `JWT_EXPIRE`                      | JWT 过期时间（小时）                     | `24`                    |
+| `DB_PATH`                         | SQLite 数据库路径                        | `data/data.db`          |
+| `INFLUXDB_URL`                    | InfluxDB 地址（留空则禁用指标统计）      | —                       |
+| `INFLUXDB_TOKEN`                  | InfluxDB 认证 Token                      | —                       |
+| `INFLUXDB_ORG`                    | InfluxDB 组织名                          | `headscale-panel`       |
+| `INFLUXDB_BUCKET`                 | InfluxDB Bucket 名                       | `metrics`               |
+| `DOCKER_DIND_ENABLED`             | 启用基于 Docker 的 Headscale 自动重启    | `false`                 |
+| `DOCKER_HEADSCALE_CONTAINER_NAME` | 用于重启的 Headscale 容器名              | —                       |
 
 ---
 
@@ -340,7 +345,7 @@ server {
 # 1) 初始化 .env 及 Headscale 配置文件（不会覆盖已有文件）
 ./shell/dev/01-init.sh
 
-# 2) 启动外部依赖（Headscale 等）
+# 2) 启动外部依赖（Headscale + InfluxDB）
 ./shell/dev/02-start.sh
 
 # 3) 生成 Headscale API Key
@@ -353,7 +358,7 @@ cd backend && go run .
 cd frontend && pnpm install && pnpm dev
 ```
 
-> `01-init.sh` 会自动在 `backend/data/headscale/` 下创建 Headscale 配置文件（若不存在）。
+> `01-init.sh` 会自动在 `backend/data/headscale/` 下创建 Headscale 配置文件（若不存在），并默认打开本地 DinD 重启配置以及 InfluxDB 连接配置。
 
 外部依赖脚本速查：
 
@@ -361,11 +366,8 @@ cd frontend && pnpm install && pnpm dev
 # 初始化 .env 文件（不会覆盖已有文件）
 ./shell/dev/01-init.sh
 
-# 启动外部依赖（默认只启动 Headscale）
+# 启动外部依赖（默认启动 Headscale + InfluxDB）
 ./shell/dev/02-start.sh
-
-# 启动外部依赖并启用 DERP
-WITH_DERP=true ./shell/dev/02-start.sh
 
 # 重启外部依赖
 ./shell/dev/03-restart.sh
@@ -379,16 +381,27 @@ WITH_DERP=true ./shell/dev/02-start.sh
 
 默认访问地址与端口：
 
-- Headscale HTTP: http://localhost:8080
+- Headscale HTTP: http://localhost:5080
 - Headscale gRPC: localhost:50443
-- DERP relay ports: 443/tcp, 3478/udp（仅 `WITH_DERP=true`）
+- InfluxDB: http://localhost:8086
+- 仅 tailnet 可访问的 nginx: http://172.30.0.10（路由批准后可访问）
 
 外部依赖会启动以下服务：
 
 - Headscale
-- DERP 中继服务（仅在 `WITH_DERP=true` 时启动）
+- InfluxDB
+- Tailscale 子网路由器与测试 nginx
 
 Headscale 连接（gRPC 地址和 API Key）通过 WebUI 初始化向导或「设置 → 连接配置」完成。
+
+如需验证其他 tailnet 设备是否可以访问容器网段：
+
+1. 执行 `./shell/dev/02-start.sh`。
+2. 登录测试环境的 tailscale 客户端。
+3. 在 Headscale 中批准 `172.30.0.0/24` 子网路由。
+4. 在另一台 tailnet 设备上访问 `http://172.30.0.10`。
+
+如需在容器部署中启用 DinD 自动重启，请保持 `DOCKER_DIND_ENABLED=true`，挂载 `/var/run/docker.sock`，并确保镜像内包含 Docker CLI。
 
 ### 构建 Docker 镜像
 

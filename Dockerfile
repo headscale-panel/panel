@@ -40,7 +40,7 @@ RUN if [ -n "$ALPINE_MIRROR" ]; then \
     sed -i "s/dl-cdn.alpinelinux.org/$ALPINE_MIRROR/g" /etc/apk/repositories; \
     fi && \
     apk update && \
-    apk add --no-cache ca-certificates tzdata && \
+    apk add --no-cache ca-certificates tzdata docker-cli && \
     addgroup -S appgroup && \
     adduser -S -G appgroup -h /app appuser
 

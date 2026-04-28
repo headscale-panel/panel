@@ -160,10 +160,13 @@ services:
       - ./headscale/config:/app/headscale/etc
       - ./headscale/data:/app/headscale/lib
       - ./headscale/panel:/app/data
+      - /var/run/docker.sock:/var/run/docker.sock
     environment:
       - TZ=Asia/Shanghai
       - SYSTEM_BASE_URL=https://vpn.example.com
       - JWT_SECRET=random_str_len_32
+      - DOCKER_DIND_ENABLED=true
+      - DOCKER_HEADSCALE_CONTAINER_NAME=headscale
     depends_on:
       headscale:
         condition: service_healthy
@@ -247,18 +250,20 @@ regions:
 
 ### Environment Variables
 
-| Variable                       | Description                                                 | Default                 |
-| ------------------------------ | ----------------------------------------------------------- | ----------------------- |
-| `SYSTEM_PORT`                  | Panel listen port                                           | `:8080`                 |
-| `SYSTEM_BASE_URL`              | External panel URL (used for OIDC callbacks, etc.)          | `http://localhost:8080` |
-| `SYSTEM_SETUP_BOOTSTRAP_TOKEN` | Setup wizard bootstrap token (≥32 chars; disabled if empty) | —                       |
-| `JWT_SECRET`                   | JWT signing secret (≥32 chars; auto-generated if empty)     | auto-generated          |
-| `JWT_EXPIRE`                   | JWT expiration time (hours)                                 | `24`                    |
-| `DB_PATH`                      | SQLite database file path                                   | `data/data.db`          |
-| `INFLUXDB_URL`                 | InfluxDB address (metrics disabled if empty)                | —                       |
-| `INFLUXDB_TOKEN`               | InfluxDB authentication token                               | —                       |
-| `INFLUXDB_ORG`                 | InfluxDB organization name                                  | `headscale-panel`       |
-| `INFLUXDB_BUCKET`              | InfluxDB bucket name                                        | `metrics`               |
+| Variable                          | Description                                                 | Default                 |
+| --------------------------------- | ----------------------------------------------------------- | ----------------------- |
+| `SYSTEM_PORT`                     | Panel listen port                                           | `:8080`                 |
+| `SYSTEM_BASE_URL`                 | External panel URL (used for OIDC callbacks, etc.)          | `http://localhost:8080` |
+| `SYSTEM_SETUP_BOOTSTRAP_TOKEN`    | Setup wizard bootstrap token (≥32 chars; disabled if empty) | —                       |
+| `JWT_SECRET`                      | JWT signing secret (≥32 chars; auto-generated if empty)     | auto-generated          |
+| `JWT_EXPIRE`                      | JWT expiration time (hours)                                 | `24`                    |
+| `DB_PATH`                         | SQLite database file path                                   | `data/data.db`          |
+| `INFLUXDB_URL`                    | InfluxDB address (metrics disabled if empty)                | —                       |
+| `INFLUXDB_TOKEN`                  | InfluxDB authentication token                               | —                       |
+| `INFLUXDB_ORG`                    | InfluxDB organization name                                  | `headscale-panel`       |
+| `INFLUXDB_BUCKET`                 | InfluxDB bucket name                                        | `metrics`               |
+| `DOCKER_DIND_ENABLED`             | Enable Docker-based Headscale restart after config changes  | `false`                 |
+| `DOCKER_HEADSCALE_CONTAINER_NAME` | Headscale container name used for restart                   | —                       |
 
 ---
 
@@ -340,7 +345,7 @@ Recommended workflow:
 # 1) Initialize .env and Headscale config files (existing files are not overwritten)
 ./shell/dev/01-init.sh
 
-# 2) Start external dependencies (Headscale, etc.)
+# 2) Start external dependencies (Headscale + InfluxDB)
 ./shell/dev/02-start.sh
 
 # 3) Generate a Headscale API Key
@@ -353,7 +358,7 @@ cd backend && go run .
 cd frontend && pnpm install && pnpm dev
 ```
 
-> `01-init.sh` automatically creates the Headscale config under `backend/data/headscale/` if it does not already exist.
+> `01-init.sh` automatically creates the Headscale config under `backend/data/headscale/` if it does not already exist, enables local DinD restarts, and points the backend at the bundled InfluxDB container.
 
 Helper script reference:
 
@@ -361,11 +366,8 @@ Helper script reference:
 # Initialize .env (does not overwrite existing files)
 ./shell/dev/01-init.sh
 
-# Start external dependencies (Headscale only by default)
+# Start external dependencies (Headscale + InfluxDB)
 ./shell/dev/02-start.sh
-
-# Start external dependencies with DERP enabled
-WITH_DERP=true ./shell/dev/02-start.sh
 
 # Restart external dependencies
 ./shell/dev/03-restart.sh
@@ -379,16 +381,27 @@ WITH_DERP=true ./shell/dev/02-start.sh
 
 Default addresses and ports:
 
-- Headscale HTTP: http://localhost:8080
+- Headscale HTTP: http://localhost:5080
 - Headscale gRPC: localhost:50443
-- DERP relay ports: 443/tcp, 3478/udp (only when `WITH_DERP=true`)
+- InfluxDB: http://localhost:8086
+- Tailnet-only nginx test target: http://172.30.0.10 (after route approval)
 
 External dependencies include:
 
 - Headscale
-- DERP relay service (only when `WITH_DERP=true`)
+- InfluxDB
+- Tailscale subnet router and internal nginx test target
 
 The Headscale connection (gRPC address and API key) is configured via the Web UI setup wizard or **Settings → Connection Config**.
+
+To test subnet routing from other tailnet devices:
+
+1. Start `./shell/dev/02-start.sh`.
+2. Login the test-environment Tailscale client.
+3. Approve the advertised `172.30.0.0/24` route in Headscale.
+4. From another tailnet device, open `http://172.30.0.10`.
+
+To use DinD auto-restart in container deployments, keep `DOCKER_DIND_ENABLED=true`, mount `/var/run/docker.sock`, and ensure the image contains the Docker CLI.
 
 ### Building the Docker Image
 

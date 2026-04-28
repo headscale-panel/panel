@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Headscale Panel Tailnet Test</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: "Segoe UI", sans-serif;
+      background: linear-gradient(135deg, #0f172a, #1e293b 60%, #334155);
+      color: #e2e8f0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+    }
+
+    main {
+      width: min(680px, calc(100vw - 32px));
+      padding: 32px;
+      border-radius: 20px;
+      background: rgba(15, 23, 42, 0.78);
+      border: 1px solid rgba(148, 163, 184, 0.35);
+      box-shadow: 0 24px 80px rgba(15, 23, 42, 0.45);
+    }
+
+    h1 {
+      margin: 0 0 12px;
+      font-size: clamp(2rem, 5vw, 3rem);
+    }
+
+    p {
+      margin: 0 0 12px;
+      line-height: 1.6;
+      color: #cbd5e1;
+    }
+
+    code {
+      font-family: "JetBrains Mono", monospace;
+      color: #7dd3fc;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Tailnet Route OK</h1>
+    <p>This nginx service is only reachable on the dev Docker subnet and is not published to the host.</p>
+    <p>If another device reaches this page through the advertised subnet route, the Tailscale router is forwarding traffic into the dev container network correctly.</p>
+    <p>Expected test address: <code>http://172.30.0.10</code></p>
+  </main>
+</body>
+</html>
