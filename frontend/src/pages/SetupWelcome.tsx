@@ -1,7 +1,8 @@
 import { Alert, Card, Input, Button, Switch, Steps, Typography, Spin, Space, Descriptions, message, theme } from 'antd';
 import { SafetyCertificateOutlined, GlobalOutlined, LoadingOutlined, CheckCircleOutlined, CloseCircleOutlined, ArrowRightOutlined, SmileOutlined } from '@ant-design/icons';
 import { useTranslation, useI18n, availableLocales, locales } from '@/i18n/index';
-import api from '@/lib/request';
+import { setupApi } from '@/api';
+import { setSetupTokens } from '@/lib/request';
 import { useState } from 'react';
 import { useRequest } from 'ahooks';
 import { useLocation } from 'wouter';
@@ -52,11 +53,11 @@ export default function SetupWelcome() {
   const [doneUsername, setDoneUsername] = useState('');
   const [donePassword, setDonePassword] = useState('');
 
-  const buildHeaders = (): Record<string, string> => {
-    const headers: Record<string, string> = {};
-    if (bootstrapToken.trim()) headers['X-Setup-Bootstrap-Token'] = bootstrapToken.trim();
-    if (initToken.trim()) headers['X-Setup-Init-Token'] = initToken.trim();
-    return headers;
+  const syncSetupTokens = () => {
+    setSetupTokens({
+      bootstrapToken: bootstrapToken.trim(),
+      initToken: initToken.trim(),
+    });
   };
 
   const applyStatusData = (data: any) => {
@@ -71,9 +72,10 @@ export default function SetupWelcome() {
   };
 
   const { loading, refreshAsync: refreshStatus } = useRequest(
-    async () => api.get('/setup/status', {
-      headers: bootstrapToken.trim() ? { 'X-Setup-Bootstrap-Token': bootstrapToken.trim() } : {},
-    }),
+    async () => {
+      syncSetupTokens();
+      return setupApi.getStatus();
+    },
     {
       onSuccess: (data: any) => {
         applyStatusData(data);
@@ -85,12 +87,15 @@ export default function SetupWelcome() {
   );
 
   const { runAsync: checkConnectivity, loading: checking } = useRequest(
-    async () => api.post('/setup/connectivity-check', {
-      headscale_grpc_addr: grpcAddr.trim(),
-      api_key: apiKey.trim(),
-      strict_api: true,
-      grpc_allow_insecure: !enableTLS,
-    }, { headers: buildHeaders() }),
+    async () => {
+      syncSetupTokens();
+      return setupApi.connectivityCheck({
+        headscale_grpc_addr: grpcAddr.trim(),
+        api_key: apiKey.trim(),
+        strict_api: true,
+        grpc_allow_insecure: !enableTLS,
+      });
+    },
     {
       manual: true,
       onSuccess: async (data: any) => {
@@ -113,14 +118,17 @@ export default function SetupWelcome() {
   );
 
   const { runAsync: initializeSetup, loading: initializing } = useRequest(
-    async () => api.post('/setup/init', {
-      headscale_grpc_addr: grpcAddr.trim(),
-      api_key: apiKey.trim(),
-      enable_tls: enableTLS,
-      username: adminUsername.trim(),
-      password: adminPassword,
-      email: adminEmail.trim(),
-    }, { headers: buildHeaders() }),
+    async () => {
+      syncSetupTokens();
+      return setupApi.init({
+        headscale_grpc_addr: grpcAddr.trim(),
+        api_key: apiKey.trim(),
+        enable_tls: enableTLS,
+        username: adminUsername.trim(),
+        password: adminPassword,
+        email: adminEmail.trim(),
+      });
+    },
     {
       manual: true,
       onSuccess: (data: any) => {

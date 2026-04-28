@@ -1,4 +1,4 @@
-import request from '@/lib/request';
+import request, { RespType } from '@/lib/request';
 import type {
   GetConnectionReq,
   GetConnectionRes,
@@ -19,31 +19,35 @@ import type {
 } from './panel-settings.types';
 
 export const panelSettingsApi = {
-  getConnection: (req?: GetConnectionReq) =>
-    request.get<any, GetConnectionRes>('/panel/connection'),
+  getConnection: (_req?: GetConnectionReq) =>
+    request<RespType<GetConnectionRes>>({ url: '/panel/connection', method: 'GET' }),
 
   saveConnection: (req: SaveConnectionReq) =>
-    request.put<any, SaveConnectionRes>('/panel/connection', {
-      grpc_addr: req.grpc_addr,
-      api_key: req.api_key,
-      insecure: req.insecure,
+    request<RespType<SaveConnectionRes>>({
+      url: '/panel/connection',
+      method: 'PUT',
+      data: {
+        grpc_addr: req.grpc_addr,
+        api_key: req.api_key,
+        insecure: req.insecure,
+      },
     }),
 
-  syncData: (req?: SyncDataReq) =>
-    request.post<any, SyncDataRes>('/panel/sync'),
+  syncData: (_req?: SyncDataReq) =>
+    request<RespType<SyncDataRes>>({ url: '/panel/sync', method: 'POST' }),
 
-  getBuiltinOIDC: (req?: GetBuiltinOIDCReq) =>
-    request.get<any, GetBuiltinOIDCRes>('/panel/builtin-oidc'),
+  getBuiltinOIDC: (_req?: GetBuiltinOIDCReq) =>
+    request<RespType<GetBuiltinOIDCRes>>({ url: '/panel/builtin-oidc', method: 'GET' }),
 
-  enableBuiltinOIDC: (req?: EnableBuiltinOIDCReq) =>
-    request.post<any, EnableBuiltinOIDCRes>('/panel/builtin-oidc'),
+  enableBuiltinOIDC: (_req?: EnableBuiltinOIDCReq) =>
+    request<RespType<EnableBuiltinOIDCRes>>({ url: '/panel/builtin-oidc', method: 'POST' }),
 
-  getOIDCSettings: (req?: GetOIDCSettingsReq) =>
-    request.get<any, GetOIDCSettingsRes>('/panel/oidc-settings'),
+  getOIDCSettings: (_req?: GetOIDCSettingsReq) =>
+    request<RespType<GetOIDCSettingsRes>>({ url: '/panel/oidc-settings', method: 'GET' }),
 
   saveOIDCSettings: (req: SaveOIDCSettingsReq) =>
-    request.put<any, SaveOIDCSettingsRes>('/panel/oidc-settings', req),
+    request<RespType<SaveOIDCSettingsRes>>({ url: '/panel/oidc-settings', method: 'PUT', data: req }),
 
-  getOIDCStatus: (req?: GetOIDCStatusReq) =>
-    request.get<any, GetOIDCStatusRes>('/panel/oidc-status'),
+  getOIDCStatus: (_req?: GetOIDCStatusReq) =>
+    request<RespType<GetOIDCStatusRes>>({ url: '/panel/oidc-status', method: 'GET' }),
 };

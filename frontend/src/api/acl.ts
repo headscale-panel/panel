@@ -1,4 +1,4 @@
-import request from '@/lib/request';
+import request, { RespType } from '@/lib/request';
 import type {
   GetPolicyReq,
   GetPolicyRes,
@@ -27,56 +27,92 @@ import type {
 } from './acl.types';
 
 export const aclApi = {
-  getPolicy: (req?: GetPolicyReq) =>
-    request.get<any, GetPolicyRes>('/headscale/acl/policy'),
-
-  updatePolicy: (req: UpdatePolicyReq) =>
-    request.put<any, UpdatePolicyRes>('/headscale/acl/policy', req),
-
-  setPolicyRaw: (req: SetPolicyRawReq) =>
-    request.post<any, SetPolicyRawRes>('/headscale/acl/policy/raw', {
-      policy: req.policy,
+  getPolicy: (_req?: GetPolicyReq) =>
+    request<RespType<GetPolicyRes>>({
+      url: '/headscale/acl/policy',
+      method: 'GET',
     }),
 
-  getParsedRules: (req?: GetParsedRulesReq) =>
-    request.get<any, GetParsedRulesRes>('/headscale/acl/parsed-rules'),
+  updatePolicy: (req: UpdatePolicyReq) =>
+    request<RespType<UpdatePolicyRes>>({
+      url: '/headscale/acl/policy',
+      method: 'PUT',
+      data: req,
+    }),
 
-  syncResourcesAsHosts: (req?: SyncResourcesAsHostsReq) =>
-    request.post<any, SyncResourcesAsHostsRes>('/headscale/acl/sync-resources'),
+  setPolicyRaw: (req: SetPolicyRawReq) =>
+    request<RespType<SetPolicyRawRes>>({
+      url: '/headscale/acl/policy/raw',
+      method: 'POST',
+      data: { policy: req.policy },
+    }),
+
+  getParsedRules: (_req?: GetParsedRulesReq) =>
+    request<RespType<GetParsedRulesRes>>({
+      url: '/headscale/acl/parsed-rules',
+      method: 'GET',
+    }),
+
+  syncResourcesAsHosts: (_req?: SyncResourcesAsHostsReq) =>
+    request<RespType<SyncResourcesAsHostsRes>>({
+      url: '/headscale/acl/sync-resources',
+      method: 'POST',
+    }),
 
   addRule: (req: AddRuleReq) =>
-    request.post<any, AddRuleRes>('/headscale/acl/add-rule', {
-      name: req.name,
-      sources: req.sources,
-      destinations: req.destinations,
-      action: req.action,
+    request<RespType<AddRuleRes>>({
+      url: '/headscale/acl/add-rule',
+      method: 'POST',
+      data: {
+        name: req.name,
+        sources: req.sources,
+        destinations: req.destinations,
+        action: req.action,
+      },
     }),
 
   updateRuleByIndex: (req: UpdateRuleByIndexReq) =>
-    request.put<any, UpdateRuleByIndexRes>('/headscale/acl/update-rule', {
-      index: req.index,
-      name: req.name,
-      sources: req.sources,
-      destinations: req.destinations,
-      action: req.action,
+    request<RespType<UpdateRuleByIndexRes>>({
+      url: '/headscale/acl/update-rule',
+      method: 'PUT',
+      data: {
+        index: req.index,
+        name: req.name,
+        sources: req.sources,
+        destinations: req.destinations,
+        action: req.action,
+      },
     }),
 
   deleteRuleByIndex: (req: DeleteRuleByIndexReq) =>
-    request.delete<any, DeleteRuleByIndexRes>('/headscale/acl/delete-rule', {
+    request<RespType<DeleteRuleByIndexRes>>({
+      url: '/headscale/acl/delete-rule',
+      method: 'DELETE',
       params: { index: req.index },
     }),
 
-  generate: (req?: GenerateReq) =>
-    request.post<any, GenerateRes>('/headscale/acl/generate'),
+  generate: (_req?: GenerateReq) =>
+    request<RespType<GenerateRes>>({
+      url: '/headscale/acl/generate',
+      method: 'POST',
+    }),
 
-  listPolicies: (req?: ListPoliciesReq) =>
-    request.get<any, ListPoliciesRes>('/headscale/acl/policies'),
+  listPolicies: (_req?: ListPoliciesReq) =>
+    request<RespType<ListPoliciesRes>>({
+      url: '/headscale/acl/policies',
+      method: 'GET',
+    }),
 
   apply: (req: ApplyReq) =>
-    request.post<any, ApplyRes>('/headscale/acl/apply', {
-      id: req.id,
+    request<RespType<ApplyRes>>({
+      url: '/headscale/acl/apply',
+      method: 'POST',
+      data: { id: req.id },
     }),
 
   checkAccess: (_req?: CheckACLAccessReq) =>
-    request.get<any, CheckACLAccessRes>('/headscale/acl/access'),
+    request<RespType<CheckACLAccessRes>>({
+      url: '/headscale/acl/access',
+      method: 'GET',
+    }),
 };

@@ -1,25 +1,31 @@
-import request from '@/lib/request';
+import request, { RespType, RespPage } from '@/lib/request';
+import type { User } from './entities';
 import type {
   ListSystemUsersReq,
-  ListSystemUsersRes,
   CreateSystemUserReq,
   CreateSystemUserRes,
   UpdateSystemUserReq,
-  UpdateSystemUserRes,
   DeleteSystemUserReq,
-  DeleteSystemUserRes,
 } from './system-user.types';
 
 export const systemUserApi = {
   list: (req?: ListSystemUsersReq) =>
-    request.get<any, ListSystemUsersRes>('/system/users', {
+    request<RespType<RespPage<User>>>({
+      url: '/system/users',
+      method: 'GET',
       params: {
         page: req?.page || 1,
         page_size: req?.pageSize || 10,
         all: req?.all ? 'true' : undefined,
       },
     }),
-  create: (req: CreateSystemUserReq) => request.post<any, CreateSystemUserRes>('/system/users', req),
-  update: (req: UpdateSystemUserReq) => request.put<any, UpdateSystemUserRes>('/system/users', req),
-  delete: (req: DeleteSystemUserReq) => request.delete<any, DeleteSystemUserRes>('/system/users', { data: req }),
+
+  create: (req: CreateSystemUserReq) =>
+    request<RespType<CreateSystemUserRes>>({ url: '/system/users', method: 'POST', data: req }),
+
+  update: (req: UpdateSystemUserReq) =>
+    request<RespType<void>>({ url: '/system/users', method: 'PUT', data: req }),
+
+  delete: (req: DeleteSystemUserReq) =>
+    request<RespType<void>>({ url: '/system/users', method: 'DELETE', data: req }),
 };

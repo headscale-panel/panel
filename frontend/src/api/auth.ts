@@ -1,4 +1,4 @@
-import request from '@/lib/request';
+import request, { RespType } from '@/lib/request';
 import type {
   LoginReq,
   LoginRes,
@@ -18,19 +18,49 @@ import type {
 } from './auth.types';
 
 export const authApi = {
-  login: (req: LoginReq) => request.post<any, LoginRes>('/login', req),
-  register: (req: RegisterReq) => request.post<any, RegisterRes>('/register', req),
-  getUserInfo: (_req?: UserInfoReq) => request.get<any, UserInfoRes>('/user/info'),
-  markGuideTourSeen: (_req?: MarkGuideTourSeenReq) => request.post<any, MarkGuideTourSeenRes>('/user/guide-tour/seen'),
-  oidcLogin: () => request.get<any, { url?: string }>('/auth/oidc/login'),
-  oidcCallback: (req: OidcCallbackReq) => request.get<any, OidcCallbackRes>('/auth/oidc/callback', { params: req }),
-  oidcCreateHeadscaleUserLogin: () => request.get<any, { url?: string; redirect_url?: string }>('/auth/oidc/headscale-user/login'),
+  login: (req: LoginReq) =>
+    request<RespType<LoginRes>>({ url: '/login', method: 'POST', data: req }),
+
+  register: (req: RegisterReq) =>
+    request<RespType<RegisterRes>>({ url: '/register', method: 'POST', data: req }),
+
+  getUserInfo: (_req?: UserInfoReq) =>
+    request<RespType<UserInfoRes>>({ url: '/user/info', method: 'GET' }),
+
+  markGuideTourSeen: (_req?: MarkGuideTourSeenReq) =>
+    request<RespType<MarkGuideTourSeenRes>>({ url: '/user/guide-tour/seen', method: 'POST' }),
+
+  oidcLogin: () =>
+    request<RespType<{ url?: string }>>({ url: '/auth/oidc/login', method: 'GET' }),
+
+  oidcCallback: (req: OidcCallbackReq) =>
+    request<RespType<OidcCallbackRes>>({
+      url: '/auth/oidc/callback',
+      method: 'GET',
+      params: req,
+    }),
+
+  oidcCreateHeadscaleUserLogin: () =>
+    request<RespType<{ url?: string; redirect_url?: string }>>({
+      url: '/auth/oidc/headscale-user/login',
+      method: 'GET',
+    }),
+
   oidcCreateHeadscaleUserCallback: (req: OidcCallbackReq) =>
-    request.get<any, OidcCreateHeadscaleUserCallbackRes>('/auth/oidc/headscale-user/callback', { params: req }),
-  generateTOTP: () => request.post<any, GenerateTOTPRes>('/user/totp/generate'),
-  enableTOTP: (req: EnableTOTPReq) => request.post<any, void>('/user/totp/enable', req),
+    request<RespType<OidcCreateHeadscaleUserCallbackRes>>({
+      url: '/auth/oidc/headscale-user/callback',
+      method: 'GET',
+      params: req,
+    }),
+
+  generateTOTP: () =>
+    request<RespType<GenerateTOTPRes>>({ url: '/user/totp/generate', method: 'POST' }),
+
+  enableTOTP: (req: EnableTOTPReq) =>
+    request<RespType<void>>({ url: '/user/totp/enable', method: 'POST', data: req }),
 };
 
 export const publicAuthApi = {
-  oidcStatus: (_req?: OidcStatusReq) => request.get<any, OidcStatusRes>('/auth/oidc-status'),
+  oidcStatus: (_req?: OidcStatusReq) =>
+    request<RespType<OidcStatusRes>>({ url: '/auth/oidc-status', method: 'GET' }),
 };

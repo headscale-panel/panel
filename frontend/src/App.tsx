@@ -20,8 +20,7 @@ import DNS from "./pages/DNS";
 import PanelAccounts from "./pages/PanelAccounts";
 import Profile from "./pages/Profile";
 import SetupWelcome from "./pages/SetupWelcome";
-import api from "./lib/request";
-import { statusApi } from "./api";
+import { statusApi, setupApi } from "./api";
 import { useState, useEffect, type ReactNode } from "react";
 import { Spin } from "antd";
 import { LoadingOutlined } from "@ant-design/icons";
@@ -36,11 +35,10 @@ function SetupGuard({ children }: { children: ReactNode }) {
   const [location, setLocation] = useLocation();
 
   const checkStatus = () => {
-    return api
-      .get('/setup/status')
-      .then((data: unknown) => {
-        const d = data as Record<string, unknown>;
-        return Boolean(d?.initialized);
+    return setupApi
+      .getStatus()
+      .then((data) => {
+        return Boolean(data?.initialized);
       })
       .catch(() => true); // assume initialized on error
   };

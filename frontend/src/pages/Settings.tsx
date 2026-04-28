@@ -19,8 +19,7 @@ import { Button, Card, Input, Modal, Select, Space, Spin, Switch, Table, Tabs, T
 import type { ColumnsType } from 'antd/es/table';
 import DashboardLayout from '@/components/DashboardLayout';
 import { useTranslation } from '@/i18n/index';
-import { panelSettingsApi, groupApi, headscaleConfigApi } from '@/api';
-import api from '@/lib/request';
+import { panelSettingsApi, groupApi, headscaleConfigApi, setupApi } from '@/api';
 import type { HeadscaleConfig } from '@/api/headscale-config.types';
 import { loadConnectionSettingsData, loadOIDCSettingsData } from '@/lib/page-data';
 import { useRequest } from 'ahooks';
@@ -347,7 +346,7 @@ export default function Settings() {
     try {
       const effectiveAddr = grpcAddr.trim() || undefined;
       const effectiveKey = apiKeyInput.trim() || undefined;
-      const data: any = await api.post('/setup/connectivity-check', {
+      const data = await setupApi.connectivityCheck({
         headscale_grpc_addr: effectiveAddr,
         api_key: effectiveKey,
         strict_api: !!effectiveKey,

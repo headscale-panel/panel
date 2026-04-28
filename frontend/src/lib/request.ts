@@ -20,16 +20,40 @@ export type RespType<T = any> = {
 };
 
 export type RespPage<T = any> = {
+  list: Array<T>;
   page: number;
-  pageSize: number;
-  pageCount: number;
+  page_size: number;
+  page_count: number;
   total: number;
-  records: Array<T>;
 };
+
+type UnwrapResp<T> = T extends RespType<infer U> ? U : T;
 
 enum RESP_CODE {
   SUCCESS = 0,
 }
+
+// ─── Setup header state ─────────────────────────────────────────────────────
+
+interface SetupTokens {
+  bootstrapToken: string;
+  initToken: string;
+}
+
+let setupTokens: SetupTokens = { bootstrapToken: '', initToken: '' };
+
+export function setSetupTokens(tokens: Partial<SetupTokens>) {
+  setupTokens = { ...setupTokens, ...tokens };
+}
+
+export function getSetupTokens(): SetupTokens {
+  return setupTokens;
+}
+
+/** URLs that should carry setup headers instead of auth headers. */
+const SETUP_HEADER_URLS = ['/setup/'];
+
+// ─── Custom Axios config interfaces ────────────────────────────────────────
 
 interface AxiosRequestConfigCustom extends AxiosRequestConfig {
   ignoreAuth?: boolean;
@@ -83,42 +107,6 @@ function getResponseErrorMessage(response?: AxiosResponse<RespType>) {
   return response.data?.msg || t.common.errors.requestFailed;
 }
 
-function showHttpErrorMessage(error: AxiosError<RespType>, isSetupRequest: boolean) {
-  if (isSetupRequest) {
-    return;
-  }
-
-  const t = getTranslations();
-  const status = error.response?.status;
-
-  if (status === 401) {
-    handleUnauthorized();
-    return;
-  }
-
-  if (status === 403) {
-    message.error(error.response?.data?.msg || t.common.errors.forbidden);
-    return;
-  }
-
-  if (status && status >= 500) {
-    message.error(error.response?.data?.msg || t.common.errors.serverError);
-    return;
-  }
-
-  if (error.response) {
-    message.error(getResponseErrorMessage(error.response));
-    return;
-  }
-
-  if (error.request) {
-    message.error(t.common.errors.networkError);
-    return;
-  }
-
-  message.error(error.message || t.common.errors.requestFailed);
-}
-
 const handleUnauthorized = () => {
   if (unauthorizedHandler) {
     unauthorizedHandler();
@@ -126,7 +114,11 @@ const handleUnauthorized = () => {
   redirectToLoginWithNotice('sessionExpired');
 };
 
-const createAxiosInstance = (options?: AxiosCreateConfigCustom): AxiosInstance => {
+/**
+ * 创建默认 Axios 实例
+ * @param options 拦截器 Handler 配置
+ */
+const createAxiosInstance = (options?: AxiosCreateConfigCustom) => {
   const defaultConfig = {
     baseURL,
     timeout: 30000,
@@ -145,24 +137,19 @@ const createAxiosInstance = (options?: AxiosCreateConfigCustom): AxiosInstance =
 
   axiosInstance = axios.create({ ...defaultConfig, ...restOptions });
 
+  // 默认成功 Handler：http 200 且 code 为 0
   const defaultSuccessHandler = (response: AxiosResponse<RespType>) => {
     return response.status === 200 && response.data?.code === RESP_CODE.SUCCESS;
   };
 
+  // 默认错误消息 Handler
   const defaultErrorMessageHandler = (response: AxiosResponse<RespType>) => getResponseErrorMessage(response);
 
   const successHandler = originalSuccessHandler || defaultSuccessHandler;
   const errorMessageHandler = originalErrorMessageHandler || defaultErrorMessageHandler;
 
+  // 默认请求拦截器，不做任何处理
   const defaultRequestInterceptor: RequestInterceptor = (configs) => {
-    if (configs.ignoreAuth) {
-      return configs;
-    }
-
-    const token = getAuthToken();
-    if (!isEmpty(token)) {
-      configs.headers.Authorization = `Bearer ${token}`;
-    }
     return configs;
   };
 
@@ -186,19 +173,14 @@ const createAxiosInstance = (options?: AxiosCreateConfigCustom): AxiosInstance =
     axiosInstance.interceptors.request.use(defaultRequestInterceptor, requestInterceptorErrorHandler);
   }
 
+  // 默认响应拦截器：根据 successHandler 判断成功/失败
   const defaultResponseInterceptor: ResponseInterceptor<RespType> = (response) => {
+    const { config, request } = response;
     if (successHandler(response)) {
       return Promise.resolve(response);
     }
-
-    const isSetupRequest = response.config?.url?.includes('/setup/');
-    const messageText = errorMessageHandler(response);
-
-    if (!isSetupRequest) {
-      message.error(messageText);
-    }
-
-    const error = new AxiosError(messageText, undefined, response.config, response.request, response);
+    const msg = errorMessageHandler(response);
+    const error = new AxiosError(msg, undefined, config, request, response);
     return Promise.reject(error);
   };
 
@@ -211,20 +193,88 @@ const createAxiosInstance = (options?: AxiosCreateConfigCustom): AxiosInstance =
     axiosInstance.interceptors.response.use(defaultResponseInterceptor, responseInterceptorErrorHandler);
   }
 
-  axiosInstance.interceptors.response.use(
-    (response) => response.data?.data,
-    (error: AxiosError<RespType>) => {
-      const isSetupRequest = error.config?.url?.includes('/setup/');
-
-      showHttpErrorMessage(error, Boolean(isSetupRequest));
-
+  const requestHandler = async <T = any>(
+    configs: AxiosRequestConfigCustom,
+  ): Promise<UnwrapResp<T>> => {
+    try {
+      const result = await axiosInstance(configs);
+      return result as any;
+    } catch (err) {
+      const error = err as AxiosError<RespType>;
       return Promise.reject(error);
-    },
-  );
+    }
+  };
 
-  return axiosInstance;
+  return requestHandler;
 };
 
-const request = createAxiosInstance();
+/**
+ * 配置自定义 成功/错误状态 Handler，拦截器 Handler
+ */
+const defaultRequest = createAxiosInstance({
+  requestInterceptorHandler: () => {
+    const authAndSetupInterceptor: RequestInterceptor = async (configs) => {
+      const isSetupRequest = SETUP_HEADER_URLS.some((url) => configs.url?.startsWith(url));
 
-export default request;
+      if (isSetupRequest) {
+        const tokens = getSetupTokens();
+        if (tokens.bootstrapToken) {
+          configs.headers['X-Setup-Bootstrap-Token'] = tokens.bootstrapToken;
+        }
+        if (tokens.initToken) {
+          configs.headers['X-Setup-Init-Token'] = tokens.initToken;
+        }
+        return configs;
+      }
+
+      if (configs.ignoreAuth) {
+        return configs;
+      }
+
+      const token = getAuthToken();
+      if (!isEmpty(token)) {
+        configs.headers.Authorization = `Bearer ${token}`;
+      }
+      return configs;
+    };
+    return [authAndSetupInterceptor];
+  },
+  responseInterceptorHandler: (defaultInterceptor) => {
+    // 从 RespType 中提取 data 字段
+    const unwrapInterceptor: ResponseInterceptor = (response) => {
+      return response.data?.data;
+    };
+    return [defaultInterceptor, unwrapInterceptor];
+  },
+  responseInterceptorErrorHandler: (error) => {
+    const status = error.response?.status;
+    const isSetupRequest = error.config?.url?.includes('/setup/');
+    const t = getTranslations();
+
+    if (status === 401) {
+      if (!isSetupRequest) {
+        handleUnauthorized();
+      }
+    } else if (status === 403) {
+      if (!isSetupRequest) {
+        message.error(error.response?.data?.msg || t.common.errors.forbidden);
+      }
+    } else if (status && status >= 500) {
+      if (!isSetupRequest) {
+        message.error(error.response?.data?.msg || t.common.errors.serverError);
+      }
+    } else if (error.response) {
+      if (!isSetupRequest) {
+        message.error(getResponseErrorMessage(error.response));
+      }
+    } else if (error.request) {
+      message.error(t.common.errors.networkError);
+    } else {
+      message.error(error.message || t.common.errors.requestFailed);
+    }
+
+    return Promise.reject(error);
+  },
+});
+
+export default defaultRequest;

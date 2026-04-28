@@ -14,3 +14,4 @@ export * from './resource';
 export * from './route';
 export * from './status';
 export * from './system-user';
+export * from './setup';

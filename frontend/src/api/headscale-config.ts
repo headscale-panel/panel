@@ -1,6 +1,5 @@
-import request from '@/lib/request';
+import request, { RespType } from '@/lib/request';
 import type {
-  HeadscaleConfig,
   GetConfigRes,
   UpdateConfigReq,
   PreviewConfigReq,
@@ -9,11 +8,15 @@ import type {
 
 export const headscaleConfigApi = {
   get: () =>
-    request.get<any, GetConfigRes>('/headscale/config'),
+    request<RespType<GetConfigRes>>({ url: '/headscale/config', method: 'GET' }),
 
   update: (req: UpdateConfigReq) =>
-    request.put<any, void>('/headscale/config', req),
+    request<RespType<void>>({ url: '/headscale/config', method: 'PUT', data: req }),
 
   preview: (req: PreviewConfigReq) =>
-    request.post<any, PreviewConfigRes>('/headscale/config/preview', req),
+    request<RespType<PreviewConfigRes>>({
+      url: '/headscale/config/preview',
+      method: 'POST',
+      data: req,
+    }),
 };

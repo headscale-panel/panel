@@ -1,26 +1,23 @@
-import request from '@/lib/request';
+import request, { RespType, RespPage } from '@/lib/request';
+import type { HeadscaleMachine } from './entities';
 import type {
   ListDevicesReq,
-  ListDevicesRes,
   GetDeviceReq,
   GetDeviceRes,
   RenameDeviceReq,
-  RenameDeviceRes,
   DeleteDeviceReq,
-  DeleteDeviceRes,
   ExpireDeviceReq,
-  ExpireDeviceRes,
   SetDeviceTagsReq,
-  SetDeviceTagsRes,
   GetDeviceRoutesReq,
   GetDeviceRoutesRes,
   RegisterNodeReq,
-  RegisterNodeRes,
 } from './device.types';
 
 export const deviceApi = {
   list: (req?: ListDevicesReq) =>
-    request.get<any, ListDevicesRes>('/headscale/machines', {
+    request<RespType<RespPage<HeadscaleMachine>>>({
+      url: '/headscale/machines',
+      method: 'GET',
       params: {
         page: req?.page || 1,
         page_size: req?.pageSize || 10,
@@ -29,11 +26,43 @@ export const deviceApi = {
         status: req?.status,
       },
     }),
-  get: (req: GetDeviceReq) => request.get<any, GetDeviceRes>(`/headscale/machines/${req.id}`),
-  rename: (req: RenameDeviceReq) => request.put<any, RenameDeviceRes>(`/headscale/machines/${req.id}/rename`, { name: req.name }),
-  delete: (req: DeleteDeviceReq) => request.delete<any, DeleteDeviceRes>(`/headscale/machines/${req.id}`),
-  expire: (req: ExpireDeviceReq) => request.post<any, ExpireDeviceRes>(`/headscale/machines/${req.id}/expire`),
-  setTags: (req: SetDeviceTagsReq) => request.put<any, SetDeviceTagsRes>(`/headscale/machines/${req.id}/tags`, { tags: req.tags }),
-  getRoutes: (req: GetDeviceRoutesReq) => request.get<any, GetDeviceRoutesRes>(`/headscale/machines/${req.id}/routes`),
-  registerNode: (req: RegisterNodeReq) => request.post<any, RegisterNodeRes>('/headscale/machines/register', req),
+
+  get: (req: GetDeviceReq) =>
+    request<RespType<GetDeviceRes>>({ url: `/headscale/machines/${req.id}`, method: 'GET' }),
+
+  rename: (req: RenameDeviceReq) =>
+    request<RespType<HeadscaleMachine>>({
+      url: `/headscale/machines/${req.id}/rename`,
+      method: 'PUT',
+      data: { name: req.name },
+    }),
+
+  delete: (req: DeleteDeviceReq) =>
+    request<RespType<void>>({ url: `/headscale/machines/${req.id}`, method: 'DELETE' }),
+
+  expire: (req: ExpireDeviceReq) =>
+    request<RespType<HeadscaleMachine>>({
+      url: `/headscale/machines/${req.id}/expire`,
+      method: 'POST',
+    }),
+
+  setTags: (req: SetDeviceTagsReq) =>
+    request<RespType<HeadscaleMachine>>({
+      url: `/headscale/machines/${req.id}/tags`,
+      method: 'PUT',
+      data: { tags: req.tags },
+    }),
+
+  getRoutes: (req: GetDeviceRoutesReq) =>
+    request<RespType<GetDeviceRoutesRes>>({
+      url: `/headscale/machines/${req.id}/routes`,
+      method: 'GET',
+    }),
+
+  registerNode: (req: RegisterNodeReq) =>
+    request<RespType<HeadscaleMachine>>({
+      url: '/headscale/machines/register',
+      method: 'POST',
+      data: req,
+    }),
 };

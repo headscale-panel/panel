@@ -1,7 +1,7 @@
-import request from '@/lib/request';
+import request, { RespType, RespPage } from '@/lib/request';
+import type { PanelAccountListItem } from './panel-account.types';
 import type {
   ListPanelAccountsReq,
-  ListPanelAccountsRes,
   PanelAccountDetail,
   CreatePanelAccountReq,
   UpdatePanelAccountReq,
@@ -16,7 +16,9 @@ import type {
 
 export const panelAccountApi = {
   list: (req?: ListPanelAccountsReq) =>
-    request.get<any, ListPanelAccountsRes>('/panel-accounts', {
+    request<RespType<RespPage<PanelAccountListItem>>>({
+      url: '/panel-accounts',
+      method: 'GET',
       params: {
         page: req?.page || 1,
         page_size: req?.pageSize || 10,
@@ -28,34 +30,53 @@ export const panelAccountApi = {
     }),
 
   getDetail: (id: number) =>
-    request.get<any, PanelAccountDetail>(`/panel-accounts/${id}`),
+    request<RespType<PanelAccountDetail>>({
+      url: `/panel-accounts/${id}`,
+      method: 'GET',
+    }),
 
   create: (req: CreatePanelAccountReq) =>
-    request.post<any, void>('/panel-accounts', req),
+    request<RespType<void>>({ url: '/panel-accounts', method: 'POST', data: req }),
 
   update: (id: number, req: UpdatePanelAccountReq) =>
-    request.put<any, void>(`/panel-accounts/${id}`, req),
+    request<RespType<void>>({ url: `/panel-accounts/${id}`, method: 'PUT', data: req }),
 
   setStatus: (id: number, req: SetStatusReq) =>
-    request.put<any, void>(`/panel-accounts/${id}/status`, req),
+    request<RespType<void>>({ url: `/panel-accounts/${id}/status`, method: 'PUT', data: req }),
 
   delete: (id: number) =>
-    request.delete<any, void>(`/panel-accounts/${id}`),
+    request<RespType<void>>({ url: `/panel-accounts/${id}`, method: 'DELETE' }),
 
   getLoginIdentities: (id: number) =>
-    request.get<any, LoginIdentities>(`/panel-accounts/${id}/login-identities`),
+    request<RespType<LoginIdentities>>({
+      url: `/panel-accounts/${id}/login-identities`,
+      method: 'GET',
+    }),
 
   getNetworkBindings: (id: number) =>
-    request.get<any, NetworkBinding[]>(`/panel-accounts/${id}/network-bindings`),
+    request<RespType<NetworkBinding[]>>({
+      url: `/panel-accounts/${id}/network-bindings`,
+      method: 'GET',
+    }),
 
   updateNetworkBindings: (id: number, req: UpdateNetworkBindingsReq) =>
-    request.put<any, void>(`/panel-accounts/${id}/network-bindings`, req),
+    request<RespType<void>>({
+      url: `/panel-accounts/${id}/network-bindings`,
+      method: 'PUT',
+      data: req,
+    }),
 
   setPrimaryBinding: (id: number, req: SetPrimaryBindingReq) =>
-    request.put<any, void>(`/panel-accounts/${id}/primary-binding`, req),
+    request<RespType<void>>({
+      url: `/panel-accounts/${id}/primary-binding`,
+      method: 'PUT',
+      data: req,
+    }),
 
   listAvailableNetworkIdentities: (req?: ListAvailableNetworkIdentitiesReq) =>
-    request.get<any, NetworkIdentityItem[]>('/network-identities/available', {
+    request<RespType<NetworkIdentityItem[]>>({
+      url: '/network-identities/available',
+      method: 'GET',
       params: {
         search: req?.search || undefined,
         exclude_account_id: req?.exclude_account_id || undefined,
@@ -63,5 +84,8 @@ export const panelAccountApi = {
     }),
 
   resetTOTP: (id: number) =>
-    request.put<any, void>(`/panel-accounts/${id}/reset-totp`),
+    request<RespType<void>>({
+      url: `/panel-accounts/${id}/reset-totp`,
+      method: 'PUT',
+    }),
 };

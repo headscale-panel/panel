@@ -1,35 +1,43 @@
-import request from '@/lib/request';
+import request, { RespType, RespPage } from '@/lib/request';
+import type { Group } from './entities';
 import type {
   ListGroupsReq,
-  ListGroupsRes,
   CreateGroupReq,
   CreateGroupRes,
   UpdateGroupReq,
-  UpdateGroupRes,
   DeleteGroupReq,
-  DeleteGroupRes,
-  GetPermissionsReq,
   GetPermissionsRes,
   UpdateGroupPermissionsReq,
-  UpdateGroupPermissionsRes,
 } from './group.types';
 
 export const groupApi = {
   list: (req?: ListGroupsReq) =>
-    request.get<any, ListGroupsRes>('/system/groups', {
+    request<RespType<RespPage<Group>>>({
+      url: '/system/groups',
+      method: 'GET',
       params: {
         page: req?.page || 1,
         page_size: req?.pageSize || 10,
         all: req?.all ? 'true' : undefined,
       },
     }),
-  create: (req: CreateGroupReq) => request.post<any, CreateGroupRes>('/system/groups', req),
-  update: (req: UpdateGroupReq) => request.put<any, UpdateGroupRes>('/system/groups', req),
-  delete: (req: DeleteGroupReq) => request.delete<any, DeleteGroupRes>('/system/groups', { data: req }),
-  getPermissions: (_req?: GetPermissionsReq) => request.get<any, GetPermissionsRes>('/system/permissions'),
+
+  create: (req: CreateGroupReq) =>
+    request<RespType<CreateGroupRes>>({ url: '/system/groups', method: 'POST', data: req }),
+
+  update: (req: UpdateGroupReq) =>
+    request<RespType<void>>({ url: '/system/groups', method: 'PUT', data: req }),
+
+  delete: (req: DeleteGroupReq) =>
+    request<RespType<void>>({ url: '/system/groups', method: 'DELETE', data: req }),
+
+  getPermissions: () =>
+    request<RespType<GetPermissionsRes>>({ url: '/system/permissions', method: 'GET' }),
+
   updatePermissions: (req: UpdateGroupPermissionsReq) =>
-    request.put<any, UpdateGroupPermissionsRes>('/system/groups/permissions', {
-      id: req.id,
-      permission_ids: req.permission_ids,
+    request<RespType<void>>({
+      url: '/system/groups/permissions',
+      method: 'PUT',
+      data: { id: req.id, permission_ids: req.permission_ids },
     }),
 };

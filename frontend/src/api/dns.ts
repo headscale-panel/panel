@@ -1,7 +1,7 @@
-import request from '@/lib/request';
+import request, { RespType, RespPage } from '@/lib/request';
+import type { DNSRecord } from './entities';
 import type {
   ListDnsReq,
-  ListDnsRes,
   GetDnsReq,
   GetDnsRes,
   CreateDnsReq,
@@ -9,18 +9,15 @@ import type {
   UpdateDnsReq,
   UpdateDnsRes,
   DeleteDnsReq,
-  DeleteDnsRes,
-  SyncDnsReq,
   SyncDnsRes,
-  ImportDnsReq,
-  ImportDnsRes,
-  GetDnsFileReq,
   GetDnsFileRes,
 } from './dns.types';
 
 export const dnsApi = {
   list: (req?: ListDnsReq) =>
-    request.get<any, ListDnsRes>('/dns/records', {
+    request<RespType<RespPage<DNSRecord>>>({
+      url: '/dns/records',
+      method: 'GET',
       params: {
         page: req?.page || 1,
         page_size: req?.pageSize || 10,
@@ -29,11 +26,25 @@ export const dnsApi = {
         type: req?.type,
       },
     }),
-  get: (req: GetDnsReq) => request.get<any, GetDnsRes>(`/dns/records/${req.id}`),
-  create: (req: CreateDnsReq) => request.post<any, CreateDnsRes>('/dns/records', req),
-  update: (req: UpdateDnsReq) => request.put<any, UpdateDnsRes>('/dns/records', req),
-  delete: (req: DeleteDnsReq) => request.delete<any, DeleteDnsRes>('/dns/records', { params: req }),
-  sync: (_req?: SyncDnsReq) => request.post<any, SyncDnsRes>('/dns/sync'),
-  import: (_req?: ImportDnsReq) => request.post<any, ImportDnsRes>('/dns/import'),
-  getFile: (_req?: GetDnsFileReq) => request.get<any, GetDnsFileRes>('/dns/file'),
+
+  get: (req: GetDnsReq) =>
+    request<RespType<GetDnsRes>>({ url: `/dns/records/${req.id}`, method: 'GET' }),
+
+  create: (req: CreateDnsReq) =>
+    request<RespType<CreateDnsRes>>({ url: '/dns/records', method: 'POST', data: req }),
+
+  update: (req: UpdateDnsReq) =>
+    request<RespType<UpdateDnsRes>>({ url: '/dns/records', method: 'PUT', data: req }),
+
+  delete: (req: DeleteDnsReq) =>
+    request<RespType<void>>({ url: '/dns/records', method: 'DELETE', params: req }),
+
+  sync: () =>
+    request<RespType<SyncDnsRes>>({ url: '/dns/sync', method: 'POST' }),
+
+  import: () =>
+    request<RespType<void>>({ url: '/dns/import', method: 'POST' }),
+
+  getFile: () =>
+    request<RespType<GetDnsFileRes>>({ url: '/dns/file', method: 'GET' }),
 };

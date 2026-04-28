@@ -1,9 +1,15 @@
-import request from '@/lib/request';
-import type { ListRoutesReq, ListRoutesRes, ToggleRouteReq, ToggleRouteRes } from './route.types';
+import request, { RespType, RespPage } from '@/lib/request';
+import type { RouteItem } from './route.types';
+import type {
+  ListRoutesReq,
+  ToggleRouteReq,
+} from './route.types';
 
 export const routeApi = {
   list: (req?: ListRoutesReq) =>
-    request.get<any, ListRoutesRes>('/routes', {
+    request<RespType<RespPage<RouteItem>>>({
+      url: '/routes',
+      method: 'GET',
       params: {
         page: req?.page || 1,
         page_size: req?.pageSize || 10,
@@ -12,6 +18,18 @@ export const routeApi = {
         machine_id: req?.machine_id,
       },
     }),
-  enable: (req: ToggleRouteReq) => request.post<any, ToggleRouteRes>('/routes/enable', { machine_id: req.machine_id, destination: req.destination }),
-  disable: (req: ToggleRouteReq) => request.post<any, ToggleRouteRes>('/routes/disable', { machine_id: req.machine_id, destination: req.destination }),
+
+  enable: (req: ToggleRouteReq) =>
+    request<RespType<void>>({
+      url: '/routes/enable',
+      method: 'POST',
+      data: { machine_id: req.machine_id, destination: req.destination },
+    }),
+
+  disable: (req: ToggleRouteReq) =>
+    request<RespType<void>>({
+      url: '/routes/disable',
+      method: 'POST',
+      data: { machine_id: req.machine_id, destination: req.destination },
+    }),
 };

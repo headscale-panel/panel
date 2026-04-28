@@ -1,4 +1,4 @@
-import request from '@/lib/request';
+import request, { RespType } from '@/lib/request';
 import type {
   GetOnlineDurationReq,
   GetOnlineDurationRes,
@@ -14,7 +14,9 @@ import type {
 
 export const metricsApi = {
   getOnlineDuration: (req?: GetOnlineDurationReq) =>
-    request.get<any, GetOnlineDurationRes>('/metrics/online-duration', {
+    request<RespType<GetOnlineDurationRes>>({
+      url: '/metrics/online-duration',
+      method: 'GET',
       params: {
         user_id: req?.user_id,
         machine_id: req?.machine_id,
@@ -24,7 +26,9 @@ export const metricsApi = {
     }),
 
   getOnlineDurationStats: (req?: GetOnlineDurationStatsReq) =>
-    request.get<any, GetOnlineDurationStatsRes>('/metrics/online-duration-stats', {
+    request<RespType<GetOnlineDurationStatsRes>>({
+      url: '/metrics/online-duration-stats',
+      method: 'GET',
       params: {
         start: req?.start,
         end: req?.end,
@@ -32,10 +36,15 @@ export const metricsApi = {
     }),
 
   getDeviceStatus: () =>
-    request.get<any, GetDeviceStatusRes>('/metrics/device-status'),
+    request<RespType<GetDeviceStatusRes>>({
+      url: '/metrics/device-status',
+      method: 'GET',
+    }),
 
   getDeviceStatusHistory: (req: GetDeviceStatusHistoryReq) =>
-    request.get<any, GetDeviceStatusHistoryRes>('/metrics/device-status-history', {
+    request<RespType<GetDeviceStatusHistoryRes>>({
+      url: '/metrics/device-status-history',
+      method: 'GET',
       params: {
         machine_id: req.machine_id,
         start: req.start,
@@ -44,7 +53,9 @@ export const metricsApi = {
     }),
 
   getTrafficStats: (req?: GetTrafficStatsReq) =>
-    request.get<any, GetTrafficStatsRes>('/metrics/traffic', {
+    request<RespType<GetTrafficStatsRes>>({
+      url: '/metrics/traffic',
+      method: 'GET',
       params: {
         machine_id: req?.machine_id,
         start: req?.start,
@@ -53,5 +64,8 @@ export const metricsApi = {
     }),
 
   getInfluxDBStatus: () =>
-    request.get<any, GetInfluxDBStatusRes>('/metrics/influxdb-status'),
+    request<RespType<GetInfluxDBStatusRes>>({
+      url: '/metrics/influxdb-status',
+      method: 'GET',
+    }),
 };

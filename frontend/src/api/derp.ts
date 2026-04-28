@@ -1,4 +1,4 @@
-import request from '@/lib/request';
+import request, { RespType } from '@/lib/request';
 import type {
   GetDERPMapRes,
   DERPMap,
@@ -8,32 +8,52 @@ import type {
 
 export const derpApi = {
   /** GET /headscale/derp — retrieve the full DERP map */
-  get: () => request.get<any, GetDERPMapRes>('/headscale/derp'),
+  get: () =>
+    request<RespType<GetDERPMapRes>>({ url: '/headscale/derp', method: 'GET' }),
 
   /** PUT /headscale/derp — replace the entire DERP map */
-  update: (derpMap: DERPMap) => request.put<any, void>('/headscale/derp', derpMap),
+  update: (derpMap: DERPMap) =>
+    request<RespType<void>>({ url: '/headscale/derp', method: 'PUT', data: derpMap }),
 
   /** POST /headscale/derp/regions — add a new region */
   addRegion: (region: DERPRegion) =>
-    request.post<any, void>('/headscale/derp/regions', region),
+    request<RespType<void>>({ url: '/headscale/derp/regions', method: 'POST', data: region }),
 
   /** PUT /headscale/derp/regions/:regionId — update an existing region */
   updateRegion: (regionId: number, region: DERPRegion) =>
-    request.put<any, void>(`/headscale/derp/regions/${regionId}`, region),
+    request<RespType<void>>({
+      url: `/headscale/derp/regions/${regionId}`,
+      method: 'PUT',
+      data: region,
+    }),
 
   /** DELETE /headscale/derp/regions/:regionId — delete a region */
   deleteRegion: (regionId: number) =>
-    request.delete<any, void>(`/headscale/derp/regions/${regionId}`),
+    request<RespType<void>>({
+      url: `/headscale/derp/regions/${regionId}`,
+      method: 'DELETE',
+    }),
 
   /** POST /headscale/derp/regions/:regionId/nodes — add a node to a region */
   addNode: (regionId: number, node: DERPNode) =>
-    request.post<any, void>(`/headscale/derp/regions/${regionId}/nodes`, node),
+    request<RespType<void>>({
+      url: `/headscale/derp/regions/${regionId}/nodes`,
+      method: 'POST',
+      data: node,
+    }),
 
   /** PUT /headscale/derp/regions/:regionId/nodes/:nodeIndex — update a node */
   updateNode: (regionId: number, nodeIndex: number, node: DERPNode) =>
-    request.put<any, void>(`/headscale/derp/regions/${regionId}/nodes/${nodeIndex}`, node),
+    request<RespType<void>>({
+      url: `/headscale/derp/regions/${regionId}/nodes/${nodeIndex}`,
+      method: 'PUT',
+      data: node,
+    }),
 
   /** DELETE /headscale/derp/regions/:regionId/nodes/:nodeIndex — delete a node */
   deleteNode: (regionId: number, nodeIndex: number) =>
-    request.delete<any, void>(`/headscale/derp/regions/${regionId}/nodes/${nodeIndex}`),
+    request<RespType<void>>({
+      url: `/headscale/derp/regions/${regionId}/nodes/${nodeIndex}`,
+      method: 'DELETE',
+    }),
 };
