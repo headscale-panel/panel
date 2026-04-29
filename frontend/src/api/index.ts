@@ -12,6 +12,6 @@ export * from './panel-account';
 export * from './panel-settings';
 export * from './resource';
 export * from './route';
+export * from './setup';
 export * from './status';
 export * from './system-user';
-export * from './setup';

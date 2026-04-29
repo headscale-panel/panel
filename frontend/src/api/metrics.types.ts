@@ -64,4 +64,3 @@ export interface InfluxDBStatus {
 }
 
 export type GetInfluxDBStatusRes = InfluxDBStatus;
-

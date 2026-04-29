@@ -1,10 +1,11 @@
-import request, { RespType } from '@/lib/request';
 import type {
   GetConfigRes,
-  UpdateConfigReq,
   PreviewConfigReq,
   PreviewConfigRes,
+  UpdateConfigReq,
 } from './headscale-config.types';
+import type { RespType } from '@/lib/request';
+import request from '@/lib/request';
 
 export const headscaleConfigApi = {
   get: () =>

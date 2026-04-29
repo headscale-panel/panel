@@ -1,4 +1,4 @@
-import type { HeadscaleUser, HeadscaleAuthKey } from './entities';
+import type { HeadscaleAuthKey, HeadscaleUser } from './entities';
 
 export interface ListHeadscaleUsersReq {
   page?: number;
@@ -53,4 +53,3 @@ export interface ExpirePreAuthKeyReq {
   key: string;
 }
 export interface ExpirePreAuthKeyRes {}
-

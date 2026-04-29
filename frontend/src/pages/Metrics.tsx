@@ -1,9 +1,7 @@
-import { Card, Select, Typography, theme } from 'antd';
-import { ClockCircleOutlined, DashboardOutlined, CloudServerOutlined, ExclamationCircleOutlined } from '@ant-design/icons';
-import DashboardLayout from '@/components/DashboardLayout';
-import PageHeaderStatCards from '@/components/PageHeaderStatCards';
-import { useState, useMemo } from 'react';
+import { ClockCircleOutlined, CloudServerOutlined, DashboardOutlined, ExclamationCircleOutlined } from '@ant-design/icons';
 import { useRequest } from 'ahooks';
+import { Card, message, Select, theme, Typography } from 'antd';
+import { useState } from 'react';
 import {
   Bar,
   BarChart,
@@ -18,7 +16,8 @@ import {
   YAxis,
 } from 'recharts';
 import { metricsApi } from '@/api';
-import { message } from 'antd';
+import DashboardLayout from '@/components/DashboardLayout';
+import PageHeaderStatCards from '@/components/PageHeaderStatCards';
 import { useTranslation } from '@/i18n/index';
 
 const { Title, Text } = Typography;
@@ -36,15 +35,18 @@ export default function Metrics() {
 
         const end = new Date();
         const start = new Date();
-        if (timeRange === '7d') start.setDate(end.getDate() - 7);
-        if (timeRange === '30d') start.setDate(end.getDate() - 30);
-        if (timeRange === '90d') start.setDate(end.getDate() - 90);
+        if (timeRange === '7d')
+          start.setDate(end.getDate() - 7);
+        if (timeRange === '30d')
+          start.setDate(end.getDate() - 30);
+        if (timeRange === '90d')
+          start.setDate(end.getDate() - 90);
 
         const formatDate = (d: Date) => d.toISOString().split('T')[0];
 
         const durationStats: any[] = await metricsApi.getOnlineDurationStats({
           start: formatDate(start),
-          end: formatDate(end)
+          end: formatDate(end),
         }).then((r: any) => Array.isArray(r) ? r : r?.data || []).catch(() => []);
 
         const deviceStatus: any[] = await metricsApi.getDeviceStatus().then((r: any) => Array.isArray(r) ? r : r?.data || []).catch(() => []);
@@ -60,7 +62,7 @@ export default function Metrics() {
         ];
 
         const sortedActivity = durationStats
-          .map((d: any) => ({ name: d.machine_name, hours: parseFloat(d.online_hours?.toFixed(1) || 0) }))
+          .map((d: any) => ({ name: d.machine_name, hours: Number.parseFloat(d.online_hours?.toFixed(1) || 0) }))
           .sort((a, b) => b.hours - a.hours)
           .slice(0, 10);
 
@@ -69,10 +71,10 @@ export default function Metrics() {
           activityData: sortedActivity,
           statusData: pieData,
           summary: {
-            avgDuration: parseFloat(avgDuration.toFixed(1)),
+            avgDuration: Number.parseFloat(avgDuration.toFixed(1)),
             totalOnline: onlineCount,
-            totalDevices: deviceStatus.length
-          }
+            totalDevices: deviceStatus.length,
+          },
         };
       } catch (error) {
         console.error(error);
@@ -102,7 +104,11 @@ export default function Metrics() {
             <Title level={4} className="m-0">{t.metrics.title}</Title>
             <Text type="secondary">{t.metrics.description}</Text>
           </div>
-          <Select value={timeRange} onChange={setTimeRange} className="w-45" data-tour-id="metrics-range"
+          <Select
+            value={timeRange}
+            onChange={setTimeRange}
+            className="w-45"
+            data-tour-id="metrics-range"
             options={[
               { value: '7d', label: t.metrics.last7Days },
               { value: '30d', label: t.metrics.last30Days },
@@ -144,46 +150,50 @@ export default function Metrics() {
           {/* Device Activity Bar Chart */}
           <Card title={t.metrics.activeDevicesRanking}>
             <div className="chart-box">
-              {activityData.length > 0 ? (
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={activityData} layout="vertical" margin={{ left: 20 }}>
-                    <CartesianGrid strokeDasharray="3 3" horizontal vertical={false} />
-                    <XAxis type="number" unit="h" />
-                    <YAxis dataKey="name" type="category" width={100} />
-                    <Tooltip contentStyle={{ borderRadius: 8, border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} cursor={{ fill: 'rgba(0,0,0,0.05)' }} />
-                    <Bar dataKey="hours" name={t.metrics.onlineDuration} fill={themeToken.colorPrimary} radius={[0, 4, 4, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              ) : (
-                <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: themeToken.colorTextSecondary }}>
-                  <ExclamationCircleOutlined className="mr-2" />
-                  {t.metrics.noActiveData}
-                </div>
-              )}
+              {activityData.length > 0
+                ? (
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={activityData} layout="vertical" margin={{ left: 20 }}>
+                        <CartesianGrid strokeDasharray="3 3" horizontal vertical={false} />
+                        <XAxis type="number" unit="h" />
+                        <YAxis dataKey="name" type="category" width={100} />
+                        <Tooltip contentStyle={{ borderRadius: 8, border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} cursor={{ fill: 'rgba(0,0,0,0.05)' }} />
+                        <Bar dataKey="hours" name={t.metrics.onlineDuration} fill={themeToken.colorPrimary} radius={[0, 4, 4, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  )
+                : (
+                    <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: themeToken.colorTextSecondary }}>
+                      <ExclamationCircleOutlined className="mr-2" />
+                      {t.metrics.noActiveData}
+                    </div>
+                  )}
             </div>
           </Card>
 
           {/* Device Status Pie Chart */}
           <Card title={t.metrics.deviceStatusDistribution}>
             <div className="chart-box">
-              {statusData.length > 0 && summary.totalDevices > 0 ? (
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie data={statusData} cx="50%" cy="50%" innerRadius={60} outerRadius={80} fill="#8884d8" paddingAngle={5} dataKey="value">
-                      {statusData.map((_entry, index) => (
-                        <Cell key={`cell-${index}`} fill={index === 0 ? '#22c55e' : '#e5e7eb'} />
-                      ))}
-                    </Pie>
-                    <Tooltip />
-                    <Legend verticalAlign="bottom" height={36} />
-                  </PieChart>
-                </ResponsiveContainer>
-              ) : (
-                <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: themeToken.colorTextSecondary }}>
-                  <ExclamationCircleOutlined className="mr-2" />
-                  {t.metrics.noDeviceData}
-                </div>
-              )}
+              {statusData.length > 0 && summary.totalDevices > 0
+                ? (
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie data={statusData} cx="50%" cy="50%" innerRadius={60} outerRadius={80} fill="#8884d8" paddingAngle={5} dataKey="value">
+                          {statusData.map((_entry, index) => (
+                            <Cell key={`cell-${index}`} fill={index === 0 ? '#22c55e' : '#e5e7eb'} />
+                          ))}
+                        </Pie>
+                        <Tooltip />
+                        <Legend verticalAlign="bottom" height={36} />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  )
+                : (
+                    <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: themeToken.colorTextSecondary }}>
+                      <ExclamationCircleOutlined className="mr-2" />
+                      {t.metrics.noDeviceData}
+                    </div>
+                  )}
             </div>
           </Card>
         </div>

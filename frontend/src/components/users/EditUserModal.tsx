@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react';
-import { Input, Modal, Select, Space, Typography, message } from 'antd';
-import { useTranslation } from '@/i18n/index';
-import type { NormalizedHeadscaleUser } from '@/lib/normalizers';
 import type { HeadscaleGroupOption } from './CreateUserModal';
+import type { NormalizedHeadscaleUser } from '@/lib/normalizers';
+import { Input, message, Modal, Select, Space, Typography } from 'antd';
+import { useState } from 'react';
+import { useTranslation } from '@/i18n/index';
 
 const { Text } = Typography;
 
@@ -36,19 +36,21 @@ export default function EditUserModal({
   const [form, setForm] = useState(DEFAULT_FORM);
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
-    if (open && user) {
-      setForm({
-        username: user.headscale_name || user.username,
-        displayName: user.display_name || '',
-        email: user.email || '',
-        groupName: currentGroupName,
-      });
-    }
-  }, [open, user, currentGroupName]);
+  const handleAfterOpenChange = (nextOpen: boolean) => {
+    if (!nextOpen || !user)
+      return;
+
+    setForm({
+      username: user.headscale_name || user.username,
+      displayName: user.display_name || '',
+      email: user.email || '',
+      groupName: currentGroupName,
+    });
+  };
 
   const handleOk = async () => {
-    if (!user) return;
+    if (!user)
+      return;
 
     const newName = form.username.trim();
     const displayName = form.displayName.trim();
@@ -82,6 +84,7 @@ export default function EditUserModal({
       open={open}
       title={t.users.editUserTitle.replace('{username}', user?.headscale_name || user?.username || '')}
       onCancel={onCancel}
+      afterOpenChange={handleAfterOpenChange}
       onOk={handleOk}
       okText={t.users.saveChanges}
       cancelText={t.common.actions.cancel}
@@ -99,7 +102,11 @@ export default function EditUserModal({
           />
         </div>
         <div className="form-grid-row">
-          <Text className="text-right text-13px">{t.users.displayNameLabel} *</Text>
+          <Text className="text-right text-13px">
+            {t.users.displayNameLabel}
+            {' '}
+            *
+          </Text>
           <Input
             value={form.displayName}
             onChange={(e) => setForm({ ...form, displayName: e.target.value })}
@@ -107,7 +114,11 @@ export default function EditUserModal({
           />
         </div>
         <div className="form-grid-row">
-          <Text className="text-right text-13px">{t.users.emailLabel} *</Text>
+          <Text className="text-right text-13px">
+            {t.users.emailLabel}
+            {' '}
+            *
+          </Text>
           <Input
             type="email"
             value={form.email}

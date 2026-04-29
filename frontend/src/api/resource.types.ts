@@ -36,4 +36,3 @@ export interface DeleteResourceReq {
   id: number;
 }
 export interface DeleteResourceRes {}
-

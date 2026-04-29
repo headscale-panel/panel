@@ -1,15 +1,16 @@
-import request, { RespType, RespPage } from '@/lib/request';
-import type { HeadscaleUser, HeadscaleAuthKey } from './entities';
+import type { HeadscaleAuthKey, HeadscaleUser } from './entities';
 import type {
-  ListHeadscaleUsersReq,
   CreateHeadscaleUserReq,
   CreateHeadscaleUserRes,
-  RenameHeadscaleUserReq,
-  DeleteHeadscaleUserReq,
-  GetPreAuthKeysReq,
   CreatePreAuthKeyReq,
+  DeleteHeadscaleUserReq,
   ExpirePreAuthKeyReq,
+  GetPreAuthKeysReq,
+  ListHeadscaleUsersReq,
+  RenameHeadscaleUserReq,
 } from './headscale-user.types';
+import type { RespPage, RespType } from '@/lib/request';
+import request from '@/lib/request';
 
 export const headscaleUserApi = {
   list: (req?: ListHeadscaleUsersReq) =>

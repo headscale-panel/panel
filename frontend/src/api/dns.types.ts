@@ -1,5 +1,5 @@
 import type { DNSRecord } from './entities';
-import { DNSRecordType } from '@/lib/enums';
+import type { DNSRecordType } from '@/lib/enums';
 
 export interface ListDnsReq {
   page?: number;
@@ -56,4 +56,3 @@ export interface ImportDnsRes {
 
 export interface GetDnsFileReq {}
 export type GetDnsFileRes = DNSRecord[];
-

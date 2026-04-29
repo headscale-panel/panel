@@ -1,20 +1,7 @@
-import { useEffect, useState, useCallback } from 'react';
-import {
-  Button,
-  Descriptions,
-  Divider,
-  Drawer,
-  Input,
-  Modal,
-  Select,
-  Space,
-  Spin,
-  Switch,
-  Tabs,
-  Tag,
-  Typography,
-  message,
-} from 'antd';
+import type {
+  PanelAccountDetail,
+} from '@/api/panel-account.types';
+import type { NormalizedGroup } from '@/lib/normalizers';
 import {
   CheckCircleOutlined,
   CloseCircleOutlined,
@@ -26,11 +13,24 @@ import {
   TeamOutlined,
 } from '@ant-design/icons';
 import { useRequest } from 'ahooks';
-import { panelAccountApi, groupApi } from '@/api';
-import type {
-  PanelAccountDetail,
-} from '@/api/panel-account.types';
-import type { NormalizedGroup } from '@/lib/normalizers';
+import {
+  Button,
+  Descriptions,
+  Divider,
+  Drawer,
+  Input,
+  message,
+  Modal,
+  Select,
+  Space,
+  Spin,
+  Switch,
+  Tabs,
+  Tag,
+  Typography,
+} from 'antd';
+import { useCallback, useEffect, useState } from 'react';
+import { groupApi, panelAccountApi } from '@/api';
 import { useTranslation } from '@/i18n/index';
 import BindingTransfer from './BindingTransfer';
 
@@ -74,10 +74,15 @@ export default function AccountDetailDrawer({ accountId, open, onClose, onRefres
   useEffect(() => {
     if (open && accountId) {
       loadDetail();
-      setActiveTab('basic');
-      setEditingBasic(false);
     }
   }, [open, accountId]);
+
+  const handleAfterOpenChange = useCallback((nextOpen: boolean) => {
+    if (!nextOpen)
+      return;
+    setActiveTab('basic');
+    setEditingBasic(false);
+  }, []);
 
   const handleBindingsUpdated = useCallback(() => {
     loadDetail();
@@ -96,7 +101,8 @@ export default function AccountDetailDrawer({ accountId, open, onClose, onRefres
   }, []);
 
   const handleSaveBasic = useCallback(async () => {
-    if (!detail) return;
+    if (!detail)
+      return;
     setSavingBasic(true);
     try {
       await panelAccountApi.update(detail.id, {
@@ -118,7 +124,8 @@ export default function AccountDetailDrawer({ accountId, open, onClose, onRefres
 
   // ── Toggle account status ─────────────────────────────
   const handleToggleStatus = useCallback(() => {
-    if (!detail) return;
+    if (!detail)
+      return;
     const willDisable = detail.is_active;
     const doToggle = async () => {
       try {
@@ -143,7 +150,8 @@ export default function AccountDetailDrawer({ accountId, open, onClose, onRefres
 
   // ── Delete account ────────────────────────────────────
   const handleDelete = useCallback(() => {
-    if (!detail) return;
+    if (!detail)
+      return;
     Modal.confirm({
       title: pa.actions.delete,
       content: pa.confirm.delete.replace('{username}', detail.username),
@@ -174,11 +182,13 @@ export default function AccountDetailDrawer({ accountId, open, onClose, onRefres
         <Descriptions.Item label={pa.detail.basic.displayName}>{d.display_name || '-'}</Descriptions.Item>
         <Descriptions.Item label={pa.detail.basic.email}>{d.email || '-'}</Descriptions.Item>
         <Descriptions.Item label={pa.detail.basic.status}>
-          {d.is_active ? (
-            <Tag color="success" icon={<CheckCircleOutlined />}>{pa.statusActive}</Tag>
-          ) : (
-            <Tag color="error" icon={<CloseCircleOutlined />}>{pa.statusInactive}</Tag>
-          )}
+          {d.is_active
+            ? (
+                <Tag color="success" icon={<CheckCircleOutlined />}>{pa.statusActive}</Tag>
+              )
+            : (
+                <Tag color="error" icon={<CloseCircleOutlined />}>{pa.statusInactive}</Tag>
+              )}
         </Descriptions.Item>
         <Descriptions.Item label={pa.detail.role.currentGroup}>
           {d.group ? <Tag icon={<TeamOutlined />}>{d.group.name}</Tag> : <Text type="secondary">{pa.detail.role.noGroup}</Text>}
@@ -242,7 +252,8 @@ export default function AccountDetailDrawer({ accountId, open, onClose, onRefres
   // ── Tab: Login Identities ──────────────────────────────
   const renderLoginTab = (d: PanelAccountDetail) => {
     const li = d.login_identities;
-    if (!li) return <Text type="secondary">-</Text>;
+    if (!li)
+      return <Text type="secondary">-</Text>;
     return (
       <div className="flex flex-col gap-16px">
         {/* Account status toggle */}
@@ -264,11 +275,13 @@ export default function AccountDetailDrawer({ accountId, open, onClose, onRefres
           <Text strong>{pa.detail.login.localPassword}</Text>
           <Descriptions column={1} size="small" className="mt-8px" bordered>
             <Descriptions.Item label={pa.detail.login.localEnabled}>
-              {li.local?.enabled ? (
-                <Tag color="success">{pa.detail.login.localEnabled}</Tag>
-              ) : (
-                <Tag>{pa.detail.login.localDisabled}</Tag>
-              )}
+              {li.local?.enabled
+                ? (
+                    <Tag color="success">{pa.detail.login.localEnabled}</Tag>
+                  )
+                : (
+                    <Tag>{pa.detail.login.localDisabled}</Tag>
+                  )}
             </Descriptions.Item>
             {li.local?.enabled && (
               <>
@@ -313,11 +326,13 @@ export default function AccountDetailDrawer({ accountId, open, onClose, onRefres
           <Text strong>{pa.detail.login.oidcLogin}</Text>
           <Descriptions column={1} size="small" className="mt-8px" bordered>
             <Descriptions.Item label={pa.detail.login.oidcBound}>
-              {li.oidc?.bound ? (
-                <Tag color="success">{pa.detail.login.oidcBound}</Tag>
-              ) : (
-                <Tag>{pa.detail.login.oidcNotBound}</Tag>
-              )}
+              {li.oidc?.bound
+                ? (
+                    <Tag color="success">{pa.detail.login.oidcBound}</Tag>
+                  )
+                : (
+                    <Tag>{pa.detail.login.oidcNotBound}</Tag>
+                  )}
             </Descriptions.Item>
             {li.oidc?.bound && (
               <>
@@ -359,32 +374,39 @@ export default function AccountDetailDrawer({ accountId, open, onClose, onRefres
     <Drawer
       open={open}
       onClose={onClose}
+      afterOpenChange={handleAfterOpenChange}
       title={detail ? `${pa.detail.title} - ${detail.username}` : pa.detail.title}
       width={640}
       destroyOnHidden
       footer={
-        detail ? (
-          <div className="flex justify-between">
-            <Button
-              icon={detail.is_active ? <StopOutlined /> : <CheckCircleOutlined />}
-              onClick={handleToggleStatus}
-            >
-              {detail.is_active ? pa.actions.disable : pa.actions.enable}
-            </Button>
-            <Button danger icon={<DeleteOutlined />} onClick={handleDelete}>
-              {pa.actions.delete}
-            </Button>
-          </div>
-        ) : null
+        detail
+          ? (
+              <div className="flex justify-between">
+                <Button
+                  icon={detail.is_active ? <StopOutlined /> : <CheckCircleOutlined />}
+                  onClick={handleToggleStatus}
+                >
+                  {detail.is_active ? pa.actions.disable : pa.actions.enable}
+                </Button>
+                <Button danger icon={<DeleteOutlined />} onClick={handleDelete}>
+                  {pa.actions.delete}
+                </Button>
+              </div>
+            )
+          : null
       }
     >
-      {loading ? (
-        <div className="flex items-center justify-center py-64px">
-          <Spin indicator={<LoadingOutlined spin />} />
-        </div>
-      ) : detail ? (
-        <Tabs activeKey={activeTab} onChange={setActiveTab} items={tabs} />
-      ) : null}
+      {loading
+        ? (
+            <div className="flex items-center justify-center py-64px">
+              <Spin indicator={<LoadingOutlined spin />} />
+            </div>
+          )
+        : detail
+          ? (
+              <Tabs activeKey={activeTab} onChange={setActiveTab} items={tabs} />
+            )
+          : null}
     </Drawer>
   );
 }

@@ -1,13 +1,13 @@
-import { useState } from 'react';
-import { useRequest } from 'ahooks';
-import { useTranslation } from '@/i18n/index';
-import { Button, Card, Input, Modal, Table, Tooltip, Space, Typography, message, theme } from 'antd';
-import { EditOutlined, PlusOutlined, ReloadOutlined, SearchOutlined, DeleteOutlined, CloudServerOutlined, GlobalOutlined, ApiOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
+import { ApiOutlined, CloudServerOutlined, DeleteOutlined, EditOutlined, GlobalOutlined, PlusOutlined, ReloadOutlined, SearchOutlined } from '@ant-design/icons';
+import { useRequest } from 'ahooks';
+import { Button, Card, Input, message, Modal, Space, Table, theme, Tooltip, Typography } from 'antd';
+import { useState } from 'react';
+import { resourceApi } from '@/api';
 import DashboardLayout from '@/components/DashboardLayout';
 import PageHeaderStatCards from '@/components/PageHeaderStatCards';
-import { resourceApi } from '@/api';
 import ResourceModal from '@/components/resources/ResourceModal';
+import { useTranslation } from '@/i18n/index';
 
 const { Title, Text } = Typography;
 
@@ -31,12 +31,11 @@ export default function Resources() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingResource, setEditingResource] = useState<Resource | null>(null);
 
-
   const { data: listData, loading, refresh } = useRequest(
     async () => resourceApi.list({ page, pageSize, keyword: searchQuery || undefined }),
     {
       refreshDeps: [page, pageSize, searchQuery],
-      onError: (error: any) => {
+      onError: (_error: any) => {
         message.error(t.resources.loadFailed);
       },
     },
@@ -74,27 +73,45 @@ export default function Resources() {
 
   const columns: ColumnsType<Resource> = [
     {
-      title: t.resources.tableName, dataIndex: 'name', key: 'name',
-      render: (name: string) => <span><CloudServerOutlined style={{ marginRight: 6, color: themeToken.colorTextSecondary }} /><Text strong>{name}</Text></span>,
+      title: t.resources.tableName,
+      dataIndex: 'name',
+      key: 'name',
+      render: (name: string) => (
+        <span>
+          <CloudServerOutlined style={{ marginRight: 6, color: themeToken.colorTextSecondary }} />
+          <Text strong>{name}</Text>
+        </span>
+      ),
     },
     {
-      title: t.resources.tableIp, dataIndex: 'ip_address', key: 'ip_address',
+      title: t.resources.tableIp,
+      dataIndex: 'ip_address',
+      key: 'ip_address',
       render: (ip: string) => <Text code>{ip}</Text>,
     },
     {
-      title: t.resources.tablePort, dataIndex: 'port', key: 'port',
+      title: t.resources.tablePort,
+      dataIndex: 'port',
+      key: 'port',
       render: (port: string) => port ? <Text code>{port}</Text> : <Text type="secondary">{t.resources.allPorts}</Text>,
     },
     {
-      title: t.resources.tableDesc, dataIndex: 'description', key: 'description', ellipsis: true,
+      title: t.resources.tableDesc,
+      dataIndex: 'description',
+      key: 'description',
+      ellipsis: true,
       render: (desc: string) => <Text type="secondary">{desc || '-'}</Text>,
     },
     {
-      title: t.resources.tableCreatedAt, dataIndex: 'CreatedAt', key: 'CreatedAt',
+      title: t.resources.tableCreatedAt,
+      dataIndex: 'CreatedAt',
+      key: 'CreatedAt',
       render: (d: string) => new Date(d).toLocaleString('zh-CN'),
     },
     {
-      title: t.resources.tableActions, key: 'actions', align: 'right',
+      title: t.resources.tableActions,
+      key: 'actions',
+      align: 'right',
       render: (_: any, record: Resource) => (
         <Space>
           <Tooltip title={t.common.actions.edit}>
@@ -129,8 +146,8 @@ export default function Resources() {
           gap={16}
           items={[
             { label: t.resources.totalResources, value: resources.length, icon: <CloudServerOutlined className="stat-icon-primary" />, watermark: 'ALL' },
-            { label: t.resources.withPort, value: resources.filter(r => r.port).length, icon: <ApiOutlined className="stat-icon-success" />, watermark: 'PORT' },
-            { label: t.resources.withoutPort, value: resources.filter(r => !r.port).length, icon: <GlobalOutlined className="stat-icon-warn" />, watermark: 'ANY' },
+            { label: t.resources.withPort, value: resources.filter((r) => r.port).length, icon: <ApiOutlined className="stat-icon-success" />, watermark: 'PORT' },
+            { label: t.resources.withoutPort, value: resources.filter((r) => !r.port).length, icon: <GlobalOutlined className="stat-icon-warn" />, watermark: 'ANY' },
           ]}
         />
 

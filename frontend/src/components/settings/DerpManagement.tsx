@@ -1,20 +1,5 @@
-import { useState, useCallback } from 'react';
-import {
-  Button,
-  Card,
-  Collapse,
-  Input,
-  InputNumber,
-  Modal,
-  Space,
-  Switch,
-  Table,
-  Tag,
-  Tooltip,
-  Typography,
-  message,
-} from 'antd';
 import type { ColumnsType } from 'antd/es/table';
+import type { DERPNode, DERPRegion } from '@/api/derp.types';
 import {
   DeleteOutlined,
   EditOutlined,
@@ -22,9 +7,24 @@ import {
   PlusOutlined,
   ReloadOutlined,
 } from '@ant-design/icons';
-import { derpApi } from '@/api';
-import type { DERPRegion, DERPNode } from '@/api/derp.types';
 import { useRequest } from 'ahooks';
+import {
+  Button,
+  Card,
+  Collapse,
+  Input,
+  InputNumber,
+  message,
+  Modal,
+  Space,
+  Switch,
+  Table,
+  Tag,
+  Tooltip,
+  Typography,
+} from 'antd';
+import { useCallback, useState } from 'react';
+import { derpApi } from '@/api';
 
 const { Text } = Typography;
 
@@ -134,8 +134,8 @@ export default function DerpManagement() {
       setRegions(regionList);
     }),
     {
-      onError: (e) => message.error('Failed to load DERP map: ' + (e as any).message),
-    }
+      onError: (e) => message.error(`Failed to load DERP map: ${(e as any).message}`),
+    },
   );
 
   // ─── Region modal ──────────────────────────────────────────────────────────
@@ -174,7 +174,7 @@ export default function DerpManagement() {
       setRegionModalOpen(false);
       refresh();
     } catch (e: any) {
-      message.error('Failed to save region: ' + e.message);
+      message.error(`Failed to save region: ${e.message}`);
     } finally {
       setSavingRegion(false);
     }
@@ -231,7 +231,7 @@ export default function DerpManagement() {
       setNodeModalOpen(false);
       refresh();
     } catch (e: any) {
-      message.error('Failed to save node: ' + e.message);
+      message.error(`Failed to save node: ${e.message}`);
     } finally {
       setSavingNode(false);
     }
@@ -260,8 +260,16 @@ export default function DerpManagement() {
       key: 'ports',
       render: (_, r) => (
         <Space size={4}>
-          {!r.stunonly && <Tag>DERP:{r.derpport}</Tag>}
-          <Tag>STUN:{r.stunport}</Tag>
+          {!r.stunonly && (
+            <Tag>
+              DERP:
+              {r.derpport}
+            </Tag>
+          )}
+          <Tag>
+            STUN:
+            {r.stunport}
+          </Tag>
           {r.stunonly && <Tag color="orange">STUN only</Tag>}
         </Space>
       ),
@@ -309,8 +317,19 @@ export default function DerpManagement() {
           label: (
             <Space>
               <Text strong>{region.regionname}</Text>
-              <Text type="secondary" className="text-12px">({region.regioncode} · ID {region.regionid})</Text>
-              <Tag>{region.nodes?.length ?? 0} node(s)</Tag>
+              <Text type="secondary" className="text-12px">
+                (
+                {region.regioncode}
+                {' '}
+                · ID
+                {region.regionid}
+                )
+              </Text>
+              <Tag>
+                {region.nodes?.length ?? 0}
+                {' '}
+                node(s)
+              </Tag>
             </Space>
           ),
           extra: (

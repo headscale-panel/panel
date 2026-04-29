@@ -1,3 +1,7 @@
+import type {
+  DragEndEvent,
+} from '@dnd-kit/core';
+import type { ACLPolicy, HeadscaleUserOption, NormalizedResource } from '@/lib/normalizers';
 import {
   CheckCircleFilled,
   CloseCircleFilled,
@@ -14,36 +18,33 @@ import {
   TagOutlined,
   TeamOutlined,
 } from '@ant-design/icons';
-import { Button, Card, Empty, Space, Spin, Tag, Tooltip, Typography, message, theme } from 'antd';
-import DashboardLayout from '@/components/DashboardLayout';
-import PageHeaderStatCards from '@/components/PageHeaderStatCards';
-import { useTranslation } from '@/i18n/index';
-import { loadACLPageData } from '@/lib/page-data';
-import type { ACLPolicy, HeadscaleUserOption, NormalizedResource } from '@/lib/normalizers';
-import { ACLAction } from '@/lib/enums';
-import { useState, useEffect, useCallback, useMemo } from 'react';
-import { useRequest } from 'ahooks';
-
-import { aclApi } from '@/api';
-import RuleModal from '@/components/acl/RuleModal';
-import JsonEditorModal from '@/components/acl/JsonEditorModal';
-
 import {
-  DndContext,
   closestCenter,
-  DragEndEvent,
+  DndContext,
   PointerSensor,
   useSensor,
   useSensors,
 } from '@dnd-kit/core';
 import {
-  SortableContext,
-  verticalListSortingStrategy,
-  useSortable,
   arrayMove,
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import { useRequest } from 'ahooks';
+import { Button, Card, Empty, message, Space, Spin, Tag, theme, Tooltip, Typography } from 'antd';
+import { useCallback, useEffect, useState } from 'react';
+import { aclApi } from '@/api';
+import JsonEditorModal from '@/components/acl/JsonEditorModal';
 
+import RuleModal from '@/components/acl/RuleModal';
+import DashboardLayout from '@/components/DashboardLayout';
+import PageHeaderStatCards from '@/components/PageHeaderStatCards';
+
+import { useTranslation } from '@/i18n/index';
+import { ACLAction } from '@/lib/enums';
+import { loadACLPageData } from '@/lib/page-data';
 
 const { Text, Title } = Typography;
 
@@ -131,7 +132,7 @@ export default function ACL() {
   const [editingIndex, setEditingIndex] = useState<number>(-1);
 
   const [isDarkMode, setIsDarkMode] = useState(
-    document.documentElement.classList.contains('dark')
+    document.documentElement.classList.contains('dark'),
   );
 
   useEffect(() => {
@@ -146,7 +147,7 @@ export default function ACL() {
   }, []);
 
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
   );
 
   const { loading, refreshAsync } = useRequest(
@@ -179,7 +180,7 @@ export default function ACL() {
             name: device.name,
             ipAddresses: device.ip_addresses,
             user: device.user ? { name: device.user.name } : undefined,
-          }))
+          })),
         );
         setResources(resources);
         setHeadscaleUsers(headscaleUsers);
@@ -208,7 +209,7 @@ export default function ACL() {
       await aclApi.deleteRuleByIndex({ index });
       message.success(t.acl.deleteRuleSuccess);
       loadData();
-    } catch (error) {
+    } catch {
       message.error(t.acl.deleteRuleFailed);
     } finally {
       setSaving(false);
@@ -222,7 +223,7 @@ export default function ACL() {
         setJsonContent(JSON.stringify(res, null, 2));
         setShowJsonEditor(true);
       }
-    } catch (error) {
+    } catch {
       message.error(t.acl.getPolicyFailed);
     }
   };
@@ -233,7 +234,7 @@ export default function ACL() {
       await aclApi.syncResourcesAsHosts();
       message.success(t.acl.syncSuccess);
       loadData();
-    } catch (error) {
+    } catch {
       message.error(t.acl.syncFailed);
     } finally {
       setSaving(false);
@@ -242,21 +243,22 @@ export default function ACL() {
 
   const handleDragEnd = useCallback(async (event: DragEndEvent) => {
     const { active, over } = event;
-    if (!over || active.id === over.id) return;
+    if (!over || active.id === over.id)
+      return;
 
-    const oldIndex = parseInt((active.id as string).split('-')[1]);
-    const newIndex = parseInt((over.id as string).split('-')[1]);
+    const oldIndex = Number.parseInt((active.id as string).split('-')[1]);
+    const newIndex = Number.parseInt((over.id as string).split('-')[1]);
 
     const newRules = arrayMove(rules, oldIndex, newIndex);
     setRules(newRules);
 
     if (policy) {
       const newPolicy = { ...policy };
-      newPolicy.acls = newRules.map(rule => ({
+      newPolicy.acls = newRules.map((rule) => ({
         '#ha-meta': { name: rule.name, open: true },
-        action: rule.action,
-        src: rule.sources,
-        dst: rule.destinations,
+        'action': rule.action,
+        'src': rule.sources,
+        'dst': rule.destinations,
       }));
       try {
         await aclApi.updatePolicy(newPolicy);
@@ -301,11 +303,18 @@ export default function ACL() {
             </Tooltip>
             <Button data-tour-id="acl-sync" icon={<DatabaseOutlined />} onClick={handleSyncResources} disabled={saving}>{t.acl.syncResources}</Button>
             <Button data-tour-id="acl-json" icon={<CodeOutlined />} onClick={handleExportJson}>{t.acl.jsonEditor}</Button>
-            <Button type="primary" icon={<PlusOutlined />} data-tour-id="acl-add-rule" onClick={() => {
-              setEditingRule(null);
-              setEditingIndex(-1);
-              setShowAddDialog(true);
-            }}>{t.acl.addRule}</Button>
+            <Button
+              type="primary"
+              icon={<PlusOutlined />}
+              data-tour-id="acl-add-rule"
+              onClick={() => {
+                setEditingRule(null);
+                setEditingIndex(-1);
+                setShowAddDialog(true);
+              }}
+            >
+              {t.acl.addRule}
+            </Button>
           </Space>
         </div>
 
@@ -327,50 +336,52 @@ export default function ACL() {
           <Title level={5} className="mb-1!">{t.acl.ruleListTitle}</Title>
           <Text type="secondary" className="text-13px block mb-4">{t.acl.ruleListDesc}</Text>
 
-          {rules.length === 0 ? (
-            <Empty
-              image={Empty.PRESENTED_IMAGE_SIMPLE}
-              description={
-                <Space direction="vertical" size={2}>
-                  <Text>{t.acl.noRules}</Text>
-                  <Text type="secondary" className="text-13px">{t.acl.noRulesHint}</Text>
-                </Space>
-              }
-              style={{ padding: '48px 0' }}
-            />
-          ) : (
-            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-              <SortableContext items={rules.map((_, i) => `rule-${i}`)} strategy={verticalListSortingStrategy}>
-                <Space direction="vertical" className="w-full" size={12}>
-                  {rules.map((rule, index) => (
-                    <SortableRuleCard key={`rule-${index}`} id={`rule-${index}`}>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 32, height: 32, borderRadius: '50%', background: token.colorBgLayout, fontSize: 13, fontWeight: 500, flexShrink: 0 }}>{index + 1}</div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-2">
-                          <Text strong className="text-16px">{rule.name}</Text>
-                          <Tag color={rule.action === ACLAction.Accept ? 'success' : 'error'}>{rule.action === ACLAction.Accept ? t.acl.allow : t.acl.deny}</Tag>
-                        </div>
-                        <div className="flex items-center gap-2 flex-wrap text-13px">
-                          <Space size={4} wrap>
-                            {rule.sources.map((src, idx) => (<Tag key={idx} color="blue">{src}</Tag>))}
+          {rules.length === 0
+            ? (
+                <Empty
+                  image={Empty.PRESENTED_IMAGE_SIMPLE}
+                  description={(
+                    <Space direction="vertical" size={2}>
+                      <Text>{t.acl.noRules}</Text>
+                      <Text type="secondary" className="text-13px">{t.acl.noRulesHint}</Text>
+                    </Space>
+                  )}
+                  style={{ padding: '48px 0' }}
+                />
+              )
+            : (
+                <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+                  <SortableContext items={rules.map((_, i) => `rule-${i}`)} strategy={verticalListSortingStrategy}>
+                    <Space direction="vertical" className="w-full" size={12}>
+                      {rules.map((rule, index) => (
+                        <SortableRuleCard key={`rule-${index}`} id={`rule-${index}`}>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 32, height: 32, borderRadius: '50%', background: token.colorBgLayout, fontSize: 13, fontWeight: 500, flexShrink: 0 }}>{index + 1}</div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-2">
+                              <Text strong className="text-16px">{rule.name}</Text>
+                              <Tag color={rule.action === ACLAction.Accept ? 'success' : 'error'}>{rule.action === ACLAction.Accept ? t.acl.allow : t.acl.deny}</Tag>
+                            </div>
+                            <div className="flex items-center gap-2 flex-wrap text-13px">
+                              <Space size={4} wrap>
+                                {rule.sources.map((src, idx) => (<Tag key={idx} color="blue">{src}</Tag>))}
+                              </Space>
+                              <span style={{ color: token.colorTextSecondary }}>→</span>
+                              <Space size={4} wrap>
+                                {rule.destinations.map((dest, idx) => (<Tag key={idx} color="orange">{dest}</Tag>))}
+                              </Space>
+                            </div>
+                          </div>
+                          <Space size={4} className="flex-shrink-0">
+                            <Tooltip title={t.common.actions.edit}><Button type="text" size="small" icon={<EditOutlined />} onClick={() => handleOpenEditDialog(rule, index)} /></Tooltip>
+                            <Tooltip title={t.acl.copy}><Button type="text" size="small" icon={<CopyOutlined />} onClick={() => { navigator.clipboard.writeText(JSON.stringify(rule, null, 2)); message.success(t.acl.ruleCopied); }} /></Tooltip>
+                            <Tooltip title={t.common.actions.delete}><Button type="text" size="small" danger icon={<DeleteOutlined />} onClick={() => handleDeleteRule(index)} disabled={saving} /></Tooltip>
                           </Space>
-                          <span style={{ color: token.colorTextSecondary }}>→</span>
-                          <Space size={4} wrap>
-                            {rule.destinations.map((dest, idx) => (<Tag key={idx} color="orange">{dest}</Tag>))}
-                          </Space>
-                        </div>
-                      </div>
-                      <Space size={4} className="flex-shrink-0">
-                        <Tooltip title={t.common.actions.edit}><Button type="text" size="small" icon={<EditOutlined />} onClick={() => handleOpenEditDialog(rule, index)} /></Tooltip>
-                        <Tooltip title={t.acl.copy}><Button type="text" size="small" icon={<CopyOutlined />} onClick={() => { navigator.clipboard.writeText(JSON.stringify(rule, null, 2)); message.success(t.acl.ruleCopied); }} /></Tooltip>
-                        <Tooltip title={t.common.actions.delete}><Button type="text" size="small" danger icon={<DeleteOutlined />} onClick={() => handleDeleteRule(index)} disabled={saving} /></Tooltip>
-                      </Space>
-                    </SortableRuleCard>
-                  ))}
-                </Space>
-              </SortableContext>
-            </DndContext>
-          )}
+                        </SortableRuleCard>
+                      ))}
+                    </Space>
+                  </SortableContext>
+                </DndContext>
+              )}
         </Card>
 
         {/* Info Cards: Groups / Tags / Hosts */}
@@ -380,18 +391,20 @@ export default function ACL() {
               <TeamOutlined className="text-18px" />
               <Text strong className="text-15px">{t.acl.aclGroups}</Text>
             </div>
-            {Object.keys(aclGroups).length === 0 ? (<Text type="secondary" className="text-13px">{t.acl.noGroups}</Text>) : (
-              <div className="scroll-area">
-                <Space direction="vertical" className="w-full" size={8}>
-                  {Object.entries(aclGroups).map(([groupName, members]) => (
-                    <div key={groupName} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: 8, borderRadius: token.borderRadius, background: token.colorBgLayout }}>
-                      <Tag>{groupName}</Tag>
-                      <Space size={4} wrap>{members.map((member, idx) => (<Text key={idx} type="secondary" className="text-13px">{member}</Text>))}</Space>
-                    </div>
-                  ))}
-                </Space>
-              </div>
-            )}
+            {Object.keys(aclGroups).length === 0
+              ? (<Text type="secondary" className="text-13px">{t.acl.noGroups}</Text>)
+              : (
+                  <div className="scroll-area">
+                    <Space direction="vertical" className="w-full" size={8}>
+                      {Object.entries(aclGroups).map(([groupName, members]) => (
+                        <div key={groupName} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: 8, borderRadius: token.borderRadius, background: token.colorBgLayout }}>
+                          <Tag>{groupName}</Tag>
+                          <Space size={4} wrap>{members.map((member, idx) => (<Text key={idx} type="secondary" className="text-13px">{member}</Text>))}</Space>
+                        </div>
+                      ))}
+                    </Space>
+                  </div>
+                )}
           </Card>
 
           <Card>
@@ -399,18 +412,20 @@ export default function ACL() {
               <TagOutlined className="text-18px" />
               <Text strong className="text-15px">{t.acl.tagOwnersTitle}</Text>
             </div>
-            {!policy?.tagOwners || Object.keys(policy.tagOwners).length === 0 ? (<Text type="secondary" className="text-13px">{t.acl.noTagOwners}</Text>) : (
-              <div className="scroll-area">
-                <Space direction="vertical" className="w-full" size={8}>
-                  {Object.entries(policy.tagOwners).map(([tagName, owners]) => (
-                    <div key={tagName} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: 8, borderRadius: token.borderRadius, background: token.colorBgLayout }}>
-                      <Tag color="green">{tagName}</Tag>
-                      <Space size={4} wrap>{owners.map((owner, idx) => (<Text key={idx} type="secondary" className="text-13px">{owner}</Text>))}</Space>
-                    </div>
-                  ))}
-                </Space>
-              </div>
-            )}
+            {!policy?.tagOwners || Object.keys(policy.tagOwners).length === 0
+              ? (<Text type="secondary" className="text-13px">{t.acl.noTagOwners}</Text>)
+              : (
+                  <div className="scroll-area">
+                    <Space direction="vertical" className="w-full" size={8}>
+                      {Object.entries(policy.tagOwners).map(([tagName, owners]) => (
+                        <div key={tagName} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: 8, borderRadius: token.borderRadius, background: token.colorBgLayout }}>
+                          <Tag color="green">{tagName}</Tag>
+                          <Space size={4} wrap>{owners.map((owner, idx) => (<Text key={idx} type="secondary" className="text-13px">{owner}</Text>))}</Space>
+                        </div>
+                      ))}
+                    </Space>
+                  </div>
+                )}
           </Card>
 
           <Card>
@@ -418,18 +433,20 @@ export default function ACL() {
               <GlobalOutlined className="text-18px" />
               <Text strong className="text-15px">{t.acl.hostAliases}</Text>
             </div>
-            {!policy?.hosts || Object.keys(policy.hosts).length === 0 ? (<Text type="secondary" className="text-13px">{t.acl.noHosts}</Text>) : (
-              <div className="scroll-area">
-                <Space direction="vertical" className="w-full" size={8}>
-                  {Object.entries(policy.hosts).map(([hostName, ip]) => (
-                    <div key={hostName} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 8, borderRadius: token.borderRadius, background: token.colorBgLayout }}>
-                      <Tag>{hostName}</Tag>
-                      <Text type="secondary" code className="text-13px">{ip}</Text>
-                    </div>
-                  ))}
-                </Space>
-              </div>
-            )}
+            {!policy?.hosts || Object.keys(policy.hosts).length === 0
+              ? (<Text type="secondary" className="text-13px">{t.acl.noHosts}</Text>)
+              : (
+                  <div className="scroll-area">
+                    <Space direction="vertical" className="w-full" size={8}>
+                      {Object.entries(policy.hosts).map(([hostName, ip]) => (
+                        <div key={hostName} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 8, borderRadius: token.borderRadius, background: token.colorBgLayout }}>
+                          <Tag>{hostName}</Tag>
+                          <Text type="secondary" code className="text-13px">{ip}</Text>
+                        </div>
+                      ))}
+                    </Space>
+                  </div>
+                )}
           </Card>
         </div>
 

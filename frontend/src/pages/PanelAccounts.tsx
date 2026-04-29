@@ -1,16 +1,6 @@
-import { useMemo, useState } from 'react';
-import {
-  Button,
-  Card,
-  Input,
-  Select,
-  Space,
-  Table,
-  Tag,
-  Typography,
-  message,
-} from 'antd';
 import type { ColumnsType } from 'antd/es/table';
+import type { PanelAccountListItem } from '@/api/panel-account.types';
+import type { NormalizedGroup } from '@/lib/normalizers';
 import {
   CheckCircleOutlined,
   CloseCircleOutlined,
@@ -22,14 +12,24 @@ import {
   UserOutlined,
 } from '@ant-design/icons';
 import { useRequest } from 'ahooks';
+import {
+  Button,
+  Card,
+  Input,
+  message,
+  Select,
+  Space,
+  Table,
+  Tag,
+  Typography,
+} from 'antd';
+import { useMemo, useState } from 'react';
+import { groupApi, panelAccountApi } from '@/api';
 import DashboardLayout from '@/components/DashboardLayout';
 import PageHeaderStatCards from '@/components/PageHeaderStatCards';
-import { panelAccountApi, groupApi } from '@/api';
-import type { PanelAccountListItem } from '@/api/panel-account.types';
-import type { NormalizedGroup } from '@/lib/normalizers';
-import { useTranslation } from '@/i18n/index';
 import AccountDetailDrawer from '@/components/panel-accounts/AccountDetailDrawer';
 import CreateAccountModal from '@/components/panel-accounts/CreateAccountModal';
+import { useTranslation } from '@/i18n/index';
 
 const { Title, Text } = Typography;
 
@@ -105,43 +105,49 @@ export default function PanelAccounts() {
       key: 'status',
       width: 100,
       render: (active: boolean) =>
-        active ? (
-          <Tag color="success" icon={<CheckCircleOutlined />}>
-            {pa.statusActive}
-          </Tag>
-        ) : (
-          <Tag color="error" icon={<CloseCircleOutlined />}>
-            {pa.statusInactive}
-          </Tag>
-        ),
+        active
+          ? (
+              <Tag color="success" icon={<CheckCircleOutlined />}>
+                {pa.statusActive}
+              </Tag>
+            )
+          : (
+              <Tag color="error" icon={<CloseCircleOutlined />}>
+                {pa.statusInactive}
+              </Tag>
+            ),
     },
     {
       title: pa.columns.role,
       key: 'role',
       width: 140,
       render: (_: unknown, record: PanelAccountListItem) =>
-        record.group ? (
-          <Tag icon={<TeamOutlined />}>{record.group.name}</Tag>
-        ) : (
-          <Text type="secondary">-</Text>
-        ),
+        record.group
+          ? (
+              <Tag icon={<TeamOutlined />}>{record.group.name}</Tag>
+            )
+          : (
+              <Text type="secondary">-</Text>
+            ),
     },
     {
       title: pa.columns.loginMethods,
       key: 'loginMethods',
       width: 180,
       render: (_: unknown, record: PanelAccountListItem) =>
-        record.login_methods?.length ? (
-          <Space size={4} wrap>
-            {record.login_methods.map((m) => (
-              <Tag key={m}>
-                {(pa.loginMethod as Record<string, string>)[m] ?? m}
-              </Tag>
-            ))}
-          </Space>
-        ) : (
-          <Text type="secondary">{pa.loginMethod.none}</Text>
-        ),
+        record.login_methods?.length
+          ? (
+              <Space size={4} wrap>
+                {record.login_methods.map((m) => (
+                  <Tag key={m}>
+                    {(pa.loginMethod as Record<string, string>)[m] ?? m}
+                  </Tag>
+                ))}
+              </Space>
+            )
+          : (
+              <Text type="secondary">{pa.loginMethod.none}</Text>
+            ),
     },
     {
       title: pa.columns.networkBindingCount,

@@ -1,10 +1,11 @@
-import request, { RespType } from '@/lib/request';
 import type {
-  GetDERPMapRes,
   DERPMap,
-  DERPRegion,
   DERPNode,
+  DERPRegion,
+  GetDERPMapRes,
 } from './derp.types';
+import type { RespType } from '@/lib/request';
+import request from '@/lib/request';
 
 export const derpApi = {
   /** GET /headscale/derp — retrieve the full DERP map */

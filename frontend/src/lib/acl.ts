@@ -12,7 +12,7 @@ export function buildACLDeviceOptions(
     givenName: string;
     name: string;
     ipAddresses: string[];
-  }>
+  }>,
 ): ACLDeviceOption[] {
   return devices
     .map((device) => ({

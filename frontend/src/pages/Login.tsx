@@ -1,20 +1,19 @@
-import { Card, Input, Button, Typography, Divider, Spin, Space, theme } from 'antd';
-import { UserOutlined, LockOutlined, EyeInvisibleOutlined, EyeTwoTone, GlobalOutlined, SafetyCertificateOutlined, LoadingOutlined } from '@ant-design/icons';
-import { useTranslation, useI18n, availableLocales, locales } from '@/i18n/index';
-import { authApi, publicAuthApi } from '@/api';
-import { useAuthStore } from '@/lib/store';
-import { UserRole } from '@/lib/enums';
-import { useState, useEffect, useCallback } from 'react';
-import { useLocation, useSearch } from 'wouter';
-import { message } from 'antd';
+import { EyeInvisibleOutlined, EyeTwoTone, GlobalOutlined, LoadingOutlined, LockOutlined, SafetyCertificateOutlined, UserOutlined } from '@ant-design/icons';
 import { useRequest } from 'ahooks';
+import { Button, Card, Divider, Input, message, Space, Spin, theme, Typography } from 'antd';
+import { useCallback, useEffect, useState } from 'react';
+import { useLocation, useSearch } from 'wouter';
+import { authApi, publicAuthApi } from '@/api';
+import { availableLocales, locales, useI18n, useTranslation } from '@/i18n/index';
 import {
   clearOidcCreateHeadscaleUserIntent,
   consumeAuthNotice,
   hasOidcCreateHeadscaleUserIntent,
   normalizeLoginReturnUrl,
 } from '@/lib/auth';
+import { UserRole } from '@/lib/enums';
 import { getDefaultRouteForUser } from '@/lib/permissions';
+import { useAuthStore } from '@/lib/store';
 
 const { Title, Text } = Typography;
 
@@ -34,12 +33,14 @@ export default function Login() {
   const [oidcStatus, setOidcStatus] = useState<{ enabled: boolean; provider_name: string } | null>(null);
 
   useEffect(() => {
-    if (isAuthenticated) setLocation('/');
+    if (isAuthenticated)
+      setLocation('/');
   }, [isAuthenticated, setLocation]);
 
   useEffect(() => {
     const notice = consumeAuthNotice();
-    if (!notice) return;
+    if (!notice)
+      return;
     if (notice === 'sessionExpired') {
       message.error(t.common.errors.sessionExpired);
     }
@@ -49,7 +50,8 @@ export default function Login() {
     async () => publicAuthApi.oidcStatus(),
     {
       onSuccess: (data: any) => {
-        if (data?.enabled) setOidcStatus(data);
+        if (data?.enabled)
+          setOidcStatus(data);
       },
       onError: () => {
         // Ignore status load failure on login page to avoid noisy UX.
@@ -67,7 +69,8 @@ export default function Login() {
     const params = new URLSearchParams(search);
     const code = params.get('code');
     const state = params.get('state');
-    if (code && state) handleOIDCCallback(code, state);
+    if (code && state)
+      handleOIDCCallback(code, state);
   }, [search]);
 
   const parseUserAuth = useCallback((data: any) => {
@@ -200,11 +203,16 @@ export default function Login() {
         {/* Logo & Title */}
         <div className="text-center mb-8">
           <div style={{
-            width: 48, height: 48, borderRadius: 12,
+            width: 48,
+            height: 48,
+            borderRadius: 12,
             background: themeToken.colorPrimary,
-            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
             marginBottom: 12,
-          }}>
+          }}
+          >
             <SafetyCertificateOutlined className="text-28px text-white" />
           </div>
           <Title level={4} className="mb-0">Headscale Panel</Title>

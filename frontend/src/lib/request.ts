@@ -1,31 +1,33 @@
-import axios, {
-  AxiosError,
+import type {
   AxiosInstance,
   AxiosRequestConfig,
   AxiosResponse,
   InternalAxiosRequestConfig,
 } from 'axios';
 import { message } from 'antd';
+import axios, {
+  AxiosError,
+} from 'axios';
+import { isEmpty } from 'radashi';
 import { getTranslations } from '@/i18n/index';
 import { getAuthToken, redirectToLoginWithNotice } from './auth';
-import { isEmpty } from 'radashi';
 
 const baseURL = import.meta.env.VITE_API_URL || '/panel/api/v1';
 
-export type RespType<T = any> = {
+export interface RespType<T = any> {
   code: number;
   data: T;
   msg: string;
   error?: string;
-};
+}
 
-export type RespPage<T = any> = {
+export interface RespPage<T = any> {
   list: Array<T>;
   page: number;
   page_size: number;
   page_count: number;
   total: number;
-};
+}
 
 type UnwrapResp<T> = T extends RespType<infer U> ? U : T;
 
@@ -107,18 +109,18 @@ function getResponseErrorMessage(response?: AxiosResponse<RespType>) {
   return response.data?.msg || t.common.errors.requestFailed;
 }
 
-const handleUnauthorized = () => {
+function handleUnauthorized() {
   if (unauthorizedHandler) {
     unauthorizedHandler();
   }
   redirectToLoginWithNotice('sessionExpired');
-};
+}
 
 /**
  * 创建默认 Axios 实例
  * @param options 拦截器 Handler 配置
  */
-const createAxiosInstance = (options?: AxiosCreateConfigCustom) => {
+function createAxiosInstance(options?: AxiosCreateConfigCustom) {
   const defaultConfig = {
     baseURL,
     timeout: 30000,
@@ -206,7 +208,7 @@ const createAxiosInstance = (options?: AxiosCreateConfigCustom) => {
   };
 
   return requestHandler;
-};
+}
 
 /**
  * 配置自定义 成功/错误状态 Handler，拦截器 Handler

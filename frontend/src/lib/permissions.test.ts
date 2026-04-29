@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { UserRole } from './enums';
 import {
-  DASHBOARD_PERMISSIONS,
-  SELF_DEVICE_PERMISSIONS,
-  METRICS_PERMISSIONS,
   canAccessSection,
+  DASHBOARD_PERMISSIONS,
   getDefaultRouteForUser,
   hasAnyPermission,
   hasPermission,
+  METRICS_PERMISSIONS,
+  SELF_DEVICE_PERMISSIONS,
 } from './permissions';
 
 describe('permissions helpers', () => {

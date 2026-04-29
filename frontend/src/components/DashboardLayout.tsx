@@ -1,10 +1,10 @@
+import { Drawer, Layout } from 'antd';
 import { useState } from 'react';
-import { Layout, Drawer } from 'antd';
-import Header from './Header';
-import Sidebar from './Sidebar';
-import PageTransition from './PageTransition';
 import { useIsMobile } from '@/hooks/useMobile';
 import { useUIStore } from '@/lib/store';
+import Header from './Header';
+import PageTransition from './PageTransition';
+import Sidebar from './Sidebar';
 
 const { Content } = Layout;
 
@@ -30,24 +30,26 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
 
   return (
     <Layout className="min-h-screen">
-      {isMobile ? (
-        <Drawer
-          placement="left"
-          open={mobileSidebarOpen}
-          onClose={() => setMobileSidebarOpen(false)}
-          width={SIDEBAR_WIDTH}
-          styles={{ body: { padding: 0 } }}
-          closable={false}
-        >
-          <Sidebar
-            collapsed={false}
-            isMobile
-            onNavigate={() => setMobileSidebarOpen(false)}
-          />
-        </Drawer>
-      ) : (
-        <Sidebar collapsed={sidebarCollapsed} />
-      )}
+      {isMobile
+        ? (
+            <Drawer
+              placement="left"
+              open={mobileSidebarOpen}
+              onClose={() => setMobileSidebarOpen(false)}
+              width={SIDEBAR_WIDTH}
+              styles={{ body: { padding: 0 } }}
+              closable={false}
+            >
+              <Sidebar
+                collapsed={false}
+                isMobile
+                onNavigate={() => setMobileSidebarOpen(false)}
+              />
+            </Drawer>
+          )
+        : (
+            <Sidebar collapsed={sidebarCollapsed} />
+          )}
 
       <Layout style={{ marginLeft: isMobile ? 0 : (sidebarCollapsed ? SIDEBAR_COLLAPSED_WIDTH : SIDEBAR_WIDTH), transition: 'margin-left 0.2s' }}>
         <Header onMenuClick={handleMenuClick} />

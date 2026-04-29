@@ -51,8 +51,8 @@ describe('auth helpers', () => {
             token: 'persisted-token',
             isAuthenticated: true,
           },
-        })
-      )
+        }),
+      ),
     ).toEqual({
       token: 'persisted-token',
       user: null,
@@ -68,7 +68,7 @@ describe('auth helpers', () => {
           token: 'persisted-token',
           isAuthenticated: true,
         },
-      })
+      }),
     );
 
     expect(getAuthToken()).toBe('persisted-token');

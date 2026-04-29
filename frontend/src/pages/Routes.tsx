@@ -1,12 +1,12 @@
-import { useState } from 'react';
-import { useRequest } from 'ahooks';
-import { useSearch } from 'wouter';
-import { Button, Card, Input, Select, Switch, Table, Tag, Typography, Tooltip, message, theme } from 'antd';
-import { ReloadOutlined, SearchOutlined, LaptopOutlined, CheckCircleOutlined, CloseCircleOutlined, GlobalOutlined, NodeIndexOutlined, UserOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
+import { CheckCircleOutlined, CloseCircleOutlined, GlobalOutlined, LaptopOutlined, NodeIndexOutlined, ReloadOutlined, SearchOutlined, UserOutlined } from '@ant-design/icons';
+import { useRequest } from 'ahooks';
+import { Button, Card, Input, message, Select, Switch, Table, Tag, theme, Typography } from 'antd';
+import { useState } from 'react';
+import { useSearch } from 'wouter';
+import { routeApi } from '@/api';
 import DashboardLayout from '@/components/DashboardLayout';
 import PageHeaderStatCards from '@/components/PageHeaderStatCards';
-import { routeApi } from '@/api';
 import { useTranslation } from '@/i18n/index';
 
 const { Title, Text } = Typography;
@@ -22,9 +22,9 @@ interface Route {
   is_exit_node: boolean;
 }
 
-const isExitNode = (destination: string) => {
+function isExitNode(destination: string) {
   return destination === '::/0' || destination === '0.0.0.0/0';
-};
+}
 
 export default function Routes() {
   const t = useTranslation();
@@ -40,7 +40,7 @@ export default function Routes() {
   const { data: listData, loading, refresh } = useRequest(
     async () => routeApi.list({ all: true }),
     {
-      onError: (error: any) => {
+      onError: (_error: any) => {
         message.error(t.routes.loadFailed);
       },
     },
@@ -63,29 +63,33 @@ export default function Routes() {
     }
   };
 
-  const devices = Array.from(new Set(routes.map(r => r.machine_name))).sort();
+  const devices = Array.from(new Set(routes.map((r) => r.machine_name))).sort();
 
-  const filteredRoutes = routes.filter(route => {
+  const filteredRoutes = routes.filter((route) => {
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
       const matchesSearch = (
-        route.destination.toLowerCase().includes(q) ||
-        route.machine_name.toLowerCase().includes(q) ||
-        (route.user_name && route.user_name.toLowerCase().includes(q))
+        route.destination.toLowerCase().includes(q)
+        || route.machine_name.toLowerCase().includes(q)
+        || (route.user_name && route.user_name.toLowerCase().includes(q))
       );
-      if (!matchesSearch) return false;
+      if (!matchesSearch)
+        return false;
     }
-    if (filterDevice !== 'all' && route.machine_name !== filterDevice) return false;
-    if (filterStatus === 'enabled' && !route.enabled) return false;
-    if (filterStatus === 'disabled' && route.enabled) return false;
+    if (filterDevice !== 'all' && route.machine_name !== filterDevice)
+      return false;
+    if (filterStatus === 'enabled' && !route.enabled)
+      return false;
+    if (filterStatus === 'disabled' && route.enabled)
+      return false;
     return true;
   });
 
   const stats = {
     total: routes.length,
-    enabled: routes.filter(r => r.enabled).length,
-    disabled: routes.filter(r => !r.enabled).length,
-    exitNodes: Math.floor(routes.filter(r => isExitNode(r.destination)).length / 2),
+    enabled: routes.filter((r) => r.enabled).length,
+    disabled: routes.filter((r) => !r.enabled).length,
+    exitNodes: Math.floor(routes.filter((r) => isExitNode(r.destination)).length / 2),
   };
 
   const columns: ColumnsType<Route> = [
@@ -102,7 +106,10 @@ export default function Routes() {
       dataIndex: 'user_name',
       key: 'user_name',
       render: (name: string) => (
-        <span><UserOutlined style={{ marginRight: 6, color: themeToken.colorTextSecondary }} />{name || '-'}</span>
+        <span>
+          <UserOutlined style={{ marginRight: 6, color: themeToken.colorTextSecondary }} />
+          {name || '-'}
+        </span>
       ),
     },
     {
@@ -110,7 +117,10 @@ export default function Routes() {
       dataIndex: 'machine_name',
       key: 'machine_name',
       render: (name: string) => (
-        <span><LaptopOutlined style={{ marginRight: 6, color: themeToken.colorTextSecondary }} />{name}</span>
+        <span>
+          <LaptopOutlined style={{ marginRight: 6, color: themeToken.colorTextSecondary }} />
+          {name}
+        </span>
       ),
     },
     {
@@ -169,13 +179,19 @@ export default function Routes() {
               className="flex-1 min-w-200px max-w-90"
               allowClear
             />
-            <Select value={filterDevice} onChange={setFilterDevice} className="w-45"
+            <Select
+              value={filterDevice}
+              onChange={setFilterDevice}
+              className="w-45"
               options={[
                 { value: 'all', label: t.routes.allDevices },
-                ...devices.map(d => ({ value: d, label: d })),
+                ...devices.map((d) => ({ value: d, label: d })),
               ]}
             />
-            <Select value={filterStatus} onChange={setFilterStatus} className="w-150px"
+            <Select
+              value={filterStatus}
+              onChange={setFilterStatus}
+              className="w-150px"
               options={[
                 { value: 'all', label: t.routes.allStatus },
                 { value: 'enabled', label: t.routes.enabled },

@@ -1,5 +1,5 @@
-import { setUnauthorizedHandler } from './request';
 import { getAuthToken, redirectToLoginWithNotice } from './auth';
+import { setUnauthorizedHandler } from './request';
 
 class WebSocketManager {
   private ws: WebSocket | null = null;
@@ -16,9 +16,11 @@ class WebSocketManager {
   }
 
   connect() {
-    if (this.ws?.readyState === WebSocket.OPEN) return;
+    if (this.ws?.readyState === WebSocket.OPEN)
+      return;
     const token = getAuthToken();
-    if (!token) return;
+    if (!token)
+      return;
 
     try {
       this.ws = new WebSocket(this.url);
@@ -68,7 +70,8 @@ class WebSocketManager {
   }
 
   on(event: string, callback: (data: any) => void) {
-    if (!this.listeners.has(event)) this.listeners.set(event, new Set());
+    if (!this.listeners.has(event))
+      this.listeners.set(event, new Set());
     this.listeners.get(event)!.add(callback);
     return () => {
       this.listeners.get(event)?.delete(callback);

@@ -1,3 +1,6 @@
+import type { ColumnsType } from 'antd/es/table';
+import type { HeadscaleConfig } from '@/api/headscale-config.types';
+import type { OIDCFormValues } from '@/lib/normalizers';
 import {
   CheckCircleOutlined,
   CheckOutlined,
@@ -15,20 +18,18 @@ import {
   SaveOutlined,
   TeamOutlined,
 } from '@ant-design/icons';
-import { Button, Card, Input, Modal, Select, Space, Spin, Switch, Table, Tabs, Tag, Typography, message, theme } from 'antd';
-import type { ColumnsType } from 'antd/es/table';
-import DashboardLayout from '@/components/DashboardLayout';
-import { useTranslation } from '@/i18n/index';
-import { panelSettingsApi, groupApi, headscaleConfigApi, setupApi } from '@/api';
-import type { HeadscaleConfig } from '@/api/headscale-config.types';
-import { loadConnectionSettingsData, loadOIDCSettingsData } from '@/lib/page-data';
 import { useRequest } from 'ahooks';
+import { Button, Card, Input, message, Modal, Select, Space, Spin, Switch, Table, Tabs, Tag, theme, Typography } from 'antd';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { groupApi, headscaleConfigApi, panelSettingsApi, setupApi } from '@/api';
+import DashboardLayout from '@/components/DashboardLayout';
+import DerpManagement from '@/components/settings/DerpManagement';
+import { useTranslation } from '@/i18n/index';
 import {
   defaultOIDCFormValues,
-  type OIDCFormValues,
+
 } from '@/lib/normalizers';
-import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
-import DerpManagement from '@/components/settings/DerpManagement';
+import { loadConnectionSettingsData, loadOIDCSettingsData } from '@/lib/page-data';
 
 const SETTINGS_TOUR_TAB_EVENT = 'guide-tour:settings-tab';
 
@@ -212,7 +213,8 @@ export default function Settings() {
   }, []);
 
   const handleSaveGroup = useCallback(async () => {
-    if (!groupForm.name.trim()) return;
+    if (!groupForm.name.trim())
+      return;
     setSavingGroup(true);
     try {
       const gid = editingGroup?.ID ?? editingGroup?.id;
@@ -301,9 +303,9 @@ export default function Settings() {
   );
 
   useEffect(() => {
-    if (previewTimerRef.current) clearTimeout(previewTimerRef.current);
+    if (previewTimerRef.current)
+      clearTimeout(previewTimerRef.current);
     if (!oidcForm.enabled) {
-      setOidcYamlPreview('');
       return;
     }
     previewTimerRef.current = setTimeout(async () => {
@@ -337,9 +339,12 @@ export default function Settings() {
       }
     }, 500);
     return () => {
-      if (previewTimerRef.current) clearTimeout(previewTimerRef.current);
+      if (previewTimerRef.current)
+        clearTimeout(previewTimerRef.current);
     };
   }, [oidcForm, hsConfig]);
+
+  const effectiveOidcYamlPreview = oidcForm.enabled ? oidcYamlPreview : '';
 
   const handleTestConnection = async () => {
     setTestingConnection(true);
@@ -395,7 +400,7 @@ export default function Settings() {
       try {
         const data: any = await panelSettingsApi.enableBuiltinOIDC();
         if (data) {
-          setOidcForm(prev => ({
+          setOidcForm((prev) => ({
             ...prev,
             enabled: true,
             issuer: data.issuer || '',
@@ -415,10 +420,10 @@ export default function Settings() {
   };
 
   const handleCopyPreview = () => {
-    navigator.clipboard.writeText(oidcYamlPreview);
+    navigator.clipboard.writeText(effectiveOidcYamlPreview);
     setPreviewCopied(true);
     message.success(t.settings.oidcConfig.previewCopied);
-    setTimeout(() => setPreviewCopied(false), 2000);
+    setTimeout(setPreviewCopied, 2000, false);
   };
 
   const handleSyncData = async () => {
@@ -566,7 +571,7 @@ export default function Settings() {
                       label={t.settings.oidcConfig.enableOidc}
                       description={t.settings.oidcConfig.enableOidcDesc}
                       checked={oidcForm.enabled}
-                      onCheckedChange={(v) => setOidcForm(prev => ({ ...prev, enabled: v }))}
+                      onCheckedChange={(v) => setOidcForm((prev) => ({ ...prev, enabled: v }))}
                     />
                     {oidcForm.enabled && (
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: 12, borderTop: `1px solid ${token.colorBorderSecondary}`, marginTop: 8 }}>
@@ -593,44 +598,44 @@ export default function Settings() {
                         <Text strong className="section-title-block">{t.settings.oidcConfig.settingsTitle}</Text>
                         <Space direction="vertical" className="w-full" size={16}>
                           <FieldRow label={t.settings.oidcConfig.issuerLabel}>
-                            <Input value={oidcForm.issuer} onChange={(e) => setOidcForm(prev => ({ ...prev, issuer: e.target.value }))} placeholder="https://auth.example.com" />
+                            <Input value={oidcForm.issuer} onChange={(e) => setOidcForm((prev) => ({ ...prev, issuer: e.target.value }))} placeholder="https://auth.example.com" />
                           </FieldRow>
                           <FieldRow label={t.settings.oidcConfig.clientIdLabel}>
-                            <Input value={oidcForm.client_id} onChange={(e) => setOidcForm(prev => ({ ...prev, client_id: e.target.value }))} placeholder="headscale" />
+                            <Input value={oidcForm.client_id} onChange={(e) => setOidcForm((prev) => ({ ...prev, client_id: e.target.value }))} placeholder="headscale" />
                           </FieldRow>
                           <FieldRow label={t.settings.oidcConfig.clientSecretLabel}>
-                            <Input.Password value={oidcForm.client_secret} onChange={(e) => setOidcForm(prev => ({ ...prev, client_secret: e.target.value }))} placeholder="--------" />
+                            <Input.Password value={oidcForm.client_secret} onChange={(e) => setOidcForm((prev) => ({ ...prev, client_secret: e.target.value }))} placeholder="--------" />
                           </FieldRow>
                           <FieldRow label={t.settings.oidcConfig.clientSecretPathLabel} description={t.settings.oidcConfig.clientSecretPathDesc}>
-                            <Input value={oidcForm.client_secret_path} onChange={(e) => setOidcForm(prev => ({ ...prev, client_secret_path: e.target.value }))} placeholder="/path/to/client_secret" />
+                            <Input value={oidcForm.client_secret_path} onChange={(e) => setOidcForm((prev) => ({ ...prev, client_secret_path: e.target.value }))} placeholder="/path/to/client_secret" />
                           </FieldRow>
                           <FieldRow label={t.settings.oidcConfig.scopeLabel} description={t.settings.oidcConfig.scopeDesc}>
-                            <ArrayEditor value={oidcForm.scope} onChange={(v) => setOidcForm(prev => ({ ...prev, scope: v }))} placeholder="openid" />
+                            <ArrayEditor value={oidcForm.scope} onChange={(v) => setOidcForm((prev) => ({ ...prev, scope: v }))} placeholder="openid" />
                           </FieldRow>
                           <FieldRow label={t.settings.oidcConfig.expiryLabel} description={t.settings.oidcConfig.expiryDesc}>
-                            <Input value={oidcForm.expiry} onChange={(e) => setOidcForm(prev => ({ ...prev, expiry: e.target.value }))} placeholder="180d" />
+                            <Input value={oidcForm.expiry} onChange={(e) => setOidcForm((prev) => ({ ...prev, expiry: e.target.value }))} placeholder="180d" />
                           </FieldRow>
 
-                          <SwitchRow label={t.settings.oidcConfig.onlyStartIfAvailable} checked={oidcForm.only_start_if_oidc_is_available} onCheckedChange={(v) => setOidcForm(prev => ({ ...prev, only_start_if_oidc_is_available: v }))} />
-                          <SwitchRow label={t.settings.oidcConfig.emailVerifiedRequired} checked={oidcForm.email_verified_required} onCheckedChange={(v) => setOidcForm(prev => ({ ...prev, email_verified_required: v }))} />
-                          <SwitchRow label={t.settings.oidcConfig.stripEmailDomain} checked={oidcForm.strip_email_domain} onCheckedChange={(v) => setOidcForm(prev => ({ ...prev, strip_email_domain: v }))} />
-                          <SwitchRow label={t.settings.oidcConfig.useExpiryFromToken} checked={oidcForm.use_expiry_from_token} onCheckedChange={(v) => setOidcForm(prev => ({ ...prev, use_expiry_from_token: v }))} />
-                          <SwitchRow label={t.settings.oidcConfig.pkceEnabled} description={t.settings.oidcConfig.pkceDesc} checked={oidcForm.pkce_enabled} onCheckedChange={(v) => setOidcForm(prev => ({ ...prev, pkce_enabled: v }))} />
+                          <SwitchRow label={t.settings.oidcConfig.onlyStartIfAvailable} checked={oidcForm.only_start_if_oidc_is_available} onCheckedChange={(v) => setOidcForm((prev) => ({ ...prev, only_start_if_oidc_is_available: v }))} />
+                          <SwitchRow label={t.settings.oidcConfig.emailVerifiedRequired} checked={oidcForm.email_verified_required} onCheckedChange={(v) => setOidcForm((prev) => ({ ...prev, email_verified_required: v }))} />
+                          <SwitchRow label={t.settings.oidcConfig.stripEmailDomain} checked={oidcForm.strip_email_domain} onCheckedChange={(v) => setOidcForm((prev) => ({ ...prev, strip_email_domain: v }))} />
+                          <SwitchRow label={t.settings.oidcConfig.useExpiryFromToken} checked={oidcForm.use_expiry_from_token} onCheckedChange={(v) => setOidcForm((prev) => ({ ...prev, use_expiry_from_token: v }))} />
+                          <SwitchRow label={t.settings.oidcConfig.pkceEnabled} description={t.settings.oidcConfig.pkceDesc} checked={oidcForm.pkce_enabled} onCheckedChange={(v) => setOidcForm((prev) => ({ ...prev, pkce_enabled: v }))} />
 
                           {oidcForm.pkce_enabled && (
                             <FieldRow label={t.settings.oidcConfig.pkceMethod}>
-                              <Input value={oidcForm.pkce_method} onChange={(e) => setOidcForm(prev => ({ ...prev, pkce_method: e.target.value }))} placeholder="S256" />
+                              <Input value={oidcForm.pkce_method} onChange={(e) => setOidcForm((prev) => ({ ...prev, pkce_method: e.target.value }))} placeholder="S256" />
                             </FieldRow>
                           )}
 
                           <FieldRow label={t.settings.oidcConfig.allowedDomainsLabel} description={t.settings.oidcConfig.allowedDomainsDesc}>
-                            <ArrayEditor value={oidcForm.allowed_domains} onChange={(v) => setOidcForm(prev => ({ ...prev, allowed_domains: v }))} placeholder="example.com" />
+                            <ArrayEditor value={oidcForm.allowed_domains} onChange={(v) => setOidcForm((prev) => ({ ...prev, allowed_domains: v }))} placeholder="example.com" />
                           </FieldRow>
                           <FieldRow label={t.settings.oidcConfig.allowedUsersLabel} description={t.settings.oidcConfig.allowedUsersDesc}>
-                            <ArrayEditor value={oidcForm.allowed_users} onChange={(v) => setOidcForm(prev => ({ ...prev, allowed_users: v }))} placeholder="user@example.com" />
+                            <ArrayEditor value={oidcForm.allowed_users} onChange={(v) => setOidcForm((prev) => ({ ...prev, allowed_users: v }))} placeholder="user@example.com" />
                           </FieldRow>
                           <FieldRow label={t.settings.oidcConfig.allowedGroupsLabel} description={t.settings.oidcConfig.allowedGroupsDesc}>
-                            <ArrayEditor value={oidcForm.allowed_groups} onChange={(v) => setOidcForm(prev => ({ ...prev, allowed_groups: v }))} placeholder="group-name" />
+                            <ArrayEditor value={oidcForm.allowed_groups} onChange={(v) => setOidcForm((prev) => ({ ...prev, allowed_groups: v }))} placeholder="group-name" />
                           </FieldRow>
 
                           <div style={{ borderTop: `1px solid ${token.colorBorderSecondary}`, paddingTop: 16 }}>
@@ -669,8 +674,9 @@ export default function Settings() {
                           overflow: 'auto',
                           whiteSpace: 'pre-wrap',
                           wordBreak: 'break-word',
-                        }}>
-                          {oidcYamlPreview || t.settings.oidcConfig.previewEmpty}
+                        }}
+                        >
+                          {effectiveOidcYamlPreview || t.settings.oidcConfig.previewEmpty}
                         </pre>
                       </Card>
                     </div>
@@ -686,11 +692,11 @@ export default function Settings() {
                   <SectionCard
                     title={t.settings.groups.title}
                     description={t.settings.groups.description}
-                    actions={
+                    actions={(
                       <Button type="primary" size="small" icon={<PlusOutlined />} onClick={openCreateGroup}>
                         {t.settings.groups.addGroup}
                       </Button>
-                    }
+                    )}
                   >
                     <Table
                       rowKey={(r: any) => r.ID ?? r.id}
@@ -730,8 +736,7 @@ export default function Settings() {
                           style={{ width: '100%' }}
                           options={allPermissions.map((p) => ({ label: p.name || p.code, value: p.id }))}
                           filterOption={(input, option) =>
-                            (option?.label?.toString() ?? '').toLowerCase().includes(input.toLowerCase())
-                          }
+                            (option?.label?.toString() ?? '').toLowerCase().includes(input.toLowerCase())}
                           maxTagCount="responsive"
                         />
                       </FieldRow>
@@ -753,47 +758,47 @@ export default function Settings() {
                     }
                   >
                     <FieldRow label={t.settings.hsconfig.serverUrl}>
-                      <Input value={hsConfig.server_url ?? ''} onChange={(e) => setHsConfig(p => ({ ...p, server_url: e.target.value }))} placeholder="https://vpn.example.com" />
+                      <Input value={hsConfig.server_url ?? ''} onChange={(e) => setHsConfig((p) => ({ ...p, server_url: e.target.value }))} placeholder="https://vpn.example.com" />
                     </FieldRow>
                     <FieldRow label={t.settings.hsconfig.listenAddr}>
-                      <Input value={hsConfig.listen_addr ?? ''} onChange={(e) => setHsConfig(p => ({ ...p, listen_addr: e.target.value }))} placeholder="0.0.0.0:8080" />
+                      <Input value={hsConfig.listen_addr ?? ''} onChange={(e) => setHsConfig((p) => ({ ...p, listen_addr: e.target.value }))} placeholder="0.0.0.0:8080" />
                     </FieldRow>
                     <FieldRow label={t.settings.hsconfig.metricsListenAddr}>
-                      <Input value={hsConfig.metrics_listen_addr ?? ''} onChange={(e) => setHsConfig(p => ({ ...p, metrics_listen_addr: e.target.value }))} placeholder="0.0.0.0:9090" />
+                      <Input value={hsConfig.metrics_listen_addr ?? ''} onChange={(e) => setHsConfig((p) => ({ ...p, metrics_listen_addr: e.target.value }))} placeholder="0.0.0.0:9090" />
                     </FieldRow>
                     <FieldRow label={t.settings.hsconfig.grpcListenAddr}>
-                      <Input value={hsConfig.grpc_listen_addr ?? ''} onChange={(e) => setHsConfig(p => ({ ...p, grpc_listen_addr: e.target.value }))} placeholder="0.0.0.0:50443" />
+                      <Input value={hsConfig.grpc_listen_addr ?? ''} onChange={(e) => setHsConfig((p) => ({ ...p, grpc_listen_addr: e.target.value }))} placeholder="0.0.0.0:50443" />
                     </FieldRow>
-                    <SwitchRow label={t.settings.hsconfig.grpcAllowInsecure} checked={hsConfig.grpc_allow_insecure ?? false} onCheckedChange={(v) => setHsConfig(p => ({ ...p, grpc_allow_insecure: v }))} />
+                    <SwitchRow label={t.settings.hsconfig.grpcAllowInsecure} checked={hsConfig.grpc_allow_insecure ?? false} onCheckedChange={(v) => setHsConfig((p) => ({ ...p, grpc_allow_insecure: v }))} />
                     <FieldRow label={t.settings.hsconfig.privateKeyPath}>
-                      <Input value={hsConfig.private_key_path ?? ''} onChange={(e) => setHsConfig(p => ({ ...p, private_key_path: e.target.value }))} placeholder="/var/lib/headscale/private.key" />
+                      <Input value={hsConfig.private_key_path ?? ''} onChange={(e) => setHsConfig((p) => ({ ...p, private_key_path: e.target.value }))} placeholder="/var/lib/headscale/private.key" />
                     </FieldRow>
                     <FieldRow label={t.settings.hsconfig.noisePrivateKeyPath}>
-                      <Input value={hsConfig.noise?.private_key_path ?? ''} onChange={(e) => setHsConfig(p => ({ ...p, noise: { ...p.noise, private_key_path: e.target.value } }))} placeholder="/var/lib/headscale/noise_private.key" />
+                      <Input value={hsConfig.noise?.private_key_path ?? ''} onChange={(e) => setHsConfig((p) => ({ ...p, noise: { ...p.noise, private_key_path: e.target.value } }))} placeholder="/var/lib/headscale/noise_private.key" />
                     </FieldRow>
                     <FieldRow label={t.settings.hsconfig.prefixesV4}>
-                      <Input value={hsConfig.prefixes?.v4 ?? ''} onChange={(e) => setHsConfig(p => ({ ...p, prefixes: { ...p.prefixes, v4: e.target.value } }))} placeholder="100.100.0.0/16" />
+                      <Input value={hsConfig.prefixes?.v4 ?? ''} onChange={(e) => setHsConfig((p) => ({ ...p, prefixes: { ...p.prefixes, v4: e.target.value } }))} placeholder="100.100.0.0/16" />
                     </FieldRow>
                     <FieldRow label={t.settings.hsconfig.prefixesAllocation}>
-                      <Select value={hsConfig.prefixes?.allocation ?? 'sequential'} onChange={(v) => setHsConfig(p => ({ ...p, prefixes: { ...p.prefixes, allocation: v } }))} style={{ width: '100%' }} options={[{ label: 'sequential', value: 'sequential' }, { label: 'random', value: 'random' }]} />
+                      <Select value={hsConfig.prefixes?.allocation ?? 'sequential'} onChange={(v) => setHsConfig((p) => ({ ...p, prefixes: { ...p.prefixes, allocation: v } }))} style={{ width: '100%' }} options={[{ label: 'sequential', value: 'sequential' }, { label: 'random', value: 'random' }]} />
                     </FieldRow>
                     <FieldRow label={t.settings.hsconfig.derpPaths}>
-                      <ArrayEditor value={hsConfig.derp?.paths ?? []} onChange={(v) => setHsConfig(p => ({ ...p, derp: { ...p.derp, paths: v } }))} placeholder={t.settings.hsconfig.derpPathPlaceholder} />
+                      <ArrayEditor value={hsConfig.derp?.paths ?? []} onChange={(v) => setHsConfig((p) => ({ ...p, derp: { ...p.derp, paths: v } }))} placeholder={t.settings.hsconfig.derpPathPlaceholder} />
                     </FieldRow>
                     <FieldRow label={t.settings.hsconfig.dbSqlitePath}>
-                      <Input value={hsConfig.database?.sqlite?.path ?? ''} onChange={(e) => setHsConfig(p => ({ ...p, database: { ...p.database, sqlite: { ...p.database?.sqlite, path: e.target.value } } }))} placeholder="/var/lib/headscale/db.sqlite" />
+                      <Input value={hsConfig.database?.sqlite?.path ?? ''} onChange={(e) => setHsConfig((p) => ({ ...p, database: { ...p.database, sqlite: { ...p.database?.sqlite, path: e.target.value } } }))} placeholder="/var/lib/headscale/db.sqlite" />
                     </FieldRow>
-                    <SwitchRow label={t.settings.hsconfig.dbSqliteWal} checked={hsConfig.database?.sqlite?.write_ahead_log ?? true} onCheckedChange={(v) => setHsConfig(p => ({ ...p, database: { ...p.database, sqlite: { ...p.database?.sqlite, write_ahead_log: v } } }))} />
+                    <SwitchRow label={t.settings.hsconfig.dbSqliteWal} checked={hsConfig.database?.sqlite?.write_ahead_log ?? true} onCheckedChange={(v) => setHsConfig((p) => ({ ...p, database: { ...p.database, sqlite: { ...p.database?.sqlite, write_ahead_log: v } } }))} />
                     <FieldRow label={t.settings.hsconfig.dnsBaseDomain}>
-                      <Input value={hsConfig.dns?.base_domain ?? ''} onChange={(e) => setHsConfig(p => ({ ...p, dns: { ...p.dns, base_domain: e.target.value } }))} placeholder="leviatan.vpn" />
+                      <Input value={hsConfig.dns?.base_domain ?? ''} onChange={(e) => setHsConfig((p) => ({ ...p, dns: { ...p.dns, base_domain: e.target.value } }))} placeholder="leviatan.vpn" />
                     </FieldRow>
-                    <SwitchRow label={t.settings.hsconfig.dnsMagicDns} checked={hsConfig.dns?.magic_dns ?? true} onCheckedChange={(v) => setHsConfig(p => ({ ...p, dns: { ...p.dns, magic_dns: v } }))} />
-                    <SwitchRow label={t.settings.hsconfig.dnsOverrideLocalDns} checked={hsConfig.dns?.override_local_dns ?? true} onCheckedChange={(v) => setHsConfig(p => ({ ...p, dns: { ...p.dns, override_local_dns: v } }))} />
+                    <SwitchRow label={t.settings.hsconfig.dnsMagicDns} checked={hsConfig.dns?.magic_dns ?? true} onCheckedChange={(v) => setHsConfig((p) => ({ ...p, dns: { ...p.dns, magic_dns: v } }))} />
+                    <SwitchRow label={t.settings.hsconfig.dnsOverrideLocalDns} checked={hsConfig.dns?.override_local_dns ?? true} onCheckedChange={(v) => setHsConfig((p) => ({ ...p, dns: { ...p.dns, override_local_dns: v } }))} />
                     <FieldRow label={t.settings.hsconfig.dnsNameservers}>
-                      <ArrayEditor value={hsConfig.dns?.nameservers?.global ?? []} onChange={(v) => setHsConfig(p => ({ ...p, dns: { ...p.dns, nameservers: { ...p.dns?.nameservers, global: v } } }))} placeholder={t.settings.hsconfig.dnsNameserverPlaceholder} />
+                      <ArrayEditor value={hsConfig.dns?.nameservers?.global ?? []} onChange={(v) => setHsConfig((p) => ({ ...p, dns: { ...p.dns, nameservers: { ...p.dns?.nameservers, global: v } } }))} placeholder={t.settings.hsconfig.dnsNameserverPlaceholder} />
                     </FieldRow>
                     <FieldRow label={t.settings.hsconfig.policyMode}>
-                      <Select value={hsConfig.policy?.mode ?? 'database'} onChange={(v) => setHsConfig(p => ({ ...p, policy: { mode: v } }))} style={{ width: '100%' }} options={[{ label: 'database', value: 'database' }, { label: 'file', value: 'file' }]} />
+                      <Select value={hsConfig.policy?.mode ?? 'database'} onChange={(v) => setHsConfig((p) => ({ ...p, policy: { mode: v } }))} style={{ width: '100%' }} options={[{ label: 'database', value: 'database' }, { label: 'file', value: 'file' }]} />
                     </FieldRow>
                     <div style={{ borderTop: `1px solid ${token.colorBorderSecondary}`, paddingTop: 16 }}>
                       <Button type="primary" block onClick={handleSaveHsConfig} loading={savingHsConfig} icon={<SaveOutlined />}>

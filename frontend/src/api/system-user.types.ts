@@ -1,4 +1,4 @@
-import type { User, Group } from './entities';
+import type { User } from './entities';
 
 export interface ListSystemUsersReq {
   page?: number;
@@ -39,4 +39,3 @@ export interface DeleteSystemUserReq {
 }
 
 export interface DeleteSystemUserRes {}
-

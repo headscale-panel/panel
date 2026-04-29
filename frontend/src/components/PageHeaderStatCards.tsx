@@ -28,11 +28,13 @@ export default function PageHeaderStatCards({
     <div className="grid" style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${minCardWidth}px, 1fr))`, gap }}>
       {items.map((item, index) => (
         <Card key={item.key ?? `${index}`} size="small" className="stat-card">
-          {item.watermark ? (
-            <div className="stat-watermark">
-              {item.watermark}
-            </div>
-          ) : null}
+          {item.watermark
+            ? (
+                <div className="stat-watermark">
+                  {item.watermark}
+                </div>
+              )
+            : null}
           <div className="stat-content">
             <div>
               <Text type="secondary" className="stat-label">{item.label}</Text>

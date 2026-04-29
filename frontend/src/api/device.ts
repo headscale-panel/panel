@@ -1,17 +1,18 @@
-import request, { RespType, RespPage } from '@/lib/request';
-import type { HeadscaleMachine } from './entities';
 import type {
-  ListDevicesReq,
-  GetDeviceReq,
-  GetDeviceRes,
-  RenameDeviceReq,
   DeleteDeviceReq,
   ExpireDeviceReq,
-  SetDeviceTagsReq,
+  GetDeviceReq,
+  GetDeviceRes,
   GetDeviceRoutesReq,
   GetDeviceRoutesRes,
+  ListDevicesReq,
   RegisterNodeReq,
+  RenameDeviceReq,
+  SetDeviceTagsReq,
 } from './device.types';
+import type { HeadscaleMachine } from './entities';
+import type { RespPage, RespType } from '@/lib/request';
+import request from '@/lib/request';
 
 export const deviceApi = {
   list: (req?: ListDevicesReq) =>

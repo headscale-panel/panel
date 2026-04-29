@@ -1,9 +1,6 @@
-import request, { RespType, RespPage } from '@/lib/request';
-import type { RouteItem } from './route.types';
-import type {
-  ListRoutesReq,
-  ToggleRouteReq,
-} from './route.types';
+import type { ListRoutesReq, RouteItem, ToggleRouteReq } from './route.types';
+import type { RespPage, RespType } from '@/lib/request';
+import request from '@/lib/request';
 
 export const routeApi = {
   list: (req?: ListRoutesReq) =>

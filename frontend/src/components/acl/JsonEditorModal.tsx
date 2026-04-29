@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
-import { Button, Modal, Typography, message, theme } from 'antd';
 import Editor from '@monaco-editor/react';
+import { Button, message, Modal, theme, Typography } from 'antd';
+import { useState } from 'react';
 import { aclApi } from '@/api';
 import { useTranslation } from '@/i18n/index';
 
@@ -20,11 +20,11 @@ export default function JsonEditorModal({ open, initialJson, isDarkMode, onCance
   const [jsonContent, setJsonContent] = useState('');
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
-    if (open) {
+  const handleAfterOpenChange = (nextOpen: boolean) => {
+    if (nextOpen) {
       setJsonContent(initialJson);
     }
-  }, [open, initialJson]);
+  };
 
   const handleOk = async () => {
     setSaving(true);
@@ -46,6 +46,7 @@ export default function JsonEditorModal({ open, initialJson, isDarkMode, onCance
       title={t.acl.jsonEditorTitle}
       width={900}
       onCancel={onCancel}
+      afterOpenChange={handleAfterOpenChange}
       styles={{ body: { height: '60vh', padding: 0 } }}
       footer={[
         <Button key="cancel" onClick={onCancel}>{t.common.actions.cancel}</Button>,

@@ -1,5 +1,6 @@
+import type { DashboardTopologyData } from './dashboard';
 import { describe, expect, it } from 'vitest';
-import { applyRealtimeDeviceStatus, type DashboardTopologyData } from './dashboard';
+import { applyRealtimeDeviceStatus } from './dashboard';
 
 describe('dashboard realtime device updates', () => {
   const topology: DashboardTopologyData = {

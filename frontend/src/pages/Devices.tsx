@@ -1,18 +1,4 @@
-import { useMemo, useState } from 'react';
-import { useRequest } from 'ahooks';
-import {
-  Button,
-  Card,
-  Input,
-  Modal,
-  Space,
-  Spin,
-  Tag,
-  Tooltip,
-  Typography,
-  message,
-  theme,
-} from 'antd';
+import type { NormalizedDevice } from '@/lib/normalizers';
 import {
   ClockCircleOutlined,
   CopyOutlined,
@@ -25,15 +11,30 @@ import {
   ReloadOutlined,
   WifiOutlined,
 } from '@ant-design/icons';
-import DashboardLayout from '@/components/DashboardLayout';
-import PageHeaderStatCards from '@/components/PageHeaderStatCards';
+import { useRequest } from 'ahooks';
+import {
+  Button,
+  Card,
+  Input,
+  message,
+  Modal,
+  Space,
+  Spin,
+  Tag,
+  theme,
+  Tooltip,
+  Typography,
+} from 'antd';
+import { useMemo, useState } from 'react';
 import { deviceApi } from '@/api';
-import { normalizeDeviceListResponse, type NormalizedDevice } from '@/lib/normalizers';
+import DashboardLayout from '@/components/DashboardLayout';
 import AddDeviceModal from '@/components/devices/AddDeviceModal';
+import PageHeaderStatCards from '@/components/PageHeaderStatCards';
 import RenameDeviceModal from '@/components/shared/RenameDeviceModal';
 import { useTranslation } from '@/i18n/index';
-import { useAuthStore } from '@/lib/store';
+import { normalizeDeviceListResponse } from '@/lib/normalizers';
 import { hasPermission } from '@/lib/permissions';
+import { useAuthStore } from '@/lib/store';
 
 const { Text, Title } = Typography;
 
@@ -87,9 +88,9 @@ export default function Devices() {
     }
 
     return devices.filter((device) => (
-      device.name.toLowerCase().includes(query) ||
-      device.given_name.toLowerCase().includes(query) ||
-      device.ip_addresses.some((ip) => ip.toLowerCase().includes(query))
+      device.name.toLowerCase().includes(query)
+      || device.given_name.toLowerCase().includes(query)
+      || device.ip_addresses.some((ip) => ip.toLowerCase().includes(query))
     ));
   }, [devices, searchQuery]);
 
@@ -186,82 +187,94 @@ export default function Devices() {
             )}
           </div>
 
-          {!canListDevices ? (
-            <Text type="secondary">{t.common.errors.forbidden}</Text>
-          ) : filteredDevices.length === 0 ? (
-            <div style={{ border: `1px dashed ${token.colorBorderSecondary}`, borderRadius: token.borderRadius, padding: '32px 16px', textAlign: 'center' }}>
-              <Text type="secondary">{t.devices.noData}</Text>
-            </div>
-          ) : (
-            <Space direction="vertical" className="w-full" size={12}>
-              {filteredDevices.map((device) => (
-                <div
-                  key={device.id}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 12,
-                    borderRadius: token.borderRadius,
-                    border: `1px solid ${token.colorBorderSecondary}`,
-                    background: token.colorBgContainer,
-                    padding: '12px 16px',
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 36, height: 36, borderRadius: 8, background: token.colorBgLayout, flexShrink: 0 }}>
-                    <DesktopOutlined style={{ color: token.colorTextSecondary }} />
+          {!canListDevices
+            ? (
+                <Text type="secondary">{t.common.errors.forbidden}</Text>
+              )
+            : filteredDevices.length === 0
+              ? (
+                  <div style={{ border: `1px dashed ${token.colorBorderSecondary}`, borderRadius: token.borderRadius, padding: '32px 16px', textAlign: 'center' }}>
+                    <Text type="secondary">{t.devices.noData}</Text>
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <Text strong>{device.given_name || device.name}</Text>
-                      {device.online ? (
-                        <Tag color="success" className="m-0"><WifiOutlined /> {t.common.status.online}</Tag>
-                      ) : (
-                        <Tag className="m-0">{t.common.status.offline}</Tag>
-                      )}
-                    </div>
-                    <div className="mt-1.5 flex items-center gap-2 flex-wrap">
-                      {device.ip_addresses.map((ip) => (
-                        <Tag
-                          key={ip}
-                          className="cursor-pointer font-mono m-0"
-                          onClick={() => void handleCopy(ip, t.devices.ipCopied)}
-                        >
-                          {ip} <CopyOutlined className="text-10px" />
-                        </Tag>
-                      ))}
-                      {device.last_seen && (
-                        <Text type="secondary" className="text-12px">
-                          <ClockCircleOutlined className="mr-1" />
-                          {new Date(device.last_seen).toLocaleString()}
-                        </Text>
-                      )}
-                    </div>
-                  </div>
-                  <Space size={4}>
-                    <Tooltip title={t.devices.renameDialogTitle}>
-                      <Button
-                        type="text"
-                        size="small"
-                        icon={<EditOutlined />}
-                        onClick={() => openRenameDeviceDialog(device)}
-                        disabled={!canRenameDevice}
-                      />
-                    </Tooltip>
-                    <Tooltip title={t.common.actions.delete}>
-                      <Button
-                        type="text"
-                        size="small"
-                        danger
-                        icon={<DeleteOutlined />}
-                        onClick={() => handleDeleteDevice(device)}
-                        disabled={!canDeleteDevice}
-                      />
-                    </Tooltip>
+                )
+              : (
+                  <Space direction="vertical" className="w-full" size={12}>
+                    {filteredDevices.map((device) => (
+                      <div
+                        key={device.id}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 12,
+                          borderRadius: token.borderRadius,
+                          border: `1px solid ${token.colorBorderSecondary}`,
+                          background: token.colorBgContainer,
+                          padding: '12px 16px',
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 36, height: 36, borderRadius: 8, background: token.colorBgLayout, flexShrink: 0 }}>
+                          <DesktopOutlined style={{ color: token.colorTextSecondary }} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <Text strong>{device.given_name || device.name}</Text>
+                            {device.online
+                              ? (
+                                  <Tag color="success" className="m-0">
+                                    <WifiOutlined />
+                                    {' '}
+                                    {t.common.status.online}
+                                  </Tag>
+                                )
+                              : (
+                                  <Tag className="m-0">{t.common.status.offline}</Tag>
+                                )}
+                          </div>
+                          <div className="mt-1.5 flex items-center gap-2 flex-wrap">
+                            {device.ip_addresses.map((ip) => (
+                              <Tag
+                                key={ip}
+                                className="cursor-pointer font-mono m-0"
+                                onClick={() => void handleCopy(ip, t.devices.ipCopied)}
+                              >
+                                {ip}
+                                {' '}
+                                <CopyOutlined className="text-10px" />
+                              </Tag>
+                            ))}
+                            {device.last_seen && (
+                              <Text type="secondary" className="text-12px">
+                                <ClockCircleOutlined className="mr-1" />
+                                {new Date(device.last_seen).toLocaleString()}
+                              </Text>
+                            )}
+                          </div>
+                        </div>
+                        <Space size={4}>
+                          <Tooltip title={t.devices.renameDialogTitle}>
+                            <Button
+                              type="text"
+                              size="small"
+                              icon={<EditOutlined />}
+                              onClick={() => openRenameDeviceDialog(device)}
+                              disabled={!canRenameDevice}
+                            />
+                          </Tooltip>
+                          <Tooltip title={t.common.actions.delete}>
+                            <Button
+                              type="text"
+                              size="small"
+                              danger
+                              icon={<DeleteOutlined />}
+                              onClick={() => handleDeleteDevice(device)}
+                              disabled={!canDeleteDevice}
+                            />
+                          </Tooltip>
+                        </Space>
+                      </div>
+                    ))}
                   </Space>
-                </div>
-              ))}
-            </Space>
-          )}
+                )}
         </Card>
 
         <AddDeviceModal
@@ -270,7 +283,10 @@ export default function Devices() {
           canCreatePreAuthKey={canCreatePreAuthKey}
           canRegisterNode={canRegisterNode}
           onCancel={() => setAddDeviceDialogOpen(false)}
-          onSuccess={() => { setAddDeviceDialogOpen(false); if (canListDevices) refresh(); }}
+          onSuccess={() => {
+            setAddDeviceDialogOpen(false); if (canListDevices)
+              refresh();
+          }}
         />
 
         <RenameDeviceModal

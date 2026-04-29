@@ -29,4 +29,3 @@ export interface ToggleRouteReq {
 }
 
 export interface ToggleRouteRes {}
-

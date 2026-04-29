@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react';
-import { Input, Modal, Select, Space, Typography, message } from 'antd';
-import { dnsApi } from '@/api';
 import type { DNSRecord } from '@/api/entities';
-import { DNSRecordType } from '@/lib/enums';
+import { Input, message, Modal, Select, Space, Typography } from 'antd';
+import { useState } from 'react';
+import { dnsApi } from '@/api';
 import { useTranslation } from '@/i18n/index';
+import { DNSRecordType } from '@/lib/enums';
 
 const { Text } = Typography;
 
@@ -23,23 +23,27 @@ export default function RecordModal({ open, editingRecord, onCancel, onSuccess }
     comment: '',
   });
 
-  useEffect(() => {
-    if (open) {
-      if (editingRecord) {
-        setFormData({ name: editingRecord.name, type: editingRecord.type, value: editingRecord.value, comment: editingRecord.comment || '' });
-      } else {
-        setFormData({ name: '', type: DNSRecordType.A, value: '', comment: '' });
-      }
-    }
-  }, [open, editingRecord]);
+  const handleAfterOpenChange = (nextOpen: boolean) => {
+    if (!nextOpen)
+      return;
 
-  const validateIPv4 = (ip: string) => /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/.test(ip);
-  const validateIPv6 = (ip: string) => /^(([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|:((:[0-9a-fA-F]{1,4}){1,7}|:))$/.test(ip);
+    if (editingRecord) {
+      setFormData({ name: editingRecord.name, type: editingRecord.type, value: editingRecord.value, comment: editingRecord.comment || '' });
+    } else {
+      setFormData({ name: '', type: DNSRecordType.A, value: '', comment: '' });
+    }
+  };
+
+  const validateIPv4 = (ip: string) => /^(?:(?:25[0-5]|2[0-4]\d|[01]?\d{1,2})\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d{1,2})$/.test(ip);
+  const validateIPv6 = (ip: string) => /^(?:(?:[0-9a-f]{1,4}:){7}[0-9a-f]{1,4}|(?:[0-9a-f]{1,4}:){1,7}:|(?:[0-9a-f]{1,4}:){1,6}:[0-9a-f]{1,4}|(?:[0-9a-f]{1,4}:){1,5}(?::[0-9a-f]{1,4}){1,2}|(?:[0-9a-f]{1,4}:){1,4}(?::[0-9a-f]{1,4}){1,3}|(?:[0-9a-f]{1,4}:){1,3}(?::[0-9a-f]{1,4}){1,4}|(?:[0-9a-f]{1,4}:){1,2}(?::[0-9a-f]{1,4}){1,5}|[0-9a-f]{1,4}:(?::[0-9a-f]{1,4}){1,6}|:(?::[0-9a-f]{1,4}){1,7}|:)$/i.test(ip);
 
   const isFormValid = () => {
-    if (!formData.name || !formData.value) return false;
-    if (formData.type === 'A' && !validateIPv4(formData.value)) return false;
-    if (formData.type === 'AAAA' && !validateIPv6(formData.value)) return false;
+    if (!formData.name || !formData.value)
+      return false;
+    if (formData.type === 'A' && !validateIPv4(formData.value))
+      return false;
+    if (formData.type === 'AAAA' && !validateIPv6(formData.value))
+      return false;
     return true;
   };
 
@@ -63,6 +67,7 @@ export default function RecordModal({ open, editingRecord, onCancel, onSuccess }
       title={editingRecord ? t.dns.editRecordTitle : t.dns.addRecordTitle}
       open={open}
       onCancel={onCancel}
+      afterOpenChange={handleAfterOpenChange}
       onOk={handleSubmit}
       okText={editingRecord ? t.common.actions.save : t.common.actions.create}
       cancelText={t.common.actions.cancel}
@@ -75,7 +80,10 @@ export default function RecordModal({ open, editingRecord, onCancel, onSuccess }
         </div>
         <div className="field-block">
           <Text className="field-label">{t.dns.typeLabel}</Text>
-          <Select value={formData.type} onChange={(v: DNSRecordType) => setFormData({ ...formData, type: v })} className="full-width"
+          <Select
+            value={formData.type}
+            onChange={(v: DNSRecordType) => setFormData({ ...formData, type: v })}
+            className="full-width"
             options={[{ value: 'A', label: 'A (IPv4)' }, { value: 'AAAA', label: 'AAAA (IPv6)' }]}
           />
         </div>

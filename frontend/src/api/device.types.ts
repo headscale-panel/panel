@@ -1,4 +1,4 @@
-import type { HeadscaleMachine, HeadscaleUser } from './entities';
+import type { HeadscaleMachine } from './entities';
 
 export interface ListDevicesReq {
   page?: number;
@@ -62,4 +62,3 @@ export interface RegisterNodeReq {
   key: string;
 }
 export type RegisterNodeRes = HeadscaleMachine;
-

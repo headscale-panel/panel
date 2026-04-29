@@ -1,12 +1,13 @@
-import request, { RespType } from '@/lib/request';
 import type {
-  GetSetupStatusReq,
-  GetSetupStatusRes,
   ConnectivityCheckReq,
   ConnectivityCheckRes,
+  GetSetupStatusReq,
+  GetSetupStatusRes,
   InitSetupReq,
   InitSetupRes,
 } from './setup.types';
+import type { RespType } from '@/lib/request';
+import request from '@/lib/request';
 
 export const setupApi = {
   getStatus: (_req?: GetSetupStatusReq) =>

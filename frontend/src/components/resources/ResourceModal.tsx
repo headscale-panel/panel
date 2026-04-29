@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { Input, Modal, Space, Typography, message } from 'antd';
+import { Input, message, Modal, Space, Typography } from 'antd';
+import { useState } from 'react';
 import { resourceApi } from '@/api';
 import { useTranslation } from '@/i18n/index';
 
@@ -24,15 +24,16 @@ export default function ResourceModal({ open, editingResource, onCancel, onSucce
   const t = useTranslation();
   const [formData, setFormData] = useState({ name: '', ip_address: '', port: '', description: '' });
 
-  useEffect(() => {
-    if (open) {
-      if (editingResource) {
-        setFormData({ name: editingResource.name, ip_address: editingResource.ip_address, port: editingResource.port || '', description: editingResource.description || '' });
-      } else {
-        setFormData({ name: '', ip_address: '', port: '', description: '' });
-      }
+  const handleAfterOpenChange = (nextOpen: boolean) => {
+    if (!nextOpen)
+      return;
+
+    if (editingResource) {
+      setFormData({ name: editingResource.name, ip_address: editingResource.ip_address, port: editingResource.port || '', description: editingResource.description || '' });
+    } else {
+      setFormData({ name: '', ip_address: '', port: '', description: '' });
     }
-  }, [open, editingResource]);
+  };
 
   const handleSave = async () => {
     if (!formData.name || !formData.ip_address) {
@@ -58,6 +59,7 @@ export default function ResourceModal({ open, editingResource, onCancel, onSucce
       title={editingResource ? t.resources.editResourceTitle : t.resources.addResourceTitle}
       open={open}
       onCancel={onCancel}
+      afterOpenChange={handleAfterOpenChange}
       onOk={handleSave}
       okText={editingResource ? t.common.actions.save : t.common.actions.create}
       cancelText={t.common.actions.cancel}

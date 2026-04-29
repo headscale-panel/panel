@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { Input, Modal, Typography, message } from 'antd';
+import { Input, message, Modal, Typography } from 'antd';
+import { useState } from 'react';
 import { useTranslation } from '@/i18n/index';
 
 const { Text } = Typography;
@@ -16,11 +16,11 @@ export default function CreateGroupModal({ open, onCancel, onSuccess, onCreate }
   const [groupName, setGroupName] = useState('');
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
-    if (open) {
+  const handleAfterOpenChange = (nextOpen: boolean) => {
+    if (nextOpen) {
       setGroupName('');
     }
-  }, [open]);
+  };
 
   const handleOk = async () => {
     const nextName = groupName.trim();
@@ -47,6 +47,7 @@ export default function CreateGroupModal({ open, onCancel, onSuccess, onCreate }
       open={open}
       title={t.users.createGroupTitle}
       onCancel={onCancel}
+      afterOpenChange={handleAfterOpenChange}
       onOk={handleOk}
       okText={t.common.actions.create}
       cancelText={t.common.actions.cancel}

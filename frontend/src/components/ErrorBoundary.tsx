@@ -1,6 +1,7 @@
-import { Button, Result, Typography } from "antd";
-import { ReloadOutlined } from "@ant-design/icons";
-import { Component, ReactNode } from "react";
+import type { ReactNode } from 'react';
+import { ReloadOutlined } from '@ant-design/icons';
+import { Button, Result, Typography } from 'antd';
+import { Component } from 'react';
 
 const { Paragraph, Text } = Typography;
 
@@ -30,7 +31,7 @@ class ErrorBoundary extends Component<Props, State> {
           <Result
             status="error"
             title="An unexpected error occurred."
-            extra={
+            extra={(
               <Button
                 type="primary"
                 icon={<ReloadOutlined />}
@@ -38,7 +39,7 @@ class ErrorBoundary extends Component<Props, State> {
               >
                 Reload Page
               </Button>
-            }
+            )}
           >
             {import.meta.env.DEV && this.state.error?.stack && (
               <Paragraph>

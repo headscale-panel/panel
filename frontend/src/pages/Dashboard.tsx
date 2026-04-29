@@ -1,11 +1,17 @@
+import type { DashboardStats, DashboardTopologyData } from '@/lib/dashboard';
+import { CloudServerOutlined, DashboardOutlined, GlobalOutlined, PercentageOutlined, ReloadOutlined, TeamOutlined, WifiOutlined } from '@ant-design/icons';
+import { useRequest } from 'ahooks';
+import { Button, message, Tag, Typography } from 'antd';
+import { useState } from 'react';
+import { dashboardApi, deviceApi, headscaleUserApi } from '@/api';
 import DashboardLayout from '@/components/DashboardLayout';
 import NetworkTopology from '@/components/NetworkTopology';
 import PageHeaderStatCards from '@/components/PageHeaderStatCards';
-import { dashboardApi, deviceApi, headscaleUserApi } from '@/api';
+import { useDeviceStatusUpdates, useMetricsUpdates, useWebSocketConnection } from '@/hooks/useWebSocket';
+import { useTranslation } from '@/i18n/index';
 import {
   applyRealtimeDeviceStatus,
-  type DashboardStats,
-  type DashboardTopologyData,
+
 } from '@/lib/dashboard';
 import {
   normalizeDeviceListResponse,
@@ -13,18 +19,9 @@ import {
   normalizeOverview,
   normalizeTopology,
 } from '@/lib/normalizers';
-import { useTranslation } from '@/i18n/index';
-import { useWebSocketConnection, useDeviceStatusUpdates, useMetricsUpdates } from '@/hooks/useWebSocket';
-import { useState } from 'react';
-import { useRequest } from 'ahooks';
-import { Button, Tag, Typography, message, theme } from 'antd';
-import { ReloadOutlined, WifiOutlined, GlobalOutlined, TeamOutlined, DashboardOutlined, PercentageOutlined, CloudServerOutlined } from '@ant-design/icons';
-
-const { Text } = Typography;
 
 export default function Dashboard() {
   const t = useTranslation();
-  const { token } = theme.useToken();
   const [refreshing, setRefreshing] = useState(false);
   const [stats, setStats] = useState<DashboardStats>({
     onlineDevices: 0,
@@ -35,11 +32,12 @@ export default function Dashboard() {
   const [topologyData, setTopologyData] = useState<DashboardTopologyData | null>(null);
 
   const { isConnected } = useWebSocketConnection();
-  
+
   // Real-time device status updates
   const deviceStatuses = useDeviceStatusUpdates((update) => {
     setTopologyData((prev) => {
-      if (!prev) return prev;
+      if (!prev)
+        return prev;
 
       const result = applyRealtimeDeviceStatus(prev, update);
       setStats((currentStats) => ({
@@ -76,7 +74,7 @@ export default function Dashboard() {
     let devices: DashboardTopologyData['devices'] = [];
     let users: DashboardTopologyData['users'] = [];
     let acl: DashboardTopologyData['acl'] = [];
-    let policy: DashboardTopologyData['policy'] = undefined;
+    let policy: DashboardTopologyData['policy'];
     let totalUsers = 0;
     let dnsRecordCount = 0;
 
@@ -146,7 +144,7 @@ export default function Dashboard() {
     };
   };
 
-  const { loading, refreshAsync } = useRequest(fetchDashboardData, {
+  const { refreshAsync } = useRequest(fetchDashboardData, {
     pollingInterval: 30000,
     onSuccess: (data) => {
       setStats(data.stats);
@@ -190,15 +188,15 @@ export default function Dashboard() {
 
         {/* Stats Cards */}
         <div data-tour-id="dashboard-stats">
-        <PageHeaderStatCards
-          items={[
-            { label: t.dashboard.onlineDevices, value: stats.onlineDevices, subText: t.dashboard.totalDevices.replace('{count}', String(stats.totalDevices)), icon: <DashboardOutlined className="stat-icon-primary" />, watermark: 'LIVE' },
-            { label: t.dashboard.totalDevicesLabel || '总设备', value: stats.totalDevices, subText: `${stats.onlineDevices} ${t.common.status.online}`, icon: <CloudServerOutlined className="stat-icon-accent" />, watermark: 'ALL' },
-            { label: t.dashboard.totalUsers, value: stats.totalUsers, subText: t.dashboard.activeUsers, icon: <TeamOutlined className="stat-icon-success" />, watermark: 'USR' },
-            { label: t.dashboard.onlineRate || '在线率', value: stats.totalDevices > 0 ? `${Math.round((stats.onlineDevices / stats.totalDevices) * 100)}%` : '0%', subText: `${stats.onlineDevices}/${stats.totalDevices}`, icon: <PercentageOutlined className="stat-icon-warn" />, watermark: '%' },
-            { label: t.dashboard.dnsCount, value: stats.dnsRecordCount, subText: t.dashboard.dnsSubtitle, icon: <GlobalOutlined className="stat-icon-cyan" />, watermark: 'DNS' },
-          ]}
-        />
+          <PageHeaderStatCards
+            items={[
+              { label: t.dashboard.onlineDevices, value: stats.onlineDevices, subText: t.dashboard.totalDevices.replace('{count}', String(stats.totalDevices)), icon: <DashboardOutlined className="stat-icon-primary" />, watermark: 'LIVE' },
+              { label: t.dashboard.totalDevicesLabel || '总设备', value: stats.totalDevices, subText: `${stats.onlineDevices} ${t.common.status.online}`, icon: <CloudServerOutlined className="stat-icon-accent" />, watermark: 'ALL' },
+              { label: t.dashboard.totalUsers, value: stats.totalUsers, subText: t.dashboard.activeUsers, icon: <TeamOutlined className="stat-icon-success" />, watermark: 'USR' },
+              { label: t.dashboard.onlineRate || '在线率', value: stats.totalDevices > 0 ? `${Math.round((stats.onlineDevices / stats.totalDevices) * 100)}%` : '0%', subText: `${stats.onlineDevices}/${stats.totalDevices}`, icon: <PercentageOutlined className="stat-icon-warn" />, watermark: '%' },
+              { label: t.dashboard.dnsCount, value: stats.dnsRecordCount, subText: t.dashboard.dnsSubtitle, icon: <GlobalOutlined className="stat-icon-cyan" />, watermark: 'DNS' },
+            ]}
+          />
         </div>
 
         {/* Network Topology */}

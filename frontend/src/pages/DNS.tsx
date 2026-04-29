@@ -1,14 +1,14 @@
-import { useState, useEffect } from 'react';
-import { useTranslation } from '@/i18n/index';
-import { dnsApi } from '@/api';
-import type { DNSRecord } from '@/api/entities';
-import RecordModal from '@/components/dns/RecordModal';
-import DashboardLayout from '@/components/DashboardLayout';
-import PageHeaderStatCards from '@/components/PageHeaderStatCards';
-import { Button, Card, Input, Modal, Select, Space, Table, Tag, Typography, message, theme } from 'antd';
-import { PlusOutlined, EditOutlined, DeleteOutlined, DownloadOutlined, UploadOutlined, SaveOutlined, ReloadOutlined, SearchOutlined, GlobalOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
+import type { DNSRecord } from '@/api/entities';
+import { DeleteOutlined, DownloadOutlined, EditOutlined, GlobalOutlined, PlusOutlined, ReloadOutlined, SaveOutlined, SearchOutlined, UploadOutlined } from '@ant-design/icons';
 import { useRequest } from 'ahooks';
+import { Button, Card, Input, message, Modal, Select, Space, Table, Tag, theme, Typography } from 'antd';
+import { useEffect, useRef, useState } from 'react';
+import { dnsApi } from '@/api';
+import DashboardLayout from '@/components/DashboardLayout';
+import RecordModal from '@/components/dns/RecordModal';
+import PageHeaderStatCards from '@/components/PageHeaderStatCards';
+import { useTranslation } from '@/i18n/index';
 
 const { Title, Text } = Typography;
 
@@ -24,7 +24,7 @@ export default function DNS() {
   const [editingRecord, setEditingRecord] = useState<DNSRecord | null>(null);
 
   const [importing, setImporting] = useState(false);
-  const [hasTriedAutoImport, setHasTriedAutoImport] = useState(false);
+  const hasTriedAutoImportRef = useRef(false);
 
   const { data: listData, loading, refresh } = useRequest(
     async () => dnsApi.list({ page, pageSize, keyword, type: typeFilter }),
@@ -41,11 +41,11 @@ export default function DNS() {
   const total = listData?.total || 0;
 
   useEffect(() => {
-    if (!loading && !hasTriedAutoImport && records.length === 0 && total === 0) {
-      setHasTriedAutoImport(true);
+    if (!loading && !hasTriedAutoImportRef.current && records.length === 0 && total === 0) {
+      hasTriedAutoImportRef.current = true;
       handleImportFromFile(true);
     }
-  }, [loading, records, total, hasTriedAutoImport]);
+  }, [loading, records, total]);
 
   const handleImportFromFile = async (silent = false) => {
     setImporting(true);
@@ -60,7 +60,7 @@ export default function DNS() {
       refresh();
     } catch (error: any) {
       if (!silent) {
-        message.error(t.dns.importFailed + (error.message ? ': ' + error.message : ''));
+        message.error(t.dns.importFailed + (error.message ? `: ${error.message}` : ''));
       }
     } finally {
       setImporting(false);
@@ -99,7 +99,14 @@ export default function DNS() {
   const handleApply = () => {
     Modal.confirm({
       title: t.dns.applyDialogTitle,
-      content: (<div>{t.dns.applyDialogDesc}<br /><br /><Text type="warning" strong>{t.dns.applyDialogWarning}</Text></div>),
+      content: (
+        <div>
+          {t.dns.applyDialogDesc}
+          <br />
+          <br />
+          <Text type="warning" strong>{t.dns.applyDialogWarning}</Text>
+        </div>
+      ),
       okText: t.dns.confirmApply,
       cancelText: t.common.actions.cancel,
       onOk: async () => {
@@ -132,13 +139,19 @@ export default function DNS() {
   const columns: ColumnsType<DNSRecord> = [
     { title: t.dns.tableDomain, dataIndex: 'name', key: 'name', render: (v: string) => <Text className="mono-text">{v}</Text> },
     {
-      title: t.dns.tableType, dataIndex: 'type', key: 'type', width: 100,
+      title: t.dns.tableType,
+      dataIndex: 'type',
+      key: 'type',
+      width: 100,
       render: (v: string) => <Tag color={v === 'A' ? 'blue' : 'purple'}>{v}</Tag>,
     },
     { title: t.dns.tableIp, dataIndex: 'value', key: 'value', render: (v: string) => <Text className="mono-text">{v}</Text> },
     { title: t.dns.tableComment, dataIndex: 'comment', key: 'comment', render: (v: string) => <Text type="secondary">{v || '-'}</Text> },
     {
-      title: t.dns.tableActions, key: 'actions', width: 100, align: 'right',
+      title: t.dns.tableActions,
+      key: 'actions',
+      width: 100,
+      align: 'right',
       render: (_: any, record: DNSRecord) => (
         <Space>
           <Button type="text" icon={<EditOutlined />} size="small" onClick={() => handleEdit(record)} />
@@ -154,7 +167,10 @@ export default function DNS() {
         {/* Header */}
         <div className="page-header-row">
           <div>
-            <Title level={4} className="page-title-with-icon"><GlobalOutlined />{t.dns.title}</Title>
+            <Title level={4} className="page-title-with-icon">
+              <GlobalOutlined />
+              {t.dns.title}
+            </Title>
             <Text type="secondary">{t.dns.description}</Text>
           </div>
           <Space wrap className="header-actions-wrap">
@@ -169,8 +185,8 @@ export default function DNS() {
         <PageHeaderStatCards
           items={[
             { label: t.dns.totalRecords, value: total, icon: <GlobalOutlined className="stat-icon-primary" />, watermark: 'DNS' },
-            { label: t.dns.aRecords, value: records.filter(r => r.type === 'A').length, icon: <GlobalOutlined className="stat-icon-success" />, watermark: 'A' },
-            { label: t.dns.aaaaRecords, value: records.filter(r => r.type === 'AAAA').length, icon: <GlobalOutlined className="stat-icon-accent" />, watermark: 'AAAA' },
+            { label: t.dns.aRecords, value: records.filter((r) => r.type === 'A').length, icon: <GlobalOutlined className="stat-icon-success" />, watermark: 'A' },
+            { label: t.dns.aaaaRecords, value: records.filter((r) => r.type === 'AAAA').length, icon: <GlobalOutlined className="stat-icon-accent" />, watermark: 'AAAA' },
           ]}
         />
 
@@ -178,7 +194,10 @@ export default function DNS() {
         <Card title={t.dns.recordListTitle} extra={<Text type="secondary">{t.dns.recordListDesc}</Text>}>
           <div className="table-filter-row" data-tour-id="dns-filters">
             <Input prefix={<SearchOutlined />} placeholder={t.dns.searchPlaceholder} value={keyword} onChange={(e) => setKeyword(e.target.value)} className="table-search-input" allowClear />
-            <Select value={typeFilter || 'all'} onChange={(v) => setTypeFilter(v === 'all' ? '' : v)} className="select-fixed-sm"
+            <Select
+              value={typeFilter || 'all'}
+              onChange={(v) => setTypeFilter(v === 'all' ? '' : v)}
+              className="select-fixed-sm"
               options={[{ value: 'all', label: t.dns.allTypes }, { value: 'A', label: 'A' }, { value: 'AAAA', label: 'AAAA' }]}
             />
             <Button icon={<ReloadOutlined />} onClick={refresh} />

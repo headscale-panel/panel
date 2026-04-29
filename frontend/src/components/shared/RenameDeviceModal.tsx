@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
-import { Input, Modal, Typography, message } from 'antd';
-import { deviceApi } from '@/api';
 import type { NormalizedDevice } from '@/lib/normalizers';
+import { Input, message, Modal, Typography } from 'antd';
+import { useState } from 'react';
+import { deviceApi } from '@/api';
 import { useTranslation } from '@/i18n/index';
 
 const { Text } = Typography;
@@ -19,12 +19,12 @@ export default function RenameDeviceModal({ open, device, onCancel, onSuccess }:
   const [nameError, setNameError] = useState('');
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
-    if (open && device) {
-      setNewName((device.given_name || device.name).toLowerCase());
-      setNameError('');
-    }
-  }, [open, device]);
+  const handleAfterOpenChange = (nextOpen: boolean) => {
+    if (!nextOpen || !device)
+      return;
+    setNewName((device.given_name || device.name).toLowerCase());
+    setNameError('');
+  };
 
   const validateName = (value: string): string => {
     if (value && !/^[a-z0-9][a-z0-9-]*$/.test(value)) {
@@ -40,7 +40,8 @@ export default function RenameDeviceModal({ open, device, onCancel, onSuccess }:
   };
 
   const handleOk = async () => {
-    if (!device || !newName.trim()) return;
+    if (!device || !newName.trim())
+      return;
 
     const error = validateName(newName.trim());
     if (error) {
@@ -66,6 +67,7 @@ export default function RenameDeviceModal({ open, device, onCancel, onSuccess }:
       open={open}
       title={t.devices.renameDialogTitle}
       onCancel={onCancel}
+      afterOpenChange={handleAfterOpenChange}
       onOk={handleOk}
       okText={t.common.actions.save}
       cancelText={t.common.actions.cancel}

@@ -52,4 +52,3 @@ export interface RemoveGroupPermissionsReq {
   permission_ids: number[];
 }
 export interface RemoveGroupPermissionsRes {}
-

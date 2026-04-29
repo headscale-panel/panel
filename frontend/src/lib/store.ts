@@ -1,7 +1,7 @@
+import type { UserRole } from './enums';
+import type { SystemStatus } from '@/api/status.types';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { UserRole } from './enums';
-import type { SystemStatus } from '@/api/status.types';
 
 export interface User {
   id: number;
@@ -46,8 +46,8 @@ export const useAuthStore = create<AuthState>()(
     }),
     {
       name: 'auth-storage',
-    }
-  )
+    },
+  ),
 );
 
 interface UIState {
@@ -68,8 +68,8 @@ export const useUIStore = create<UIState>()(
     {
       name: 'ui-storage',
       partialize: (state) => ({ sidebarCollapsed: state.sidebarCollapsed }),
-    }
-  )
+    },
+  ),
 );
 
 // ─── System Status ────────────────────────────────────────────────────────────

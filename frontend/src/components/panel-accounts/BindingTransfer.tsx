@@ -1,23 +1,23 @@
-import { useState, useMemo, useCallback } from 'react';
+import type { NetworkBinding } from '@/api/panel-account.types';
+import {
+  CloseOutlined,
+  EditOutlined,
+  SaveOutlined,
+  StarFilled,
+  StarOutlined,
+} from '@ant-design/icons';
+import { useRequest } from 'ahooks';
 import {
   Button,
+  message,
   Space,
   Table,
   Tag,
   Transfer,
   Typography,
-  message,
 } from 'antd';
-import {
-  EditOutlined,
-  SaveOutlined,
-  StarFilled,
-  StarOutlined,
-  CloseOutlined,
-} from '@ant-design/icons';
-import { useRequest } from 'ahooks';
+import { useCallback, useMemo, useState } from 'react';
 import { panelAccountApi } from '@/api';
-import type { NetworkBinding, NetworkIdentityItem } from '@/api/panel-account.types';
 import { useTranslation } from '@/i18n/index';
 
 const { Text } = Typography;
@@ -121,49 +121,53 @@ export default function BindingTransfer({ accountId, bindings, onUpdated }: Prop
             {pa.detail.binding.editBindings}
           </Button>
         </div>
-        {bindings.length === 0 ? (
-          <Text type="secondary">{pa.detail.binding.noBindings}</Text>
-        ) : (
-          <Table
-            rowKey="id"
-            dataSource={bindings}
-            size="small"
-            pagination={false}
-            columns={[
-              {
-                title: pa.detail.binding.hsUserName,
-                dataIndex: 'headscale_name',
-                key: 'headscale_name',
-              },
-              {
-                title: pa.detail.binding.displayName,
-                dataIndex: 'display_name',
-                key: 'display_name',
-                render: (v: string) => v || '-',
-              },
-              {
-                title: pa.detail.binding.primary,
-                key: 'primary',
-                width: 100,
-                render: (_: unknown, record: NetworkBinding) =>
-                  record.is_primary ? (
-                    <Tag icon={<StarFilled />} color="gold">
-                      {pa.detail.binding.primary}
-                    </Tag>
-                  ) : (
-                    <Button
-                      size="small"
-                      type="link"
-                      icon={<StarOutlined />}
-                      onClick={() => handleSetPrimary(record.id)}
-                    >
-                      {pa.detail.binding.setPrimary}
-                    </Button>
-                  ),
-              },
-            ]}
-          />
-        )}
+        {bindings.length === 0
+          ? (
+              <Text type="secondary">{pa.detail.binding.noBindings}</Text>
+            )
+          : (
+              <Table
+                rowKey="id"
+                dataSource={bindings}
+                size="small"
+                pagination={false}
+                columns={[
+                  {
+                    title: pa.detail.binding.hsUserName,
+                    dataIndex: 'headscale_name',
+                    key: 'headscale_name',
+                  },
+                  {
+                    title: pa.detail.binding.displayName,
+                    dataIndex: 'display_name',
+                    key: 'display_name',
+                    render: (v: string) => v || '-',
+                  },
+                  {
+                    title: pa.detail.binding.primary,
+                    key: 'primary',
+                    width: 100,
+                    render: (_: unknown, record: NetworkBinding) =>
+                      record.is_primary
+                        ? (
+                            <Tag icon={<StarFilled />} color="gold">
+                              {pa.detail.binding.primary}
+                            </Tag>
+                          )
+                        : (
+                            <Button
+                              size="small"
+                              type="link"
+                              icon={<StarOutlined />}
+                              onClick={() => handleSetPrimary(record.id)}
+                            >
+                              {pa.detail.binding.setPrimary}
+                            </Button>
+                          ),
+                  },
+                ]}
+              />
+            )}
       </div>
     );
   }
@@ -195,21 +199,29 @@ export default function BindingTransfer({ accountId, bindings, onUpdated }: Prop
         render={(item) => (
           <span>
             {item.title}
-            {item.description ? <Text type="secondary" className="ml-4px text-12px">({item.description})</Text> : null}
+            {item.description
+              ? (
+                  <Text type="secondary" className="ml-4px text-12px">
+                    (
+                    {item.description}
+                    )
+                  </Text>
+                )
+              : null}
           </span>
         )}
         titles={pa.detail.binding.transferTitles as unknown as [string, string]}
         showSearch
         filterOption={(input, item) =>
-          (item.title ?? '').toLowerCase().includes(input.toLowerCase()) ||
-          (item.description ?? '').toLowerCase().includes(input.toLowerCase())
-        }
+          (item.title ?? '').toLowerCase().includes(input.toLowerCase())
+          || (item.description ?? '').toLowerCase().includes(input.toLowerCase())}
         listStyle={{ width: 260, height: 320 }}
       />
       {targetKeys.length > 0 && (
         <div className="mt-12px">
           <Text type="secondary" className="text-12px">
-            {pa.detail.binding.primary}:
+            {pa.detail.binding.primary}
+            :
           </Text>
           <Space wrap className="mt-4px">
             {targetKeys.map((name) => (

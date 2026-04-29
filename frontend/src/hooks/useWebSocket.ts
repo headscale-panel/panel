@@ -1,5 +1,6 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
-import { wsManager, WSDeviceStatusUpdate, WSMetricsUpdate } from '@/lib/ws';
+import type { WSDeviceStatusUpdate, WSMetricsUpdate } from '@/lib/ws';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { wsManager } from '@/lib/ws';
 
 export function useWebSocketConnection() {
   const [isConnected, setIsConnected] = useState(wsManager.isConnected);

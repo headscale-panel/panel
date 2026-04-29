@@ -113,9 +113,9 @@ export interface ACLRuleMeta {
 
 export interface ACLRule {
   '#ha-meta'?: ACLRuleMeta;
-  action: string;
-  src: string[];
-  dst: string[];
+  'action': string;
+  'src': string[];
+  'dst': string[];
 }
 
 export interface ACLTest {

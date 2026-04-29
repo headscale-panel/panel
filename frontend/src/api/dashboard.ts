@@ -1,12 +1,13 @@
-import request, { RespType } from '@/lib/request';
 import type {
+  DashboardACLMatrixReq,
+  DashboardACLMatrixRes,
   DashboardOverviewReq,
   DashboardOverviewRes,
   DashboardTopologyReq,
   DashboardTopologyRes,
-  DashboardACLMatrixReq,
-  DashboardACLMatrixRes,
 } from './dashboard.types';
+import type { RespType } from '@/lib/request';
+import request from '@/lib/request';
 
 export const dashboardApi = {
   getOverview: (_req?: DashboardOverviewReq) =>

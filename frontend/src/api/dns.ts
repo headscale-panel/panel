@@ -1,17 +1,18 @@
-import request, { RespType, RespPage } from '@/lib/request';
-import type { DNSRecord } from './entities';
 import type {
-  ListDnsReq,
-  GetDnsReq,
-  GetDnsRes,
   CreateDnsReq,
   CreateDnsRes,
+  DeleteDnsReq,
+  GetDnsFileRes,
+  GetDnsReq,
+  GetDnsRes,
+  ListDnsReq,
+  SyncDnsRes,
   UpdateDnsReq,
   UpdateDnsRes,
-  DeleteDnsReq,
-  SyncDnsRes,
-  GetDnsFileRes,
 } from './dns.types';
+import type { DNSRecord } from './entities';
+import type { RespPage, RespType } from '@/lib/request';
+import request from '@/lib/request';
 
 export const dnsApi = {
   list: (req?: ListDnsReq) =>

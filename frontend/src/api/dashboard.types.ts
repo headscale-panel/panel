@@ -26,4 +26,3 @@ export interface DashboardACLMatrixReq {}
 export interface DashboardACLMatrixRes {
   [key: string]: unknown;
 }
-

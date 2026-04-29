@@ -8,12 +8,13 @@ import {
 import {
   normalizeACLPolicy,
   normalizeDeviceListResponse,
-  normalizeHeadscaleUsers,
   normalizeHeadscaleUserOptions,
+  normalizeHeadscaleUsers,
   normalizeOIDCForm,
   normalizePanelConnectionSettings,
   normalizeResources,
 } from './normalizers';
+
 export async function loadUsersPageData() {
   const [usersRes, policyRes, onlineDevicesRes, allDevicesRes] = await Promise.all([
     headscaleUserApi.list({ all: true }),
@@ -25,7 +26,7 @@ export async function loadUsersPageData() {
   const devices = normalizeDeviceListResponse(onlineDevicesRes).list;
   const allDevices = normalizeDeviceListResponse(allDevicesRes).list;
   const onlineUsers = new Set(
-    devices.filter((device) => device.online && device.user?.name).map((device) => device.user!.name)
+    devices.filter((device) => device.online && device.user?.name).map((device) => device.user!.name),
   );
   const userDevicesByOwner = allDevices.reduce<Record<string, typeof allDevices>>((record, device) => {
     const ownerKey = device.user?.name?.trim().toLowerCase();

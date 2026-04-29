@@ -1,5 +1,8 @@
-import { useEffect, useMemo, useState, useCallback } from 'react';
-import { useLocation } from 'wouter';
+import type {
+  ACLPolicy,
+  NormalizedDevice,
+  NormalizedHeadscaleUser,
+} from '@/lib/normalizers';
 import {
   ClockCircleOutlined,
   CopyOutlined,
@@ -16,10 +19,11 @@ import {
   SearchOutlined,
   TeamOutlined,
   UserAddOutlined,
-  UserOutlined,
   UsergroupAddOutlined,
+  UserOutlined,
   WifiOutlined,
 } from '@ant-design/icons';
+import { useRequest } from 'ahooks';
 import {
   Avatar,
   Button,
@@ -27,35 +31,31 @@ import {
   Dropdown,
   Empty,
   Input,
+  message,
   Modal,
   Space,
   Spin,
   Tag,
+  theme,
   Tooltip,
   Typography,
-  message,
-  theme,
 } from 'antd';
-import { loadUsersPageData } from '@/lib/page-data';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useLocation } from 'wouter';
+import { aclApi, authApi, deviceApi, headscaleUserApi, publicAuthApi } from '@/api';
 import DashboardLayout from '@/components/DashboardLayout';
 import PageHeaderStatCards from '@/components/PageHeaderStatCards';
-import { aclApi, authApi, deviceApi, headscaleUserApi, publicAuthApi } from '@/api';
-import type {
-  ACLPolicy,
-  NormalizedDevice,
-  NormalizedHeadscaleUser,
-} from '@/lib/normalizers';
-import { normalizeDeviceListResponse } from '@/lib/normalizers';
-import { setOidcCreateHeadscaleUserIntent } from '@/lib/auth';
-import { UserProvider } from '@/lib/enums';
-import { useTranslation } from '@/i18n/index';
-import { useRequest } from 'ahooks';
-import CreateUserModal from '@/components/users/CreateUserModal';
-import EditUserModal from '@/components/users/EditUserModal';
-import CreateGroupModal from '@/components/users/CreateGroupModal';
-import EditGroupModal from '@/components/users/EditGroupModal';
 import RenameDeviceModal from '@/components/shared/RenameDeviceModal';
 import AddDeviceModal from '@/components/users/AddDeviceModal';
+import CreateGroupModal from '@/components/users/CreateGroupModal';
+import CreateUserModal from '@/components/users/CreateUserModal';
+import EditGroupModal from '@/components/users/EditGroupModal';
+import EditUserModal from '@/components/users/EditUserModal';
+import { useTranslation } from '@/i18n/index';
+import { setOidcCreateHeadscaleUserIntent } from '@/lib/auth';
+import { UserProvider } from '@/lib/enums';
+import { normalizeDeviceListResponse } from '@/lib/normalizers';
+import { loadUsersPageData } from '@/lib/page-data';
 
 const { Text, Title } = Typography;
 
@@ -68,11 +68,11 @@ type Group = ACLGroup;
 type UserData = NormalizedHeadscaleUser;
 type DeviceData = NormalizedDevice;
 
-type TreeSelection =
-  | { type: 'all' }
-  | { type: 'ungrouped' }
-  | { type: 'group'; groupName: string }
-  | { type: 'user'; userId: number; groupName?: string };
+type TreeSelection
+  = | { type: 'all' }
+    | { type: 'ungrouped' }
+    | { type: 'group'; groupName: string }
+    | { type: 'user'; userId: number; groupName?: string };
 
 export default function UsersPage() {
   const t = useTranslation();
@@ -117,7 +117,7 @@ export default function UsersPage() {
           Object.entries(aclPolicy?.groups || {}).map(([key, members]) => ({
             name: key.replace(/^group:/, ''),
             members,
-          }))
+          })),
         );
         setOnlineUsers(onlineUsers);
       },
@@ -140,9 +140,9 @@ export default function UsersPage() {
         const userEmail = user.email || '';
         const userHeadscaleName = user.headscale_name || user.username || '';
         return (
-          userEmail.toLowerCase().startsWith(prefix.toLowerCase() + '@') ||
-          userHeadscaleName.toLowerCase() === prefix.toLowerCase() ||
-          userEmail.toLowerCase().split('@')[0] === prefix.toLowerCase()
+          userEmail.toLowerCase().startsWith(`${prefix.toLowerCase()}@`)
+          || userHeadscaleName.toLowerCase() === prefix.toLowerCase()
+          || userEmail.toLowerCase().split('@')[0] === prefix.toLowerCase()
         );
       }
 
@@ -155,7 +155,7 @@ export default function UsersPage() {
 
   const ungroupedUsers = useMemo(
     () => hsUsers.filter((user) => !aclGroups.some((group) => userMatchesAclGroup(user, group.name))),
-    [aclGroups, hsUsers]
+    [aclGroups, hsUsers],
   );
 
   const getUserById = (userId?: number) => hsUsers.find((user) => user.ID === userId) || null;
@@ -180,7 +180,7 @@ export default function UsersPage() {
 
   const selectedTreeUser = useMemo(
     () => (selectedNode.type === 'user' ? getUserById(selectedNode.userId) : null),
-    [selectedNode, hsUsers]
+    [selectedNode, hsUsers],
   );
 
   const getGroupMemberToken = (username: string) => `${username.trim()}@`;
@@ -202,7 +202,8 @@ export default function UsersPage() {
   };
 
   const getPrimaryGroupNameForUser = (user: UserData | null | undefined) => {
-    if (!user) return undefined;
+    if (!user)
+      return undefined;
     return aclGroups.find((group) => userMatchesAclGroup(user, group.name))?.name;
   };
 
@@ -266,7 +267,7 @@ export default function UsersPage() {
 
       await Promise.allSettled(usersToLoad.map((user) => ensureUserDevicesLoaded(user, false)));
     },
-    [ensureUserDevicesLoaded, expandedUserDevices, selectedNode]
+    [ensureUserDevicesLoaded, expandedUserDevices, selectedNode],
   );
 
   const loadData = useCallback(async () => {
@@ -286,7 +287,7 @@ export default function UsersPage() {
 
   const selectedTreeUserDevices = useMemo(
     () => getDevicesForUser(selectedTreeUser),
-    [selectedTreeUser, userDevicesByOwner]
+    [selectedTreeUser, userDevicesByOwner],
   );
 
   const toggleUserDevices = (user: UserData) => {
@@ -325,11 +326,13 @@ export default function UsersPage() {
     void publicAuthApi
       .oidcStatus()
       .then((data: any) => {
-        if (!mounted) return;
+        if (!mounted)
+          return;
         setOidcEnabled(Boolean(data?.enabled));
       })
       .catch(() => {
-        if (!mounted) return;
+        if (!mounted)
+          return;
         setOidcEnabled(false);
       });
 
@@ -346,10 +349,10 @@ export default function UsersPage() {
 
     return selectedGroupUsers.filter((user) => {
       return (
-        user.username.toLowerCase().includes(q) ||
-        (user.email && user.email.toLowerCase().includes(q)) ||
-        (user.display_name && user.display_name.toLowerCase().includes(q)) ||
-        (user.headscale_name && user.headscale_name.toLowerCase().includes(q))
+        user.username.toLowerCase().includes(q)
+        || (user.email && user.email.toLowerCase().includes(q))
+        || (user.display_name && user.display_name.toLowerCase().includes(q))
+        || (user.headscale_name && user.headscale_name.toLowerCase().includes(q))
       );
     });
   }, [searchQuery, selectedGroupUsers]);
@@ -362,10 +365,10 @@ export default function UsersPage() {
 
     return selectedTreeUserDevices.filter((device) => {
       return (
-        device.name.toLowerCase().includes(q) ||
-        (device.given_name && device.given_name.toLowerCase().includes(q)) ||
-        device.ip_addresses.some((ip) => ip.toLowerCase().includes(q)) ||
-        (device.user?.name && device.user.name.toLowerCase().includes(q))
+        device.name.toLowerCase().includes(q)
+        || (device.given_name && device.given_name.toLowerCase().includes(q))
+        || device.ip_addresses.some((ip) => ip.toLowerCase().includes(q))
+        || (device.user?.name && device.user.name.toLowerCase().includes(q))
       );
     });
   }, [searchQuery, selectedTreeUserDevices]);
@@ -497,8 +500,8 @@ export default function UsersPage() {
           await saveACLGroups(nextGroups);
           message.success(t.users.deleteSuccess);
           if (
-            (selectedNode.type === 'group' && selectedNode.groupName === group.name) ||
-            (selectedNode.type === 'user' && selectedNode.groupName === group.name)
+            (selectedNode.type === 'group' && selectedNode.groupName === group.name)
+            || (selectedNode.type === 'user' && selectedNode.groupName === group.name)
           ) {
             setSelectedNode({ type: 'all' });
           }
@@ -522,12 +525,13 @@ export default function UsersPage() {
 
   const handleRenameGroup = useCallback(
     async (nextName: string) => {
-      if (!selectedGroup) return;
+      if (!selectedGroup)
+        return;
       if (
         aclGroups.some(
           (group) =>
-            group.name !== selectedGroup.name &&
-            group.name.toLowerCase() === nextName.toLowerCase(),
+            group.name !== selectedGroup.name
+            && group.name.toLowerCase() === nextName.toLowerCase(),
         )
       ) {
         throw new Error(t.users.groupExists);
@@ -540,7 +544,7 @@ export default function UsersPage() {
     [aclGroups, aclPolicy, selectedGroup, t.users.groupExists],
   );
 
-  const handleViewDevices = (user: UserData) => {
+  const _handleViewDevices = (user: UserData) => {
     selectNode({ type: 'user', userId: user.ID });
   };
 
@@ -578,13 +582,17 @@ export default function UsersPage() {
 
   const openAddDeviceDialog = () => setAddDeviceDialogOpen(true);
 
-  const renderDeviceCard = (device: DeviceData, user: UserData) => (
+  const renderDeviceCard = (device: DeviceData, _user: UserData) => (
     <div
       key={device.id}
       style={{
-        display: 'flex', alignItems: 'center', gap: 12,
-        borderRadius: token.borderRadius, border: `1px solid ${token.colorBorderSecondary}`,
-        background: token.colorBgContainer, padding: '10px 12px',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 12,
+        borderRadius: token.borderRadius,
+        border: `1px solid ${token.colorBorderSecondary}`,
+        background: token.colorBgContainer,
+        padding: '10px 12px',
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 32, height: 32, borderRadius: 8, background: token.colorBgLayout, flexShrink: 0 }}>
@@ -593,11 +601,17 @@ export default function UsersPage() {
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
           <Text strong className="text-13px">{device.given_name || device.name}</Text>
-          {device.online ? (
-            <Tag color="success" className="m-0 text-11px"><WifiOutlined /> {t.common.status.online}</Tag>
-          ) : (
-            <Tag className="m-0 text-11px">{t.common.status.offline}</Tag>
-          )}
+          {device.online
+            ? (
+                <Tag color="success" className="m-0 text-11px">
+                  <WifiOutlined />
+                  {' '}
+                  {t.common.status.online}
+                </Tag>
+              )
+            : (
+                <Tag className="m-0 text-11px">{t.common.status.offline}</Tag>
+              )}
         </div>
         <div className="mt-1 flex flex-wrap items-center gap-1.5">
           {device.ip_addresses.map((ip) => (
@@ -606,7 +620,9 @@ export default function UsersPage() {
               className="cursor-pointer font-mono text-11px m-0"
               onClick={() => handleCopyIP(ip)}
             >
-              {ip} <CopyOutlined className="text-10px" />
+              {ip}
+              {' '}
+              <CopyOutlined className="text-10px" />
             </Tag>
           ))}
           {device.last_seen && (
@@ -628,7 +644,7 @@ export default function UsersPage() {
     </div>
   );
 
-  const renderUserRow = (user: UserData, index: number) => {
+  const renderUserRow = (user: UserData, _index: number) => {
     const userDevices = getDevicesForUser(user);
     const isDevicesExpanded = expandedUserDevices.has(user.ID);
     const isOnline = onlineUsers.has(user.headscale_name || user.username);
@@ -651,8 +667,12 @@ export default function UsersPage() {
             </Avatar>
             <span
               style={{
-                position: 'absolute', bottom: -2, right: -2,
-                width: 12, height: 12, borderRadius: '50%',
+                position: 'absolute',
+                bottom: -2,
+                right: -2,
+                width: 12,
+                height: 12,
+                borderRadius: '50%',
                 border: `2px solid ${token.colorBgContainer}`,
                 background: isOnline ? '#52c41a' : token.colorBorderSecondary,
               }}
@@ -693,17 +713,21 @@ export default function UsersPage() {
           <div className="px-4 pb-3">
             <div className="ml-13">
               <Space direction="vertical" className="w-full" size={6}>
-                {isUserDevicesLoading && userDevices.length === 0 ? (
-                  <div style={{ border: `1px dashed ${token.colorBorderSecondary}`, borderRadius: token.borderRadius, padding: '12px 16px', textAlign: 'center' }}>
-                    <Spin size="small" />
-                  </div>
-                ) : userDevices.length === 0 ? (
-                  <div style={{ border: `1px dashed ${token.colorBorderSecondary}`, borderRadius: token.borderRadius, padding: '12px 16px', textAlign: 'center' }}>
-                    <Text type="secondary" className="text-12px">{t.users.noDevices}</Text>
-                  </div>
-                ) : (
-                  userDevices.map((device) => renderDeviceCard(device, user))
-                )}
+                {isUserDevicesLoading && userDevices.length === 0
+                  ? (
+                      <div style={{ border: `1px dashed ${token.colorBorderSecondary}`, borderRadius: token.borderRadius, padding: '12px 16px', textAlign: 'center' }}>
+                        <Spin size="small" />
+                      </div>
+                    )
+                  : userDevices.length === 0
+                    ? (
+                        <div style={{ border: `1px dashed ${token.colorBorderSecondary}`, borderRadius: token.borderRadius, padding: '12px 16px', textAlign: 'center' }}>
+                          <Text type="secondary" className="text-12px">{t.users.noDevices}</Text>
+                        </div>
+                      )
+                    : (
+                        userDevices.map((device) => renderDeviceCard(device, user))
+                      )}
               </Space>
             </div>
           </div>
@@ -722,11 +746,16 @@ export default function UsersPage() {
         <div className="relative">
           <div
             style={{
-              display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px',
-              borderRadius: token.borderRadius, cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 10,
+              padding: '8px 12px',
+              borderRadius: token.borderRadius,
+              cursor: 'pointer',
               background: isSelected ? token.colorPrimaryBg : 'transparent',
               color: isSelected ? token.colorPrimaryText : token.colorText,
-              fontWeight: isSelected ? 500 : 400, fontSize: 13,
+              fontWeight: isSelected ? 500 : 400,
+              fontSize: 13,
             }}
             onClick={() => selectNode({ type: 'group', groupName: group.name })}
           >
@@ -772,17 +801,25 @@ export default function UsersPage() {
                   <div
                     key={user.ID}
                     style={{
-                      display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px',
-                      borderRadius: token.borderRadius, cursor: 'pointer', fontSize: 13,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      padding: '8px 12px',
+                      borderRadius: token.borderRadius,
+                      cursor: 'pointer',
+                      fontSize: 13,
                       background: isUserSelected ? token.colorPrimaryBg : 'transparent',
                       color: isUserSelected ? token.colorPrimaryText : token.colorTextSecondary,
                     }}
                     onClick={() => selectNode({ type: 'user', userId: user.ID, groupName: group.name })}
                   >
                     <span style={{
-                      width: 10, height: 10, borderRadius: '50%',
+                      width: 10,
+                      height: 10,
+                      borderRadius: '50%',
                       background: onlineUsers.has(user.headscale_name || user.username) ? '#52c41a' : token.colorBorderSecondary,
-                    }} />
+                    }}
+                    />
                     <span className="truncate">{user.display_name || user.username}</span>
                   </div>
                 );
@@ -807,8 +844,8 @@ export default function UsersPage() {
     );
   }
 
-  const rightPaneTitle =
-    selectedNode.type === 'all'
+  const rightPaneTitle
+    = selectedNode.type === 'all'
       ? t.users.allUsers
       : selectedNode.type === 'ungrouped'
         ? t.users.ungroupedUsers
@@ -816,8 +853,8 @@ export default function UsersPage() {
           ? getGroupByName(selectedNode.groupName)?.name || t.users.groups
           : selectedTreeUser?.display_name || selectedTreeUser?.username || t.users.userDevices;
 
-  const selectedUserDevicesLoading =
-    selectedNode.type === 'user' && selectedTreeUser
+  const selectedUserDevicesLoading
+    = selectedNode.type === 'user' && selectedTreeUser
       ? loadingDeviceOwners.has(getUserOwnerKey(selectedTreeUser)) && filteredDevices.length === 0
       : false;
 
@@ -880,8 +917,13 @@ export default function UsersPage() {
                 {/* All Users */}
                 <div
                   style={{
-                    display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px',
-                    borderRadius: token.borderRadius, cursor: 'pointer', fontSize: 13,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 10,
+                    padding: '8px 12px',
+                    borderRadius: token.borderRadius,
+                    cursor: 'pointer',
+                    fontSize: 13,
                     background: selectedNode.type === 'all' ? token.colorPrimaryBg : 'transparent',
                     color: selectedNode.type === 'all' ? token.colorPrimaryText : token.colorText,
                     fontWeight: selectedNode.type === 'all' ? 500 : 400,
@@ -907,8 +949,13 @@ export default function UsersPage() {
                 <div style={{ border: `1px dashed ${token.colorBorderSecondary}`, borderRadius: token.borderRadius }}>
                   <div
                     style={{
-                      display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px',
-                      borderRadius: token.borderRadius, cursor: 'pointer', fontSize: 13,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 10,
+                      padding: '8px 12px',
+                      borderRadius: token.borderRadius,
+                      cursor: 'pointer',
+                      fontSize: 13,
                       background: selectedNode.type === 'ungrouped' ? token.colorPrimaryBg : 'transparent',
                       color: selectedNode.type === 'ungrouped' ? token.colorPrimaryText : token.colorText,
                       fontWeight: selectedNode.type === 'ungrouped' ? 500 : 400,
@@ -917,7 +964,7 @@ export default function UsersPage() {
                   >
                     <span
                       className="w-5 h-5 flex items-center justify-center"
-                      onClick={(e) => { e.stopPropagation(); setUngroupedExpanded(v => !v); }}
+                      onClick={(e) => { e.stopPropagation(); setUngroupedExpanded((v) => !v); }}
                     >
                       {ungroupedExpanded ? <DownOutlined /> : <RightOutlined className="text-10px text-10px" />}
                     </span>
@@ -935,17 +982,25 @@ export default function UsersPage() {
                             <div
                               key={user.ID}
                               style={{
-                                display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px',
-                                borderRadius: token.borderRadius, cursor: 'pointer', fontSize: 13,
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 8,
+                                padding: '8px 12px',
+                                borderRadius: token.borderRadius,
+                                cursor: 'pointer',
+                                fontSize: 13,
                                 background: isSelected ? token.colorPrimaryBg : 'transparent',
                                 color: isSelected ? token.colorPrimaryText : token.colorTextSecondary,
                               }}
                               onClick={() => selectNode({ type: 'user', userId: user.ID })}
                             >
                               <span style={{
-                                width: 10, height: 10, borderRadius: '50%',
+                                width: 10,
+                                height: 10,
+                                borderRadius: '50%',
                                 background: onlineUsers.has(user.headscale_name || user.username) ? '#52c41a' : token.colorBorderSecondary,
-                              }} />
+                              }}
+                              />
                               <span className="truncate">{user.display_name || user.username}</span>
                             </div>
                           );
@@ -979,21 +1034,25 @@ export default function UsersPage() {
             </div>
 
             <div className="overflow-auto" style={{ height: 'calc(100vh - 360px)' }}>
-              {selectedNode.type === 'user' && selectedTreeUser ? (
-                <div>{renderUserRow(selectedTreeUser, 0)}</div>
-              ) : (
-                <div>
-                  {filteredUsers.length === 0 ? (
-                    <Empty
-                      className="empty-state-box"
-                      image={Empty.PRESENTED_IMAGE_SIMPLE}
-                      description={searchQuery ? t.users.noSearchResult : t.users.noUsers}
-                    />
-                  ) : (
-                    filteredUsers.map(renderUserRow)
+              {selectedNode.type === 'user' && selectedTreeUser
+                ? (
+                    <div>{renderUserRow(selectedTreeUser, 0)}</div>
+                  )
+                : (
+                    <div>
+                      {filteredUsers.length === 0
+                        ? (
+                            <Empty
+                              className="empty-state-box"
+                              image={Empty.PRESENTED_IMAGE_SIMPLE}
+                              description={searchQuery ? t.users.noSearchResult : t.users.noUsers}
+                            />
+                          )
+                        : (
+                            filteredUsers.map(renderUserRow)
+                          )}
+                    </div>
                   )}
-                </div>
-              )}
             </div>
           </Card>
         </div>

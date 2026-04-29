@@ -1,31 +1,32 @@
-import NotFound from "@/pages/NotFound";
-import { Route, Switch, Router as WouterRouter, useLocation } from "wouter";
-import ErrorBoundary from "./components/ErrorBoundary";
-import GuideTour from "./components/GuideTour";
-import ProtectedRoute from "./components/ProtectedRoute";
-import { ThemeProvider } from "./contexts/ThemeContext";
-import { ThemeMode } from "./lib/enums";
-import { I18nProvider } from "./i18n/I18nProvider";
-import { useI18n } from "./i18n/index";
-import Dashboard from "./pages/Dashboard";
-import Devices from "./pages/Devices";
-import Login from "./pages/Login";
-import Users from "./pages/Users";
-import Routes from "./pages/Routes";
-import Resources from "./pages/Resources";
-import ACL from "./pages/ACL";
-import Metrics from "./pages/Metrics";
-import Settings from "./pages/Settings";
-import DNS from "./pages/DNS";
-import PanelAccounts from "./pages/PanelAccounts";
-import Profile from "./pages/Profile";
-import SetupWelcome from "./pages/SetupWelcome";
-import { statusApi, setupApi } from "./api";
-import { useState, useEffect, type ReactNode } from "react";
-import { Spin } from "antd";
-import { LoadingOutlined } from "@ant-design/icons";
-import { DASHBOARD_PERMISSIONS, METRICS_PERMISSIONS, SELF_DEVICE_PERMISSIONS } from "./lib/permissions";
-import { useAuthStore, useSystemStatusStore } from "./lib/store";
+import type { ReactNode } from 'react';
+import { LoadingOutlined } from '@ant-design/icons';
+import { Spin } from 'antd';
+import { useEffect, useState } from 'react';
+import { Route, Switch, useLocation, Router as WouterRouter } from 'wouter';
+import NotFound from '@/pages/NotFound';
+import { setupApi, statusApi } from './api';
+import ErrorBoundary from './components/ErrorBoundary';
+import GuideTour from './components/GuideTour';
+import ProtectedRoute from './components/ProtectedRoute';
+import { ThemeProvider } from './contexts/ThemeContext';
+import { I18nProvider } from './i18n/I18nProvider';
+import { useI18n } from './i18n/index';
+import { ThemeMode } from './lib/enums';
+import { DASHBOARD_PERMISSIONS, METRICS_PERMISSIONS, SELF_DEVICE_PERMISSIONS } from './lib/permissions';
+import { useAuthStore, useSystemStatusStore } from './lib/store';
+import ACL from './pages/ACL';
+import Dashboard from './pages/Dashboard';
+import Devices from './pages/Devices';
+import DNS from './pages/DNS';
+import Login from './pages/Login';
+import Metrics from './pages/Metrics';
+import PanelAccounts from './pages/PanelAccounts';
+import Profile from './pages/Profile';
+import Resources from './pages/Resources';
+import Routes from './pages/Routes';
+import Settings from './pages/Settings';
+import SetupWelcome from './pages/SetupWelcome';
+import Users from './pages/Users';
 
 const BASE = '/panel';
 
@@ -47,15 +48,18 @@ function SetupGuard({ children }: { children: ReactNode }) {
   useEffect(() => {
     checkStatus().then((init) => {
       setInitialized(init);
-      if (!init && !location.startsWith('/setup')) setLocation('/setup');
-      if (init && location.startsWith('/setup')) setLocation('/login');
+      if (!init && !location.startsWith('/setup'))
+        setLocation('/setup');
+      if (init && location.startsWith('/setup'))
+        setLocation('/login');
       setChecking(false);
     });
   }, []);
 
   // When navigating away from /setup, re-check status to pick up completed initialization
   useEffect(() => {
-    if (checking || initialized === null) return;
+    if (checking || initialized === null)
+      return;
 
     if (!initialized && !location.startsWith('/setup')) {
       // User navigated away from setup but we thought it wasn't initialized - re-check
@@ -79,7 +83,8 @@ function SetupGuard({ children }: { children: ReactNode }) {
     );
   }
 
-  if (!initialized && !location.startsWith('/setup')) return null;
+  if (!initialized && !location.startsWith('/setup'))
+    return null;
 
   return <>{children}</>;
 }
@@ -90,13 +95,14 @@ function SystemStatusLoader() {
   const { setStatus, setLoading, lastFetchedAt } = useSystemStatusStore();
 
   useEffect(() => {
-    if (!isAuthenticated || lastFetchedAt !== null) return;
+    if (!isAuthenticated || lastFetchedAt !== null)
+      return;
 
     setLoading(true);
     statusApi
       .getSystemStatus()
       .then((data) => setStatus(data))
-      .catch(() => {/* non-fatal – components handle missing status gracefully */})
+      .catch(() => { /* non-fatal – components handle missing status gracefully */ })
       .finally(() => setLoading(false));
   }, [isAuthenticated]);
 

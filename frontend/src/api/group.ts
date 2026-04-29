@@ -1,14 +1,15 @@
-import request, { RespType, RespPage } from '@/lib/request';
 import type { Group } from './entities';
 import type {
-  ListGroupsReq,
   CreateGroupReq,
   CreateGroupRes,
-  UpdateGroupReq,
   DeleteGroupReq,
   GetPermissionsRes,
+  ListGroupsReq,
   UpdateGroupPermissionsReq,
+  UpdateGroupReq,
 } from './group.types';
+import type { RespPage, RespType } from '@/lib/request';
+import request from '@/lib/request';
 
 export const groupApi = {
   list: (req?: ListGroupsReq) =>

@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { Input, Modal, Typography, message } from 'antd';
+import { Input, message, Modal, Typography } from 'antd';
+import { useState } from 'react';
 import { useTranslation } from '@/i18n/index';
 
 const { Text } = Typography;
@@ -21,11 +21,11 @@ export default function EditGroupModal({ open, group, onCancel, onSuccess, onSav
   const [groupName, setGroupName] = useState('');
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
-    if (open && group) {
+  const handleAfterOpenChange = (nextOpen: boolean) => {
+    if (nextOpen && group) {
       setGroupName(group.name);
     }
-  }, [open, group]);
+  };
 
   const handleOk = async () => {
     const nextName = groupName.trim();
@@ -52,6 +52,7 @@ export default function EditGroupModal({ open, group, onCancel, onSuccess, onSav
       open={open}
       title={t.users.editGroupTitle}
       onCancel={onCancel}
+      afterOpenChange={handleAfterOpenChange}
       onOk={handleOk}
       okText={t.users.saveChanges}
       cancelText={t.common.actions.cancel}

@@ -1,11 +1,12 @@
-import { useAuthStore } from '@/lib/store';
-import { authApi } from '@/api';
-import { useLocation } from 'wouter';
-import { useEffect, useRef, ReactNode } from 'react';
-import { redirectToLogin } from '@/lib/auth';
-import { getDefaultRouteForUser, hasAnyPermission } from '@/lib/permissions';
-import { UserRole } from '@/lib/enums';
+import type { ReactNode } from 'react';
 import { isArray } from 'radashi';
+import { useEffect, useRef } from 'react';
+import { useLocation } from 'wouter';
+import { authApi } from '@/api';
+import { redirectToLogin } from '@/lib/auth';
+import { UserRole } from '@/lib/enums';
+import { getDefaultRouteForUser, hasAnyPermission } from '@/lib/permissions';
+import { useAuthStore } from '@/lib/store';
 
 interface ProtectedRouteProps {
   children: ReactNode;
@@ -21,9 +22,9 @@ export default function ProtectedRoute({
   const { isAuthenticated, user, updateUser } = useAuthStore();
   const [, setLocation] = useLocation();
   const fetched = useRef(false);
-  const pendingProfile =
-    isAuthenticated &&
-    (!user || !isArray(user.permissions) || !user.headscale_name || typeof user.guide_tour_seen_at === 'undefined');
+  const pendingProfile
+    = isAuthenticated
+      && (!user || !isArray(user.permissions) || !user.headscale_name || typeof user.guide_tour_seen_at === 'undefined');
 
   // Fetch fresh user info only when auth state lacks a persisted user profile.
   useEffect(() => {
@@ -77,7 +78,7 @@ export default function ProtectedRoute({
     return null;
   }
 
-  if (pendingProfile || (requireAdmin || requiredPermissions?.length) && !user) {
+  if (pendingProfile || ((requireAdmin || requiredPermissions?.length) && !user)) {
     return null;
   }
 

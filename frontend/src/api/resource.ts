@@ -1,12 +1,13 @@
-import request, { RespType, RespPage } from '@/lib/request';
 import type { Resource } from './entities';
 import type {
-  ListResourcesReq,
   CreateResourceReq,
   CreateResourceRes,
-  UpdateResourceReq,
   DeleteResourceReq,
+  ListResourcesReq,
+  UpdateResourceReq,
 } from './resource.types';
+import type { RespPage, RespType } from '@/lib/request';
+import request from '@/lib/request';
 
 export const resourceApi = {
   list: (req?: ListResourcesReq) =>

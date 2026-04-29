@@ -1,22 +1,23 @@
-import request, { RespType } from '@/lib/request';
 import type {
-  GetConnectionReq,
-  GetConnectionRes,
-  SaveConnectionReq,
-  SaveConnectionRes,
-  SyncDataReq,
-  SyncDataRes,
-  GetBuiltinOIDCReq,
-  GetBuiltinOIDCRes,
   EnableBuiltinOIDCReq,
   EnableBuiltinOIDCRes,
+  GetBuiltinOIDCReq,
+  GetBuiltinOIDCRes,
+  GetConnectionReq,
+  GetConnectionRes,
   GetOIDCSettingsReq,
   GetOIDCSettingsRes,
-  SaveOIDCSettingsReq,
-  SaveOIDCSettingsRes,
   GetOIDCStatusReq,
   GetOIDCStatusRes,
+  SaveConnectionReq,
+  SaveConnectionRes,
+  SaveOIDCSettingsReq,
+  SaveOIDCSettingsRes,
+  SyncDataReq,
+  SyncDataRes,
 } from './panel-settings.types';
+import type { RespType } from '@/lib/request';
+import request from '@/lib/request';
 
 export const panelSettingsApi = {
   getConnection: (_req?: GetConnectionReq) =>

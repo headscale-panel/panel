@@ -10,9 +10,9 @@
  *   The user dismisses the modal with a single OK button.
  */
 
-import { useEffect, useRef, useState } from 'react';
-import { Button, Modal, Result, Spin } from 'antd';
 import { CheckCircleOutlined, LoadingOutlined, WarningOutlined } from '@ant-design/icons';
+import { Button, Modal, Result, Spin } from 'antd';
+import { useEffect, useReducer } from 'react';
 import { statusApi } from '@/api';
 import { useSystemStatusStore } from '@/lib/store';
 
@@ -24,63 +24,86 @@ interface RestartModalProps {
   onClose: () => void;
 }
 
+interface RestartState {
+  polling: boolean;
+  connected: boolean;
+  timedOut: boolean;
+}
+
+type RestartAction
+  = | { type: 'reset' }
+    | { type: 'start-polling' }
+    | { type: 'connected' }
+    | { type: 'timed-out' };
+
+const initialRestartState: RestartState = {
+  polling: false,
+  connected: false,
+  timedOut: false,
+};
+
+function restartReducer(state: RestartState, action: RestartAction): RestartState {
+  switch (action.type) {
+    case 'reset':
+      return initialRestartState;
+    case 'start-polling':
+      return { polling: true, connected: false, timedOut: false };
+    case 'connected':
+      return { ...state, polling: false, connected: true };
+    case 'timed-out':
+      return { ...state, polling: false, timedOut: true };
+    default:
+      return state;
+  }
+}
+
 export default function RestartModal({ open, onClose }: RestartModalProps) {
   const { status } = useSystemStatusStore();
   const dindMode = status?.dind_mode ?? false;
 
   // ─── DinD polling state ──────────────────────────────────────────────────
-  const [polling, setPolling] = useState(false);
-  const [connected, setConnected] = useState(false);
-  const [timedOut, setTimedOut] = useState(false);
-
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const stopPolling = () => {
-    if (pollRef.current) clearInterval(pollRef.current);
-    if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    pollRef.current = null;
-    timeoutRef.current = null;
-  };
+  const [restartState, dispatch] = useReducer(restartReducer, initialRestartState);
+  const { connected, timedOut } = restartState;
 
   useEffect(() => {
     if (!open) {
-      stopPolling();
-      setPolling(false);
-      setConnected(false);
-      setTimedOut(false);
+      dispatch({ type: 'reset' });
       return;
     }
 
-    if (!dindMode) return; // static notice, no polling needed
+    if (!dindMode)
+      return; // static notice, no polling needed
 
-    setPolling(true);
-    setConnected(false);
-    setTimedOut(false);
+    dispatch({ type: 'start-polling' });
+    let closeTimer: ReturnType<typeof setTimeout> | null = null;
 
-    pollRef.current = setInterval(async () => {
+    const pollTimer = setInterval(async () => {
       try {
         const res = await statusApi.getHeadscaleStatus();
         if (res.running) {
-          stopPolling();
-          setPolling(false);
-          setConnected(true);
+          clearInterval(pollTimer);
+          clearTimeout(timeoutTimer);
+          dispatch({ type: 'connected' });
           // Auto-close after a brief success display
-          setTimeout(onClose, 1500);
+          closeTimer = setTimeout(onClose, 1500);
         }
       } catch {
         // server still restarting — ignore and keep polling
       }
     }, POLL_INTERVAL_MS);
 
-    timeoutRef.current = setTimeout(() => {
-      stopPolling();
-      setPolling(false);
-      setTimedOut(true);
+    const timeoutTimer = setTimeout(() => {
+      clearInterval(pollTimer);
+      dispatch({ type: 'timed-out' });
     }, POLL_TIMEOUT_MS);
 
-    return stopPolling;
-  }, [open, dindMode]);
+    return () => {
+      clearInterval(pollTimer);
+      clearTimeout(timeoutTimer);
+      if (closeTimer)
+        clearTimeout(closeTimer);
+    };
+  }, [open, dindMode, onClose]);
 
   // ─── Render ───────────────────────────────────────────────────────────────
   if (!dindMode) {
@@ -89,11 +112,11 @@ export default function RestartModal({ open, onClose }: RestartModalProps) {
         open={open}
         title="Configuration Saved"
         onCancel={onClose}
-        footer={
+        footer={(
           <Button type="primary" onClick={onClose}>
             OK
           </Button>
-        }
+        )}
         width={420}
       >
         <Result
@@ -113,34 +136,40 @@ export default function RestartModal({ open, onClose }: RestartModalProps) {
       closable={timedOut}
       onCancel={timedOut ? onClose : undefined}
       footer={
-        timedOut ? (
-          <Button onClick={onClose}>Close</Button>
-        ) : connected ? null : null
+        timedOut
+          ? (
+              <Button onClick={onClose}>Close</Button>
+            )
+          : connected ? null : null
       }
       width={420}
     >
-      {connected ? (
-        <Result
-          icon={<CheckCircleOutlined style={{ color: '#52c41a' }} />}
-          title="Headscale is Online"
-          subTitle="The server restarted successfully."
-          style={{ paddingBlock: 8 }}
-        />
-      ) : timedOut ? (
-        <Result
-          icon={<WarningOutlined style={{ color: '#faad14' }} />}
-          title="Restart Timed Out"
-          subTitle="Headscale did not come back online within 60 seconds. Please check the container logs."
-          style={{ paddingBlock: 8 }}
-        />
-      ) : (
-        <div className="text-center py-6">
-          <Spin indicator={<LoadingOutlined style={{ fontSize: 36 }} spin />} />
-          <div className="mt-4 text-secondary">
-            Waiting for Headscale to come back online…
-          </div>
-        </div>
-      )}
+      {connected
+        ? (
+            <Result
+              icon={<CheckCircleOutlined style={{ color: '#52c41a' }} />}
+              title="Headscale is Online"
+              subTitle="The server restarted successfully."
+              style={{ paddingBlock: 8 }}
+            />
+          )
+        : timedOut
+          ? (
+              <Result
+                icon={<WarningOutlined style={{ color: '#faad14' }} />}
+                title="Restart Timed Out"
+                subTitle="Headscale did not come back online within 60 seconds. Please check the container logs."
+                style={{ paddingBlock: 8 }}
+              />
+            )
+          : (
+              <div className="text-center py-6">
+                <Spin indicator={<LoadingOutlined style={{ fontSize: 36 }} spin />} />
+                <div className="mt-4 text-secondary">
+                  Waiting for Headscale to come back online…
+                </div>
+              </div>
+            )}
     </Modal>
   );
 }

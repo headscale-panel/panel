@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Button, Tour } from 'antd';
 import type { TourProps } from 'antd';
+import type { TourSectionKey } from '@/lib/permissions';
+import { Button, Tour } from 'antd';
+import { useCallback, useEffect, useMemo, useReducer, useRef } from 'react';
 import { useLocation } from 'wouter';
 import { authApi } from '@/api';
 import { useTranslation } from '@/i18n/index';
-import { getDefaultRouteForUser, canAccessTourSection, type TourSectionKey } from '@/lib/permissions';
+import { canAccessTourSection, getDefaultRouteForUser } from '@/lib/permissions';
 import { useAuthStore, useUIStore } from '@/lib/store';
 
 const TOUR_AUTO_SESSION_PREFIX = 'guide-tour-auto-opened-';
@@ -24,6 +25,73 @@ interface StepDef {
   placement?: TourProps['placement'];
   requires?: () => boolean;
   prepare?: () => void;
+}
+
+interface TourState {
+  open: boolean;
+  ready: boolean;
+  currentStepId: string | null;
+  resolvedStepId: string | null;
+  skippedPageKeys: string[];
+}
+
+type TourAction
+  = | { type: 'close' }
+    | { type: 'start'; firstStepId: string }
+    | { type: 'move'; stepId: string }
+    | { type: 'prepare-resolve' }
+    | { type: 'resolved'; stepId: string }
+    | { type: 'skip-page'; pageKey: string };
+
+const initialTourState: TourState = {
+  open: false,
+  ready: false,
+  currentStepId: null,
+  resolvedStepId: null,
+  skippedPageKeys: [],
+};
+
+function tourStateReducer(state: TourState, action: TourAction): TourState {
+  switch (action.type) {
+    case 'close':
+      return initialTourState;
+    case 'start':
+      return {
+        open: true,
+        ready: false,
+        currentStepId: action.firstStepId,
+        resolvedStepId: null,
+        skippedPageKeys: [],
+      };
+    case 'move':
+      return {
+        ...state,
+        ready: false,
+        currentStepId: action.stepId,
+        resolvedStepId: null,
+      };
+    case 'prepare-resolve':
+      return {
+        ...state,
+        ready: false,
+        resolvedStepId: null,
+      };
+    case 'resolved':
+      return {
+        ...state,
+        ready: true,
+        resolvedStepId: action.stepId,
+      };
+    case 'skip-page':
+      return state.skippedPageKeys.includes(action.pageKey)
+        ? state
+        : {
+            ...state,
+            skippedPageKeys: [...state.skippedPageKeys, action.pageKey],
+          };
+    default:
+      return state;
+  }
 }
 
 function getAutoSessionKey(userId: number) {
@@ -64,11 +132,14 @@ export default function GuideTour() {
   const { user, updateUser } = useAuthStore();
   const { guideTourOpen, setGuideTourOpen } = useUIStore();
 
-  const [open, setOpen] = useState(false);
-  const [ready, setReady] = useState(false);
-  const [currentStepId, setCurrentStepId] = useState<string | null>(null);
-  const [resolvedStepId, setResolvedStepId] = useState<string | null>(null);
-  const [skippedPageKeys, setSkippedPageKeys] = useState<string[]>([]);
+  const [tourState, dispatchTour] = useReducer(tourStateReducer, initialTourState);
+  const {
+    open,
+    ready,
+    currentStepId,
+    resolvedStepId,
+    skippedPageKeys,
+  } = tourState;
 
   const resolveRunRef = useRef(0);
 
@@ -362,11 +433,7 @@ export default function GuideTour() {
 
   const closeTour = useCallback(() => {
     resolveRunRef.current += 1;
-    setOpen(false);
-    setReady(false);
-    setCurrentStepId(null);
-    setResolvedStepId(null);
-    setSkippedPageKeys([]);
+    dispatchTour({ type: 'close' });
   }, []);
 
   const startTour = useCallback(() => {
@@ -374,11 +441,7 @@ export default function GuideTour() {
       return;
     }
     resolveRunRef.current += 1;
-    setSkippedPageKeys([]);
-    setResolvedStepId(null);
-    setReady(false);
-    setCurrentStepId(accessibleStepDefs[0].id);
-    setOpen(true);
+    dispatchTour({ type: 'start', firstStepId: accessibleStepDefs[0].id });
   }, [accessibleStepDefs]);
 
   const moveToStepById = useCallback((stepId: string | null) => {
@@ -386,9 +449,7 @@ export default function GuideTour() {
       closeTour();
       return;
     }
-    setResolvedStepId(null);
-    setReady(false);
-    setCurrentStepId(stepId);
+    dispatchTour({ type: 'move', stepId });
   }, [closeTour]);
 
   const moveToNextFromId = useCallback((stepId: string) => {
@@ -418,9 +479,7 @@ export default function GuideTour() {
     const currentStep = runStepDefs[currentIndex];
     const nextStep = runStepDefs.slice(currentIndex + 1).find((step) => step.pageKey !== currentStep.pageKey);
 
-    setSkippedPageKeys((prev) => (
-      prev.includes(currentStep.pageKey) ? prev : [...prev, currentStep.pageKey]
-    ));
+    dispatchTour({ type: 'skip-page', pageKey: currentStep.pageKey });
 
     if (nextStep) {
       moveToStepById(nextStep.id);
@@ -445,8 +504,7 @@ export default function GuideTour() {
     const runId = resolveRunRef.current + 1;
     resolveRunRef.current = runId;
 
-    setReady(false);
-    setResolvedStepId(null);
+    dispatchTour({ type: 'prepare-resolve' });
 
     const resolveStep = async () => {
       if (step.prepare) {
@@ -458,7 +516,7 @@ export default function GuideTour() {
       }
 
       const target = await waitForTourTarget(step.targetId);
-      if (cancelled || resolveRunRef.current != runId) {
+      if (cancelled || resolveRunRef.current !== runId) {
         return;
       }
 
@@ -467,8 +525,7 @@ export default function GuideTour() {
         return;
       }
 
-      setResolvedStepId(step.id);
-      setReady(true);
+      dispatchTour({ type: 'resolved', stepId: step.id });
     };
 
     void resolveStep();
@@ -518,7 +575,7 @@ export default function GuideTour() {
       });
   }, [accessibleStepDefs.length, isProtectedRoute, open, startTour, updateUser, user]);
 
-  if (!user || !isProtectedRoute || steps.length === 0 || currentIndex === -1 || resolvedIndex === -1 && ready) {
+  if (!user || !isProtectedRoute || steps.length === 0 || currentIndex === -1 || (resolvedIndex === -1 && ready)) {
     return null;
   }
 
@@ -530,7 +587,13 @@ export default function GuideTour() {
       onClose={closeTour}
       steps={steps}
       indicatorsRender={(cur, total) => (
-        <span>{cur + 1} / {total}</span>
+        <span>
+          {cur + 1}
+          {' '}
+          /
+          {' '}
+          {total}
+        </span>
       )}
       actionsRender={(originNode, { current: cur, total }) => (
         <>

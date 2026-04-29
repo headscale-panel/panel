@@ -1,17 +1,15 @@
-import { useTheme } from '@/contexts/ThemeContext';
-import { ThemeMode } from '@/lib/enums';
-import { useI18n, locales } from '@/i18n/index';
-import { Layout, Button, Input, Dropdown, Badge, Space, theme } from 'antd';
-import {
-  MenuOutlined,
-  SearchOutlined,
-  GlobalOutlined,
-  SunOutlined,
-  MoonOutlined,
-  DesktopOutlined,
-  BellOutlined,
-} from '@ant-design/icons';
 import type { MenuProps } from 'antd';
+import {
+  DesktopOutlined,
+  GlobalOutlined,
+  MenuOutlined,
+  MoonOutlined,
+  SunOutlined,
+} from '@ant-design/icons';
+import { Button, Dropdown, Layout, Space, theme } from 'antd';
+import { useTheme } from '@/contexts/ThemeContext';
+import { locales, useI18n } from '@/i18n/index';
+import { ThemeMode } from '@/lib/enums';
 
 const { Header: AntHeader } = Layout;
 
@@ -50,7 +48,8 @@ export default function Header({ onMenuClick }: HeaderProps) {
       position: 'sticky',
       top: 0,
       zIndex: 40,
-    }}>
+    }}
+    >
       <Space size="middle" className="flex-1">
         <Button
           type="text"

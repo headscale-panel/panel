@@ -1,18 +1,6 @@
-import request, { RespType, RespPage } from '@/lib/request';
-import type { PanelAccountListItem } from './panel-account.types';
-import type {
-  ListPanelAccountsReq,
-  PanelAccountDetail,
-  CreatePanelAccountReq,
-  UpdatePanelAccountReq,
-  SetStatusReq,
-  LoginIdentities,
-  NetworkBinding,
-  UpdateNetworkBindingsReq,
-  SetPrimaryBindingReq,
-  ListAvailableNetworkIdentitiesReq,
-  NetworkIdentityItem,
-} from './panel-account.types';
+import type { CreatePanelAccountReq, ListAvailableNetworkIdentitiesReq, ListPanelAccountsReq, LoginIdentities, NetworkBinding, NetworkIdentityItem, PanelAccountDetail, PanelAccountListItem, SetPrimaryBindingReq, SetStatusReq, UpdateNetworkBindingsReq, UpdatePanelAccountReq } from './panel-account.types';
+import type { RespPage, RespType } from '@/lib/request';
+import request from '@/lib/request';
 
 export const panelAccountApi = {
   list: (req?: ListPanelAccountsReq) =>

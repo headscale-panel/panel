@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { buildACLDeviceOptions } from './acl';
 
-describe('ACL device options', () => {
+describe('aCL device options', () => {
   it('keeps the full device list available to the searchable picker', () => {
     const devices = Array.from({ length: 12 }, (_, index) => ({
       id: `device-${index + 1}`,

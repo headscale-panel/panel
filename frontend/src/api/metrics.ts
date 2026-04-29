@@ -1,16 +1,17 @@
-import request, { RespType } from '@/lib/request';
 import type {
+  GetDeviceStatusHistoryReq,
+  GetDeviceStatusHistoryRes,
+  GetDeviceStatusRes,
+  GetInfluxDBStatusRes,
   GetOnlineDurationReq,
   GetOnlineDurationRes,
   GetOnlineDurationStatsReq,
   GetOnlineDurationStatsRes,
-  GetDeviceStatusRes,
-  GetDeviceStatusHistoryReq,
-  GetDeviceStatusHistoryRes,
   GetTrafficStatsReq,
   GetTrafficStatsRes,
-  GetInfluxDBStatusRes,
 } from './metrics.types';
+import type { RespType } from '@/lib/request';
+import request from '@/lib/request';
 
 export const metricsApi = {
   getOnlineDuration: (req?: GetOnlineDurationReq) =>

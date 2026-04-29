@@ -1,12 +1,13 @@
 import type {
   DashboardTopologyACLRule,
   DashboardTopologyData,
+  DashboardTopologyDevice,
   DashboardTopologyPolicy,
   DashboardTopologyUser,
-  DashboardTopologyDevice,
 } from './dashboard';
-import { UserProvider, ACLAction } from './enums';
-import { isString, isNumber, isBoolean, isArray, isObject, toInt } from 'radashi';
+import type { UserProvider } from './enums';
+import { isArray, isBoolean, isNumber, isObject, isString, toInt } from 'radashi';
+import { ACLAction } from './enums';
 
 export interface AuthPayload {
   token: string;
@@ -95,9 +96,9 @@ export interface ACLPolicy {
   tagOwners?: Record<string, string[]>;
   acls?: Array<{
     '#ha-meta'?: { name: string; open: boolean };
-    action: string;
-    src: string[];
-    dst: string[];
+    'action': string;
+    'src': string[];
+    'dst': string[];
   }>;
 }
 
@@ -163,13 +164,16 @@ function asString(value: unknown, fallback = ''): string {
 }
 
 function asIdentifier(value: unknown, fallback = ''): string {
-  if (isString(value)) return value;
-  if (isNumber(value) && Number.isFinite(value)) return String(value);
+  if (isString(value))
+    return value;
+  if (isNumber(value) && Number.isFinite(value))
+    return String(value);
   return fallback;
 }
 
 function asNumber(value: unknown, fallback = 0): number {
-  if (isNumber(value) && Number.isFinite(value)) return value;
+  if (isNumber(value) && Number.isFinite(value))
+    return value;
   return toInt(value, fallback);
 }
 
@@ -182,14 +186,17 @@ function asStringArray(value: unknown): string[] {
 }
 
 function extractListCandidate(value: unknown): unknown[] {
-  if (isArray(value)) return value;
+  if (isArray(value))
+    return value;
 
   const record = asRecord(value);
-  if (!record) return [];
+  if (!record)
+    return [];
 
   const directKeys = ['list', 'machines', 'users', 'items', 'records'];
   for (const key of directKeys) {
-    if (isArray(record[key])) return record[key] as unknown[];
+    if (isArray(record[key]))
+      return record[key] as unknown[];
   }
 
   return [];
@@ -201,11 +208,11 @@ function normalizeDeviceUser(value: unknown): NormalizedDeviceUser | null {
     return null;
   }
 
-  const name =
-    asString(user.name) ||
-    asString(user.username) ||
-    asString(user.headscale_name) ||
-    asString(user.display_name);
+  const name
+    = asString(user.name)
+      || asString(user.username)
+      || asString(user.headscale_name)
+      || asString(user.display_name);
 
   if (!name) {
     return null;
@@ -254,10 +261,10 @@ export function normalizeHeadscaleUserOptions(value: unknown): HeadscaleUserOpti
   return extractListCandidate(value)
     .map((item) => {
       const user = asRecord(item) ?? {};
-      const name =
-        asString(user.name) ||
-        asString(user.username) ||
-        asString(user.headscale_name);
+      const name
+        = asString(user.name)
+          || asString(user.username)
+          || asString(user.headscale_name);
 
       if (!name) {
         return null;
@@ -276,10 +283,10 @@ export function normalizeHeadscaleUsers(value: unknown): NormalizedHeadscaleUser
 
   for (const item of extractListCandidate(value)) {
     const user = asRecord(item) ?? {};
-    const name =
-      asString(user.name) ||
-      asString(user.username) ||
-      asString(user.headscale_name);
+    const name
+      = asString(user.name)
+        || asString(user.username)
+        || asString(user.headscale_name);
 
     if (!name) {
       continue;
@@ -301,7 +308,7 @@ export function normalizeHeadscaleUsers(value: unknown): NormalizedHeadscaleUser
   return normalizedUsers;
 }
 
-function normalizeSystemUsers(value: unknown): NormalizedSystemUser[] {
+function _normalizeSystemUsers(value: unknown): NormalizedSystemUser[] {
   const normalizedUsers: NormalizedSystemUser[] = [];
 
   for (const item of extractListCandidate(value)) {
@@ -339,7 +346,7 @@ function normalizeSystemUsers(value: unknown): NormalizedSystemUser[] {
   return normalizedUsers;
 }
 
-function normalizeGroups(value: unknown): NormalizedGroup[] {
+function _normalizeGroups(value: unknown): NormalizedGroup[] {
   const normalizedGroups: NormalizedGroup[] = [];
 
   for (const item of extractListCandidate(value)) {
@@ -416,8 +423,8 @@ export function normalizeACLPolicy(value: unknown): ACLPolicy | null {
               }
             : undefined,
           action,
-          src: asStringArray(rule.src),
-          dst: asStringArray(rule.dst),
+          'src': asStringArray(rule.src),
+          'dst': asStringArray(rule.dst),
         });
         return rules;
       }, [])
@@ -426,17 +433,17 @@ export function normalizeACLPolicy(value: unknown): ACLPolicy | null {
   return {
     groups: groups
       ? Object.fromEntries(
-          Object.entries(groups).map(([key, item]) => [key, asStringArray(item)])
+          Object.entries(groups).map(([key, item]) => [key, asStringArray(item)]),
         )
       : undefined,
     hosts: hosts
       ? Object.fromEntries(
-          Object.entries(hosts).map(([key, item]) => [key, asString(item)])
+          Object.entries(hosts).map(([key, item]) => [key, asString(item)]),
         )
       : undefined,
     tagOwners: tagOwners
       ? Object.fromEntries(
-          Object.entries(tagOwners).map(([key, item]) => [key, asStringArray(item)])
+          Object.entries(tagOwners).map(([key, item]) => [key, asStringArray(item)]),
         )
       : undefined,
     acls,
@@ -568,7 +575,7 @@ export function normalizeTopology(value: unknown): DashboardTopologyData | null 
               Object.entries(asRecord(policyRecord.groups) ?? {}).map(([key, item]) => [
                 key,
                 asStringArray(item),
-              ])
+              ]),
             )
           : undefined,
         hosts: asRecord(policyRecord.hosts)
@@ -576,7 +583,7 @@ export function normalizeTopology(value: unknown): DashboardTopologyData | null 
               Object.entries(asRecord(policyRecord.hosts) ?? {}).map(([key, item]) => [
                 key,
                 asString(item),
-              ])
+              ]),
             )
           : undefined,
       }

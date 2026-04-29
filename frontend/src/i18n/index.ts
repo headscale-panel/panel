@@ -10,9 +10,9 @@
  */
 
 import { createContext, useContext } from 'react';
-import zh from './locales/zh';
-import en from './locales/en';
 import { LOCALE_STORAGE_KEY } from '@/lib/storage-keys';
+import en from './locales/en';
+import zh from './locales/zh';
 
 // ── Types ──────────────────────────────────────────────
 
@@ -53,7 +53,8 @@ export const I18nContext = createContext<I18nContextType | undefined>(undefined)
 /** Hook to access translations and locale switcher */
 export function useI18n(): I18nContextType {
   const ctx = useContext(I18nContext);
-  if (!ctx) throw new Error('useI18n must be used within I18nProvider');
+  if (!ctx)
+    throw new Error('useI18n must be used within I18nProvider');
   return ctx;
 }
 

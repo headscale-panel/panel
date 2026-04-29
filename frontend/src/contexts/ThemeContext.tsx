@@ -1,11 +1,12 @@
-import React, { createContext, useContext, useEffect, useState, useCallback } from "react";
-import { ConfigProvider, theme as antdTheme } from "antd";
-import zhCN from "antd/locale/zh_CN";
-import enUS from "antd/locale/en_US";
-import { ThemeMode } from "@/lib/enums";
-import { THEME_STORAGE_KEY } from "@/lib/storage-keys";
+import { theme as antdTheme, ConfigProvider } from 'antd';
+import enUS from 'antd/locale/en_US';
+import zhCN from 'antd/locale/zh_CN';
+import * as React from 'react';
+import { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import { ThemeMode } from '@/lib/enums';
+import { THEME_STORAGE_KEY } from '@/lib/storage-keys';
 
-const SYSTEM_SANS_FONT_FAMILY = "'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Source Han Sans SC', 'WenQuanYi Micro Hei', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
+const SYSTEM_SANS_FONT_FAMILY = '\'PingFang SC\', \'Hiragino Sans GB\', \'Microsoft YaHei\', \'Noto Sans CJK SC\', \'Source Han Sans SC\', \'WenQuanYi Micro Hei\', -apple-system, BlinkMacSystemFont, \'Segoe UI\', sans-serif';
 
 type ResolvedTheme = ThemeMode.Light | ThemeMode.Dark;
 
@@ -24,16 +25,18 @@ interface ThemeProviderProps {
 }
 
 function getSystemTheme(): ResolvedTheme {
-  if (typeof window === "undefined") return ThemeMode.Light;
-  return window.matchMedia("(prefers-color-scheme: dark)").matches ? ThemeMode.Dark : ThemeMode.Light;
+  if (typeof window === 'undefined')
+    return ThemeMode.Light;
+  return window.matchMedia('(prefers-color-scheme: dark)').matches ? ThemeMode.Dark : ThemeMode.Light;
 }
 
 function resolveTheme(mode: ThemeMode): ResolvedTheme {
-  if (mode === ThemeMode.System) return getSystemTheme();
+  if (mode === ThemeMode.System)
+    return getSystemTheme();
   return mode;
 }
 
-export function ThemeProvider({ children, defaultMode = ThemeMode.System, locale = "zh" }: ThemeProviderProps) {
+export function ThemeProvider({ children, defaultMode = ThemeMode.System, locale = 'zh' }: ThemeProviderProps) {
   const [mode, setModeState] = useState<ThemeMode>(() => {
     const stored = localStorage.getItem(THEME_STORAGE_KEY) as ThemeMode | null;
     if (stored && Object.values(ThemeMode).includes(stored)) {
@@ -42,42 +45,44 @@ export function ThemeProvider({ children, defaultMode = ThemeMode.System, locale
     return defaultMode;
   });
 
-  const [resolvedTheme, setResolvedTheme] = useState<ResolvedTheme>(() =>
-    resolveTheme(mode)
-  );
+  const [systemTheme, setSystemTheme] = useState<ResolvedTheme>(() => getSystemTheme());
+  const resolvedTheme: ResolvedTheme = mode === ThemeMode.System ? systemTheme : mode;
 
   const applyTheme = useCallback((theme: ResolvedTheme) => {
     const root = document.documentElement;
     if (theme === ThemeMode.Dark) {
-      root.classList.add("dark");
+      root.classList.add('dark');
     } else {
-      root.classList.remove("dark");
+      root.classList.remove('dark');
     }
-    setResolvedTheme(theme);
   }, []);
 
   const setMode = useCallback((newMode: ThemeMode) => {
     setModeState(newMode);
     localStorage.setItem(THEME_STORAGE_KEY, newMode);
+    if (newMode === ThemeMode.System) {
+      setSystemTheme(getSystemTheme());
+    }
     applyTheme(resolveTheme(newMode));
   }, [applyTheme]);
 
   useEffect(() => {
-    applyTheme(resolveTheme(mode));
-  }, [mode, applyTheme]);
+    applyTheme(resolvedTheme);
+  }, [resolvedTheme, applyTheme]);
 
   useEffect(() => {
-    if (mode !== ThemeMode.System) return;
-    const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
+    if (mode !== ThemeMode.System)
+      return;
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
     const handler = (e: MediaQueryListEvent) => {
-      applyTheme(e.matches ? ThemeMode.Dark : ThemeMode.Light);
+      setSystemTheme(e.matches ? ThemeMode.Dark : ThemeMode.Light);
     };
-    mediaQuery.addEventListener("change", handler);
-    return () => mediaQuery.removeEventListener("change", handler);
-  }, [mode, applyTheme]);
+    mediaQuery.addEventListener('change', handler);
+    return () => mediaQuery.removeEventListener('change', handler);
+  }, [mode]);
 
   const isDark = resolvedTheme === ThemeMode.Dark;
-  const antdLocale = locale === "zh" ? zhCN : enUS;
+  const antdLocale = locale === 'zh' ? zhCN : enUS;
 
   return (
     <ThemeContext.Provider value={{ mode, resolvedTheme, setMode }}>
@@ -86,7 +91,7 @@ export function ThemeProvider({ children, defaultMode = ThemeMode.System, locale
         theme={{
           algorithm: isDark ? antdTheme.darkAlgorithm : antdTheme.defaultAlgorithm,
           token: {
-            colorPrimary: "#1677ff",
+            colorPrimary: '#1677ff',
             borderRadius: 8,
             fontFamily: SYSTEM_SANS_FONT_FAMILY,
           },
@@ -111,7 +116,7 @@ export function ThemeProvider({ children, defaultMode = ThemeMode.System, locale
 export function useTheme() {
   const context = useContext(ThemeContext);
   if (!context) {
-    throw new Error("useTheme must be used within ThemeProvider");
+    throw new Error('useTheme must be used within ThemeProvider');
   }
   return context;
 }

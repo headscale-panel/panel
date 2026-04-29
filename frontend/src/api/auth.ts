@@ -1,21 +1,22 @@
-import request, { RespType } from '@/lib/request';
 import type {
+  EnableTOTPReq,
+  GenerateTOTPRes,
   LoginReq,
   LoginRes,
-  RegisterReq,
-  RegisterRes,
-  UserInfoReq,
-  UserInfoRes,
   MarkGuideTourSeenReq,
   MarkGuideTourSeenRes,
-  GenerateTOTPRes,
-  EnableTOTPReq,
   OidcCallbackReq,
   OidcCallbackRes,
   OidcCreateHeadscaleUserCallbackRes,
   OidcStatusReq,
   OidcStatusRes,
+  RegisterReq,
+  RegisterRes,
+  UserInfoReq,
+  UserInfoRes,
 } from './auth.types';
+import type { RespType } from '@/lib/request';
+import request from '@/lib/request';
 
 export const authApi = {
   login: (req: LoginReq) =>

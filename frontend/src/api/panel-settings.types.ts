@@ -14,10 +14,10 @@ export interface SaveConnectionReq {
   insecure: boolean;
 }
 
-export type SaveConnectionRes = { message: string };
+export interface SaveConnectionRes { message: string }
 
 export interface SyncDataReq {}
-export type SyncDataRes = { message: string };
+export interface SyncDataRes { message: string }
 
 export interface GetBuiltinOIDCReq {}
 
@@ -57,7 +57,7 @@ export interface OIDCSettingsPayload {
 export type GetOIDCSettingsRes = OIDCSettingsPayload | null;
 
 export interface SaveOIDCSettingsReq extends OIDCSettingsPayload {}
-export type SaveOIDCSettingsRes = { message: string };
+export interface SaveOIDCSettingsRes { message: string }
 
 export interface GetOIDCStatusReq {}
 
@@ -69,4 +69,3 @@ export interface OIDCStatusRes {
 }
 
 export type GetOIDCStatusRes = OIDCStatusRes;
-

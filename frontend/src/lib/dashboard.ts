@@ -1,4 +1,4 @@
-import { ACLAction } from './enums';
+import type { ACLAction } from './enums';
 
 export interface DashboardStats {
   onlineDevices: number;
@@ -55,7 +55,7 @@ export interface DashboardRealtimeUpdateResult {
 
 export function applyRealtimeDeviceStatus(
   topology: DashboardTopologyData,
-  update: DashboardDeviceStatusUpdate
+  update: DashboardDeviceStatusUpdate,
 ): DashboardRealtimeUpdateResult {
   let changed = false;
 
@@ -71,10 +71,10 @@ export function applyRealtimeDeviceStatus(
       ipAddresses: update.ipAddresses,
     };
 
-    changed =
-      device.online !== nextDevice.online ||
-      device.lastSeen !== nextDevice.lastSeen ||
-      device.ipAddresses.join(',') !== nextDevice.ipAddresses.join(',');
+    changed
+      = device.online !== nextDevice.online
+        || device.lastSeen !== nextDevice.lastSeen
+        || device.ipAddresses.join(',') !== nextDevice.ipAddresses.join(',');
 
     return nextDevice;
   });

@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react';
-import { Input, Modal, Select, Typography, message } from 'antd';
-import { UserAddOutlined } from '@ant-design/icons';
-import { panelAccountApi } from '@/api';
 import type { NormalizedGroup } from '@/lib/normalizers';
+import { UserAddOutlined } from '@ant-design/icons';
+import { Input, message, Modal, Select, Typography } from 'antd';
+import { useState } from 'react';
+import { panelAccountApi } from '@/api';
 import { useTranslation } from '@/i18n/index';
 
 const { Text } = Typography;
@@ -27,9 +27,10 @@ export default function CreateAccountModal({ open, groups, onCancel, onSuccess }
   const [form, setForm] = useState(DEFAULT_FORM);
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
-    if (open) setForm(DEFAULT_FORM);
-  }, [open]);
+  const handleAfterOpenChange = (nextOpen: boolean) => {
+    if (nextOpen)
+      setForm(DEFAULT_FORM);
+  };
 
   const handleOk = async () => {
     if (!form.username) {
@@ -60,8 +61,14 @@ export default function CreateAccountModal({ open, groups, onCancel, onSuccess }
   return (
     <Modal
       open={open}
-      title={<span><UserAddOutlined className="mr-2" />{pa.create.title}</span>}
+      title={(
+        <span>
+          <UserAddOutlined className="mr-2" />
+          {pa.create.title}
+        </span>
+      )}
       onCancel={onCancel}
+      afterOpenChange={handleAfterOpenChange}
       onOk={handleOk}
       confirmLoading={saving}
       width={480}

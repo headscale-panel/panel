@@ -1,8 +1,9 @@
-import { useAuthStore, type AuthSnapshot, type User } from './store';
-import { isString, isObject } from 'radashi';
-import { AUTH_STORAGE_KEY, AUTH_NOTICE_STORAGE_KEY } from './storage-keys';
+import type { AuthSnapshot, User } from './store';
+import { isObject, isString } from 'radashi';
+import { AUTH_NOTICE_STORAGE_KEY, AUTH_STORAGE_KEY } from './storage-keys';
+import { useAuthStore } from './store';
 
-export { AUTH_STORAGE_KEY, AUTH_NOTICE_STORAGE_KEY };
+export { AUTH_NOTICE_STORAGE_KEY, AUTH_STORAGE_KEY };
 export const PANEL_BASE_PATH = '/panel';
 export const PANEL_LOGIN_PATH = `${PANEL_BASE_PATH}/login`;
 export const OIDC_CREATE_HEADSCALE_USER_INTENT_KEY = 'oidc-create-headscale-user-intent';
@@ -110,7 +111,7 @@ export function normalizeLoginReturnUrl(raw: string | null): string | null {
       return null;
     }
 
-    if (url.pathname.startsWith(PANEL_BASE_PATH + '/')) {
+    if (url.pathname.startsWith(`${PANEL_BASE_PATH}/`)) {
       return `${url.pathname}${url.search}${url.hash}`;
     }
 

@@ -1,17 +1,3 @@
-import { useState, useCallback } from 'react';
-import {
-  Button,
-  Card,
-  Descriptions,
-  Divider,
-  Input,
-  Modal,
-  Space,
-  Steps,
-  Tag,
-  Typography,
-  message,
-} from 'antd';
 import {
   CheckCircleOutlined,
   CopyOutlined,
@@ -20,11 +6,24 @@ import {
   SafetyCertificateOutlined,
   UserOutlined,
 } from '@ant-design/icons';
+import {
+  Button,
+  Card,
+  Descriptions,
+  Input,
+  message,
+  Modal,
+  Space,
+  Steps,
+  Tag,
+  Typography,
+} from 'antd';
 import { QRCodeSVG } from 'qrcode.react';
-import { useAuthStore, useUIStore } from '@/lib/store';
+import { useCallback, useState } from 'react';
 import { authApi } from '@/api';
-import { useTranslation } from '@/i18n/index';
 import DashboardLayout from '@/components/DashboardLayout';
+import { useTranslation } from '@/i18n/index';
+import { useAuthStore, useUIStore } from '@/lib/store';
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -60,7 +59,8 @@ export default function Profile() {
   }, [pr]);
 
   const handleEnableTOTP = useCallback(async () => {
-    if (!verifyCode.trim()) return;
+    if (!verifyCode.trim())
+      return;
     setEnabling(true);
     try {
       await authApi.enableTOTP({ code: verifyCode.trim() });
@@ -111,11 +111,13 @@ export default function Profile() {
               <div className="flex items-center gap-8px">
                 <SafetyCertificateOutlined />
                 <Text>{pr.totp.label}</Text>
-                {user?.totp_enabled ? (
-                  <Tag color="success" icon={<CheckCircleOutlined />}>{pr.totp.enabled}</Tag>
-                ) : (
-                  <Tag>{pr.totp.disabled}</Tag>
-                )}
+                {user?.totp_enabled
+                  ? (
+                      <Tag color="success" icon={<CheckCircleOutlined />}>{pr.totp.enabled}</Tag>
+                    )
+                  : (
+                      <Tag>{pr.totp.disabled}</Tag>
+                    )}
               </div>
               <Text type="secondary" className="text-12px block mt-4px ml-22px">
                 {pr.totp.hint}

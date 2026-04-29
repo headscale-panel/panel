@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
-import { Input, Modal, Select, Space, Typography, message } from 'antd';
 import { UserAddOutlined } from '@ant-design/icons';
+import { Input, message, Modal, Select, Space, Typography } from 'antd';
+import { useState } from 'react';
 import { useTranslation } from '@/i18n/index';
 
 const { Text } = Typography;
@@ -29,11 +29,11 @@ export default function CreateUserModal({ open, groups, onCancel, onSuccess, onC
   const [form, setForm] = useState(DEFAULT_FORM);
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
-    if (open) {
+  const handleAfterOpenChange = (nextOpen: boolean) => {
+    if (nextOpen) {
       setForm(DEFAULT_FORM);
     }
-  }, [open]);
+  };
 
   const handleOk = async () => {
     const username = form.username.trim();
@@ -65,8 +65,14 @@ export default function CreateUserModal({ open, groups, onCancel, onSuccess, onC
   return (
     <Modal
       open={open}
-      title={<span><UserAddOutlined className="mr-2" />{t.users.createUserTitle}</span>}
+      title={(
+        <span>
+          <UserAddOutlined className="mr-2" />
+          {t.users.createUserTitle}
+        </span>
+      )}
       onCancel={onCancel}
+      afterOpenChange={handleAfterOpenChange}
       onOk={handleOk}
       okText={t.users.createUserBtn}
       cancelText={t.common.actions.cancel}
@@ -86,7 +92,11 @@ export default function CreateUserModal({ open, groups, onCancel, onSuccess, onC
           />
         </div>
         <div className="form-grid-row">
-          <Text className="text-right text-13px">{t.users.displayNameLabel} *</Text>
+          <Text className="text-right text-13px">
+            {t.users.displayNameLabel}
+            {' '}
+            *
+          </Text>
           <Input
             value={form.displayName}
             onChange={(e) => setForm({ ...form, displayName: e.target.value })}
@@ -94,7 +104,11 @@ export default function CreateUserModal({ open, groups, onCancel, onSuccess, onC
           />
         </div>
         <div className="form-grid-row">
-          <Text className="text-right text-13px">{t.users.emailLabel} *</Text>
+          <Text className="text-right text-13px">
+            {t.users.emailLabel}
+            {' '}
+            *
+          </Text>
           <Input
             type="email"
             value={form.email}

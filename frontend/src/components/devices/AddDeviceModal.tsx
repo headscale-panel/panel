@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
-import { Button, Card, Input, Modal, Space, Switch, Tabs, Tag, Typography, message } from 'antd';
 import { CopyOutlined } from '@ant-design/icons';
+import { Button, Card, Input, message, Modal, Space, Tabs, Tag, Typography } from 'antd';
+import { useState } from 'react';
 import { deviceApi, headscaleUserApi } from '@/api';
 import { useTranslation } from '@/i18n/index';
 
@@ -32,15 +32,16 @@ export default function AddDeviceModal({
   const [machineKey, setMachineKey] = useState('');
   const [registering, setRegistering] = useState(false);
 
-  useEffect(() => {
-    if (open) {
-      setActiveTab(canCreatePreAuthKey ? 'preauth' : 'machine');
-      setReusable(false);
-      setEphemeral(false);
-      setGeneratedKey('');
-      setMachineKey('');
-    }
-  }, [open, canCreatePreAuthKey]);
+  const handleAfterOpenChange = (nextOpen: boolean) => {
+    if (!nextOpen)
+      return;
+
+    setActiveTab(canCreatePreAuthKey ? 'preauth' : 'machine');
+    setReusable(false);
+    setEphemeral(false);
+    setGeneratedKey('');
+    setMachineKey('');
+  };
 
   const handleGenerateKey = async () => {
     try {
@@ -86,6 +87,7 @@ export default function AddDeviceModal({
       open={open}
       title={t.devices.addDeviceTitle}
       onCancel={onCancel}
+      afterOpenChange={handleAfterOpenChange}
       footer={null}
       width={680}
     >

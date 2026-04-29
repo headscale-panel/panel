@@ -1,12 +1,13 @@
-import request, { RespType, RespPage } from '@/lib/request';
 import type { User } from './entities';
 import type {
-  ListSystemUsersReq,
   CreateSystemUserReq,
   CreateSystemUserRes,
-  UpdateSystemUserReq,
   DeleteSystemUserReq,
+  ListSystemUsersReq,
+  UpdateSystemUserReq,
 } from './system-user.types';
+import type { RespPage, RespType } from '@/lib/request';
+import request from '@/lib/request';
 
 export const systemUserApi = {
   list: (req?: ListSystemUsersReq) =>

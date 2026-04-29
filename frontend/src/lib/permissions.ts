@@ -25,17 +25,17 @@ export const METRICS_PERMISSIONS = [
   'metrics:influxdb:view',
 ] as const;
 
-export type AppSectionKey =
-  | 'dashboard'
-  | 'devices'
-  | 'users'
-  | 'routes'
-  | 'resources'
-  | 'acl'
-  | 'dns'
-  | 'metrics'
-  | 'panelAccounts'
-  | 'settings';
+export type AppSectionKey
+  = | 'dashboard'
+    | 'devices'
+    | 'users'
+    | 'routes'
+    | 'resources'
+    | 'acl'
+    | 'dns'
+    | 'metrics'
+    | 'panelAccounts'
+    | 'settings';
 
 export type TourSectionKey = AppSectionKey | 'profile';
 
@@ -59,7 +59,7 @@ export function hasPermission(user: User | null | undefined, permission: string)
 
 export function hasAnyPermission(
   user: User | null | undefined,
-  permissions: readonly string[]
+  permissions: readonly string[],
 ): boolean {
   if (!user) {
     return false;
