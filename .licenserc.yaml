@@ -1,0 +1,32 @@
+header:
+  license:
+    spdx-id: AGPL-3.0-or-later
+
+  paths-ignore:
+    - 'shell/**'
+    - '.git'
+    - '.github'
+    - '**/.gitignore'
+    - '**/.gitkeep'
+    - '**/.dockerignore'
+    - '**/Dockerfile'
+    - '**/.env.example'
+    - '**/.env'
+    - 'backend/go.mod'
+    - 'backend/go.sum'
+    - 'frontend/index.html'
+    - 'frontend/eslint.config.ts'
+    - 'frontend/uno.config.ts'
+    - 'frontend/vite.config.ts'
+    - 'frontend/public/**'
+    - 'frontend/package-lock.json'
+    - 'frontend/yarn.lock'
+    - 'frontend/pnpm-lock.yaml'
+    - '**/*.md'
+    - '**/*.json'
+    - '**/*.yml'
+    - '**/*.yaml'
+    - '**/LICENSE'
+    - 'dist/**'
+
+  comment: on-failure
