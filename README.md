@@ -17,6 +17,9 @@
     </a>
 </p>
 
+> [!WARNING]
+> This project is in a very early stage of development. You may encounter critical bugs, missing features, or complete unavailability. We are actively working to resolve reported issues and will continue to push forward with fixes and new features. Use on public networks or in production environments is strongly discouraged.
+
 A modern Headscale management panel with a clean, network-operations-focused UI. Supports device management, user management, ACL visualization, route management, DNS management, uptime statistics, and more.
 
 ## 📸 Screenshots
