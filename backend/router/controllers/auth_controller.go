@@ -46,11 +46,17 @@ func NewAuthController() *AuthController {
 	return &AuthController{}
 }
 
+// oidcStateEntry holds PKCE verifier alongside expiry for a pending OIDC flow.
+type oidcStateEntry struct {
+	Expiry       time.Time
+	CodeVerifier string
+}
+
 // In-memory state storage for OIDC login flow
 var (
-	oidcStates              = make(map[string]time.Time)
+	oidcStates              = make(map[string]oidcStateEntry)
 	oidcStatesMu            sync.Mutex
-	oidcHeadscaleUserStates = make(map[string]time.Time)
+	oidcHeadscaleUserStates = make(map[string]oidcStateEntry)
 	oidcHeadscaleStatesMu   sync.Mutex
 )
 
@@ -58,7 +64,7 @@ var (
 func cleanExpiredStates() {
 	now := time.Now()
 	for k, v := range oidcStates {
-		if now.After(v) {
+		if now.After(v.Expiry) {
 			delete(oidcStates, k)
 		}
 	}
@@ -67,7 +73,7 @@ func cleanExpiredStates() {
 func cleanExpiredHeadscaleUserStates() {
 	now := time.Now()
 	for k, v := range oidcHeadscaleUserStates {
-		if now.After(v) {
+		if now.After(v.Expiry) {
 			delete(oidcHeadscaleUserStates, k)
 		}
 	}
@@ -123,9 +129,14 @@ func (a *AuthController) OIDCLogin(c *gin.Context) {
 	}
 	state := hex.EncodeToString(stateBytes)
 
+	verifier := oauth2.GenerateVerifier()
+
 	oidcStatesMu.Lock()
 	cleanExpiredStates()
-	oidcStates[state] = time.Now().Add(10 * time.Minute)
+	oidcStates[state] = oidcStateEntry{
+		Expiry:       time.Now().Add(10 * time.Minute),
+		CodeVerifier: verifier,
+	}
 	oidcStatesMu.Unlock()
 
 	scopes := oidcCfg.Scope
@@ -156,7 +167,7 @@ func (a *AuthController) OIDCLogin(c *gin.Context) {
 		Scopes:       scopes,
 	}
 
-	authURL := oauthCfg.AuthCodeURL(state)
+	authURL := oauthCfg.AuthCodeURL(state, oauth2.S256ChallengeOption(verifier))
 
 	unifyerror.Success(c, gin.H{
 		"redirect_url": authURL,
@@ -185,9 +196,14 @@ func (a *AuthController) OIDCHeadscaleUserLogin(c *gin.Context) {
 	}
 	state := hex.EncodeToString(stateBytes)
 
+	verifier := oauth2.GenerateVerifier()
+
 	oidcHeadscaleStatesMu.Lock()
 	cleanExpiredHeadscaleUserStates()
-	oidcHeadscaleUserStates[state] = time.Now().Add(10 * time.Minute)
+	oidcHeadscaleUserStates[state] = oidcStateEntry{
+		Expiry:       time.Now().Add(10 * time.Minute),
+		CodeVerifier: verifier,
+	}
 	oidcHeadscaleStatesMu.Unlock()
 
 	scopes := oidcCfg.Scope
@@ -218,7 +234,7 @@ func (a *AuthController) OIDCHeadscaleUserLogin(c *gin.Context) {
 		Scopes:       scopes,
 	}
 
-	authURL := oauthCfg.AuthCodeURL(state)
+	authURL := oauthCfg.AuthCodeURL(state, oauth2.S256ChallengeOption(verifier))
 	unifyerror.Success(c, gin.H{"redirect_url": authURL})
 }
 
@@ -247,13 +263,13 @@ func (a *AuthController) OIDCCallback(c *gin.Context) {
 	}
 
 	oidcStatesMu.Lock()
-	expiry, exists := oidcStates[q.State]
+	entry, exists := oidcStates[q.State]
 	if exists {
 		delete(oidcStates, q.State)
 	}
 	oidcStatesMu.Unlock()
 
-	if !exists || time.Now().After(expiry) {
+	if !exists || time.Now().After(entry.Expiry) {
 		unifyerror.Fail(c, unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "invalid or expired state parameter"))
 		return
 	}
@@ -292,7 +308,7 @@ func (a *AuthController) OIDCCallback(c *gin.Context) {
 		Scopes:       scopes,
 	}
 
-	oauthToken, err := oauthCfg.Exchange(ctx, q.Code)
+	oauthToken, err := oauthCfg.Exchange(ctx, q.Code, oauth2.VerifierOption(entry.CodeVerifier))
 	if err != nil {
 		failOIDCAuth(c)
 		return
@@ -389,13 +405,13 @@ func (a *AuthController) OIDCHeadscaleUserCallback(c *gin.Context) {
 	}
 
 	oidcHeadscaleStatesMu.Lock()
-	expiry, exists := oidcHeadscaleUserStates[q.State]
+	hsEntry, exists := oidcHeadscaleUserStates[q.State]
 	if exists {
 		delete(oidcHeadscaleUserStates, q.State)
 	}
 	oidcHeadscaleStatesMu.Unlock()
 
-	if !exists || time.Now().After(expiry) {
+	if !exists || time.Now().After(hsEntry.Expiry) {
 		unifyerror.Fail(c, unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "invalid or expired state parameter"))
 		return
 	}
@@ -409,7 +425,7 @@ func (a *AuthController) OIDCHeadscaleUserCallback(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 15*time.Second)
 	defer cancel()
 
-	claims, err := exchangeOIDCClaims(ctx, oidcCfg, q.Code)
+	claims, err := exchangeOIDCClaims(ctx, oidcCfg, q.Code, hsEntry.CodeVerifier)
 	if err != nil {
 		failOIDCAuth(c)
 		return
@@ -699,7 +715,7 @@ func oidcClaimsMatchHeadscaleUser(user services.HeadscaleUser, oidcName, oidcEma
 	return true
 }
 
-func exchangeOIDCClaims(ctx context.Context, oidcCfg *services.OIDCSettingsPayload, code string) (*struct {
+func exchangeOIDCClaims(ctx context.Context, oidcCfg *services.OIDCSettingsPayload, code, verifier string) (*struct {
 	Sub           string `json:"sub"`
 	Email         string `json:"email"`
 	EmailVerified bool   `json:"email_verified"`
@@ -730,7 +746,7 @@ func exchangeOIDCClaims(ctx context.Context, oidcCfg *services.OIDCSettingsPaylo
 		Scopes:       scopes,
 	}
 
-	oauthToken, err := oauthCfg.Exchange(ctx, code)
+	oauthToken, err := oauthCfg.Exchange(ctx, code, oauth2.VerifierOption(verifier))
 	if err != nil {
 		return nil, err
 	}
@@ -740,8 +756,8 @@ func exchangeOIDCClaims(ctx context.Context, oidcCfg *services.OIDCSettingsPaylo
 		return nil, errors.New("missing id_token")
 	}
 
-	verifier := provider.Verifier(&oidc.Config{ClientID: oidcCfg.ClientID})
-	idToken, err := verifier.Verify(ctx, rawIDToken)
+	idTokenVerifier := provider.Verifier(&oidc.Config{ClientID: oidcCfg.ClientID})
+	idToken, err := idTokenVerifier.Verify(ctx, rawIDToken)
 	if err != nil {
 		return nil, err
 	}
