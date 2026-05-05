@@ -335,7 +335,7 @@ server {
 
 - Docker + Docker Compose
 - Go 1.24+
-- Node.js 20+ / pnpm
+- Node.js 24+ / pnpm
 
 ### Local Development
 
