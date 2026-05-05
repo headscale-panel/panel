@@ -14,6 +14,7 @@ data/
 logs/
 tmp/
 temp/
+__debug_bin*
 
 # Go build outputs
 bin/

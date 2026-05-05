@@ -2,7 +2,7 @@ package services
 
 import (
 	"headscale-panel/pkg/constants"
-	v1 "headscale-panel/pkg/proto/headscale/v1"
+	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"testing"
 )
 

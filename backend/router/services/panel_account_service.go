@@ -1,12 +1,12 @@
 package services
 
 import (
-	"net/http"
-	"headscale-panel/pkg/unifyerror"
 	"context"
 	"errors"
 	"headscale-panel/model"
-	v1 "headscale-panel/pkg/proto/headscale/v1"
+	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
+	"headscale-panel/pkg/unifyerror"
+	"net/http"
 	"strings"
 
 	"google.golang.org/grpc/codes"

@@ -5,11 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"headscale-panel/model"
-	v1 "headscale-panel/pkg/proto/headscale/v1"
 	"headscale-panel/pkg/unifyerror"
 	"net/http"
 	"strings"
 	"time"
+
+	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 
 	"github.com/tailscale/hujson"
 	"google.golang.org/protobuf/reflect/protoreflect"
@@ -53,12 +54,16 @@ type HeadscaleMachine struct {
 
 // HeadscaleAuthKey represents pre-auth key info
 type HeadscaleAuthKey struct {
-	ID        uint64 `json:"id"`
-	Key       string `json:"key"`
-	User      string `json:"user"`
-	Reusable  bool   `json:"reusable"`
-	Ephemeral bool   `json:"ephemeral"`
-	Used      bool   `json:"used"`
+	ID         uint64     `json:"id"`
+	Key        string     `json:"key"`
+	User       string     `json:"user"`
+	Reusable   bool       `json:"reusable"`
+	Ephemeral  bool       `json:"ephemeral"`
+	Used       bool       `json:"used"`
+	Expired    bool       `json:"expired"`
+	Expiration *time.Time `json:"expiration,omitempty"`
+	CreatedAt  *time.Time `json:"created_at,omitempty"`
+	AclTags    []string   `json:"acl_tags,omitempty"`
 }
 
 func normalizeHeadscaleProvider(raw string) string {
@@ -755,11 +760,42 @@ func (s *headscaleService) ResolveUserIDByNameWithContext(ctx context.Context, u
 }
 
 // GetPreAuthKeys gets pre-auth keys for a user
-func (s *headscaleService) GetPreAuthKeys(actorUserID uint, userID uint64) (interface{}, error) {
+// mapPreAuthKey converts a proto PreAuthKey to HeadscaleAuthKey, computing
+// the Expired flag on the server side to avoid client-clock skew issues.
+func mapPreAuthKey(k *v1.PreAuthKey) HeadscaleAuthKey {
+	now := time.Now()
+	result := HeadscaleAuthKey{
+		ID:        k.GetId(),
+		Key:       k.GetKey(),
+		Reusable:  k.GetReusable(),
+		Ephemeral: k.GetEphemeral(),
+		Used:      k.GetUsed(),
+		AclTags:   k.GetAclTags(),
+	}
+	if k.GetUser() != nil {
+		result.User = k.GetUser().GetName()
+	}
+	if k.GetExpiration() != nil {
+		t := k.GetExpiration().AsTime()
+		if !t.IsZero() {
+			result.Expiration = &t
+			result.Expired = t.Before(now)
+		}
+	}
+	if k.GetCreatedAt() != nil {
+		t := k.GetCreatedAt().AsTime()
+		if !t.IsZero() {
+			result.CreatedAt = &t
+		}
+	}
+	return result
+}
+
+func (s *headscaleService) GetPreAuthKeys(actorUserID uint, userID uint64) ([]HeadscaleAuthKey, error) {
 	return s.GetPreAuthKeysWithContext(context.Background(), actorUserID, userID)
 }
 
-func (s *headscaleService) GetPreAuthKeysWithContext(ctx context.Context, actorUserID uint, userID uint64) (interface{}, error) {
+func (s *headscaleService) GetPreAuthKeysWithContext(ctx context.Context, actorUserID uint, userID uint64) ([]HeadscaleAuthKey, error) {
 	if err := RequirePermission(actorUserID, "headscale:preauthkey:list"); err != nil {
 		return nil, err
 	}
@@ -774,21 +810,18 @@ func (s *headscaleService) GetPreAuthKeysWithContext(ctx context.Context, actorU
 	queryCtx, cancel := withServiceTimeout(ctx)
 	defer cancel()
 
-	resp, err := client.ListPreAuthKeys(queryCtx, &v1.ListPreAuthKeysRequest{
-		User: userID,
-	})
+	resp, err := client.ListPreAuthKeys(queryCtx, &v1.ListPreAuthKeysRequest{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to list pre-auth keys: %w", err)
 	}
 
-	// Filter by user — some headscale versions ignore the User field in ListPreAuthKeysRequest
-	var filtered []*v1.PreAuthKey
+	var result []HeadscaleAuthKey
 	for _, k := range resp.PreAuthKeys {
 		if k.GetUser() != nil && k.GetUser().GetId() == userID {
-			filtered = append(filtered, k)
+			result = append(result, mapPreAuthKey(k))
 		}
 	}
-	return filtered, nil
+	return result, nil
 }
 
 // CreatePreAuthKey creates a pre-auth key for a user
@@ -830,12 +863,8 @@ func (s *headscaleService) CreatePreAuthKeyWithContext(ctx context.Context, acto
 	return resp.PreAuthKey, nil
 }
 
-// ExpirePreAuthKey expires a pre-auth key
-func (s *headscaleService) ExpirePreAuthKey(actorUserID uint, userID uint64, key string) error {
-	return s.ExpirePreAuthKeyWithContext(context.Background(), actorUserID, userID, key)
-}
-
-func (s *headscaleService) ExpirePreAuthKeyWithContext(ctx context.Context, actorUserID uint, userID uint64, key string) error {
+// ExpirePreAuthKeyByIDWithContext expires a pre-auth key by its ID.
+func (s *headscaleService) ExpirePreAuthKeyByIDWithContext(ctx context.Context, actorUserID uint, userID uint64, id uint64) error {
 	if err := RequirePermission(actorUserID, "headscale:preauthkey:expire"); err != nil {
 		return err
 	}
@@ -847,12 +876,10 @@ func (s *headscaleService) ExpirePreAuthKeyWithContext(ctx context.Context, acto
 		return err
 	}
 
-	queryCtx, cancel := withServiceTimeout(ctx)
-	defer cancel()
-
-	_, err = client.ExpirePreAuthKey(queryCtx, &v1.ExpirePreAuthKeyRequest{
-		User: userID,
-		Key:  key,
+	expireCtx, expireCancel := withServiceTimeout(ctx)
+	defer expireCancel()
+	_, err = client.ExpirePreAuthKey(expireCtx, &v1.ExpirePreAuthKeyRequest{
+		Id: id,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to expire pre-auth key: %w", err)

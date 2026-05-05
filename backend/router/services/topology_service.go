@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"headscale-panel/model"
 	"headscale-panel/pkg/acl"
-	v1 "headscale-panel/pkg/proto/headscale/v1"
+	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"strings"
 	"time"
 )

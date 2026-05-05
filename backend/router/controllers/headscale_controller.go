@@ -53,7 +53,7 @@ type HeadscaleCreatePreAuthKeyRequest struct {
 // HeadscaleExpirePreAuthKeyRequest is the request body for ExpirePreAuthKey.
 type HeadscaleExpirePreAuthKeyRequest struct {
 	User string `json:"user" binding:"required"`
-	Key  string `json:"key" binding:"required"`
+	ID   uint64 `json:"id" binding:"required"`
 }
 
 // HeadscaleRegisterNodeRequest is the request body for RegisterNode.
@@ -388,22 +388,10 @@ func (h *HeadscaleController) GetPreAuthKeys(c *gin.Context) {
 		return
 	}
 
-	// Find the user ID from user name
 	actorUserID := c.GetUint("userID")
-	users, err := services.HeadscaleService.ListHeadscaleUsersWithContext(c.Request.Context(), actorUserID)
+	targetUserID, err := services.HeadscaleService.ResolveUserIDByNameWithContext(c.Request.Context(), q.User)
 	if err != nil {
 		unifyerror.Fail(c, err)
-		return
-	}
-	var targetUserID uint64
-	for _, u := range users {
-		if u.Name == q.User {
-			targetUserID = u.ID
-			break
-		}
-	}
-	if targetUserID == 0 {
-		unifyerror.Fail(c, unifyerror.New(http.StatusNotFound, unifyerror.CodeNotFound, "User not found"))
 		return
 	}
 
@@ -432,22 +420,10 @@ func (h *HeadscaleController) CreatePreAuthKey(c *gin.Context) {
 		return
 	}
 
-	// Find user ID
 	actorUserID := c.GetUint("userID")
-	users, err := services.HeadscaleService.ListHeadscaleUsersWithContext(c.Request.Context(), actorUserID)
+	targetUserID, err := services.HeadscaleService.ResolveUserIDByNameWithContext(c.Request.Context(), req.User)
 	if err != nil {
 		unifyerror.Fail(c, err)
-		return
-	}
-	var targetUserID uint64
-	for _, u := range users {
-		if u.Name == req.User {
-			targetUserID = u.ID
-			break
-		}
-	}
-	if targetUserID == 0 {
-		unifyerror.Fail(c, unifyerror.New(http.StatusNotFound, unifyerror.CodeNotFound, "User not found"))
 		return
 	}
 
@@ -476,26 +452,14 @@ func (h *HeadscaleController) ExpirePreAuthKey(c *gin.Context) {
 		return
 	}
 
-	// Find user ID
 	actorUserID := c.GetUint("userID")
-	users, err := services.HeadscaleService.ListHeadscaleUsersWithContext(c.Request.Context(), actorUserID)
+	targetUserID, err := services.HeadscaleService.ResolveUserIDByNameWithContext(c.Request.Context(), req.User)
 	if err != nil {
 		unifyerror.Fail(c, err)
 		return
 	}
-	var targetUserID uint64
-	for _, u := range users {
-		if u.Name == req.User {
-			targetUserID = u.ID
-			break
-		}
-	}
-	if targetUserID == 0 {
-		unifyerror.Fail(c, unifyerror.New(http.StatusNotFound, unifyerror.CodeNotFound, "User not found"))
-		return
-	}
 
-	if err := services.HeadscaleService.ExpirePreAuthKeyWithContext(c.Request.Context(), actorUserID, targetUserID, req.Key); err != nil {
+	if err := services.HeadscaleService.ExpirePreAuthKeyByIDWithContext(c.Request.Context(), actorUserID, targetUserID, req.ID); err != nil {
 		unifyerror.Fail(c, err)
 		return
 	}

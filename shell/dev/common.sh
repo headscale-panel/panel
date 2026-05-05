@@ -83,7 +83,7 @@ print_tailscale_login_instructions() {
     done
 
     echo -e "${BOLD}Use a pre-auth key to connect the test router to Headscale:${NC}"
-    echo -e "  ${CYAN}docker exec -it panel-dev-tailscale-router tailscale up --login-server=${login_server} --authkey=<PREAUTH_KEY> --accept-dns=false --accept-routes=false --advertise-routes=${advertise_routes}${NC}"
+    echo -e "  ${CYAN}docker exec -it panel-dev-tailscale-router tailscale up --reset --netfilter-mode=off --login-server=${login_server} --auth-key=<PREAUTH_KEY> --accept-dns=false --accept-routes=false --advertise-routes=${advertise_routes}${NC}"
     echo -e "${BOLD}Use a pre-auth key to connect other clients to Headscale:${NC}"
     for login_server in "${client_login_servers[@]}"; do
         echo -e "  ${CYAN}tailscale up --login-server=${login_server} --authkey=<PREAUTH_KEY>${NC}"

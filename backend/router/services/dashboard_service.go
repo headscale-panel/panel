@@ -3,7 +3,7 @@ package services
 import (
 	"context"
 	"headscale-panel/model"
-	v1 "headscale-panel/pkg/proto/headscale/v1"
+	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 )
 
 type dashboardService struct{}

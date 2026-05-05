@@ -7,7 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"headscale-panel/pkg/conf"
-	v1 "headscale-panel/pkg/proto/headscale/v1"
+	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	paneljwt "headscale-panel/pkg/utils/jwt"
 	"log"
 	"net/http"

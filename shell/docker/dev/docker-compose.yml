@@ -10,6 +10,8 @@ services:
     volumes:
       - ../../../backend/data/headscale/lib:/var/lib/headscale
       - ../../../backend/data/headscale/etc:/etc/headscale:ro
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
     ports:
       - "${HEADSCALE_HTTP_PORT:-5080}:8080"   # Headscale HTTP API
       - "${HEADSCALE_GRPC_PORT:-50443}:50443" # Headscale gRPC for local backend access from host
@@ -35,6 +37,8 @@ services:
       DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: ${INFLUXDB_TOKEN:-dev-influxdb-token}
     volumes:
       - ./data/influxdb:/var/lib/influxdb2
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
     ports:
       - "${INFLUXDB_HOST_PORT:-8086}:8086"   # InfluxDB UI & API
     healthcheck:
@@ -49,10 +53,11 @@ services:
   tailscale-router:
     image: tailscale/tailscale:stable
     container_name: panel-dev-tailscale-router
-    hostname: ${TAILSCALE_HOSTNAME:-panel-dev-router}
     restart: unless-stopped
     volumes:
       - ./data/tailscale:/var/lib/tailscale
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
     cap_add:
       - NET_ADMIN
       - SYS_MODULE
@@ -74,6 +79,8 @@ services:
     volumes:
       - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
       - ./nginx/index.html:/usr/share/nginx/html/index.html:ro
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
     depends_on:
       - tailscale-router
     networks:

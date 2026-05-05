@@ -25,6 +25,8 @@ type Server struct {
 }
 
 func NewServer() (*Server, error) {
+	time.Local = time.UTC
+
 	confPath, err := filepath.Abs(".env")
 	if err != nil {
 		logrus.WithError(err).Warn("无法获取配置文件路径，使用默认配置")

@@ -167,6 +167,10 @@ export interface HeadscaleAuthKey {
   reusable: boolean;
   ephemeral: boolean;
   used?: boolean;
+  expired: boolean;
+  expiration?: string;
+  created_at?: string;
+  acl_tags?: string[];
 }
 
 // ─── services.HeadscaleMachine ───────────────────────────────────────────────

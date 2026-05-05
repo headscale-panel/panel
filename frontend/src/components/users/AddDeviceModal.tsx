@@ -1,3 +1,4 @@
+import type { HeadscaleAuthKey } from '@/api/entities';
 import type { NormalizedHeadscaleUser } from '@/lib/normalizers';
 import {
   CodeOutlined,
@@ -60,7 +61,10 @@ const DEFAULT_DEPLOY_PARAMS = {
 function parseTimestamp(ts: any): Date | null {
   if (!ts)
     return null;
-  if (typeof ts === 'string') { const d = new Date(ts); return Number.isNaN(d.getTime()) ? null : d; }
+  if (typeof ts === 'string') {
+    const d = new Date(ts);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
   if (ts.seconds != null)
     return new Date(Number(ts.seconds) * 1000 + (ts.nanos || 0) / 1e6);
   return null;
@@ -77,7 +81,7 @@ export default function AddDeviceModal({ open, hsUsers, onCancel, onSuccess }: A
   const [machineKey, setMachineKey] = useState('');
   const [registeringNode, setRegisteringNode] = useState(false);
   const [selectedUser, setSelectedUser] = useState('');
-  const [preAuthKeysList, setPreAuthKeysList] = useState<any[]>([]);
+  const [preAuthKeysList, setPreAuthKeysList] = useState<HeadscaleAuthKey[]>([]);
   const [loadingKeys, setLoadingKeys] = useState(false);
   const [deployParams, setDeployParams] = useState(DEFAULT_DEPLOY_PARAMS);
 
@@ -97,11 +101,14 @@ export default function AddDeviceModal({ open, hsUsers, onCancel, onSuccess }: A
   };
 
   const loadPreAuthKeys = useCallback(async (user: string) => {
-    if (!user) { setPreAuthKeysList([]); return; }
+    if (!user) {
+      setPreAuthKeysList([]);
+      return;
+    }
     setLoadingKeys(true);
     try {
-      const res: any = await headscaleUserApi.getPreAuthKeys({ user });
-      const keys = Array.isArray(res) ? res : (res?.preAuthKeys || res?.preAuthKey || res?.preauthkeys || res?.pre_auth_keys || []);
+      const res = await headscaleUserApi.getPreAuthKeys({ user });
+      const keys = Array.isArray(res) ? res : ((res as any)?.preAuthKeys || (res as any)?.preAuthKey || (res as any)?.preauthkeys || (res as any)?.pre_auth_keys || []);
       setPreAuthKeysList(Array.isArray(keys) ? keys : []);
     } catch {
       setPreAuthKeysList([]);
@@ -131,21 +138,21 @@ export default function AddDeviceModal({ open, hsUsers, onCancel, onSuccess }: A
       }
       setGeneratedKey(key);
       message.success(t.devices.keyGenerated);
-      loadPreAuthKeys(selectedUser);
+      await loadPreAuthKeys(selectedUser);
     } catch (error: any) {
       message.error(t.devices.keyGenerateFailed + (error.message ? `: ${error.message}` : ''));
     }
   };
 
-  const handleExpireKey = async (key: string) => {
+  const handleExpireKey = async (id: number, key: string) => {
     if (!selectedUser)
       return;
     try {
-      await headscaleUserApi.expirePreAuthKey({ user: selectedUser, key });
+      await headscaleUserApi.expirePreAuthKey({ user: selectedUser, id });
       message.success(t.devices.expireKeySuccess);
       if (generatedKey === key)
         setGeneratedKey('');
-      loadPreAuthKeys(selectedUser);
+      await loadPreAuthKeys(selectedUser);
     } catch {
       message.error(t.devices.expireKeyFailed);
     }
@@ -337,9 +344,9 @@ export default function AddDeviceModal({ open, hsUsers, onCancel, onSuccess }: A
                             )
                           : (
                               <div className="flex flex-col gap-2">
-                                {preAuthKeysList.map((k: any) => {
+                                {preAuthKeysList.map((k) => {
                                   const expDate = parseTimestamp(k.expiration);
-                                  const isExpired = expDate && expDate < new Date();
+                                  const isExpired = k.expired;
                                   const isUsedUp = k.used && !k.reusable;
                                   return (
                                     <div
@@ -358,7 +365,7 @@ export default function AddDeviceModal({ open, hsUsers, onCancel, onSuccess }: A
                                         {!isExpired && (
                                           <Popconfirm
                                             title={t.devices.expireKeyConfirm}
-                                            onConfirm={() => handleExpireKey(k.key)}
+                                            onConfirm={() => handleExpireKey(k.id, k.key)}
                                             okText={t.common.actions.confirm}
                                             cancelText={t.common.actions.cancel}
                                           >
@@ -371,7 +378,7 @@ export default function AddDeviceModal({ open, hsUsers, onCancel, onSuccess }: A
                                         {k.ephemeral && <Tag color="orange" className="text-10px m-0">{t.devices.preAuthKeyEphemeral}</Tag>}
                                         {k.used && <Tag color={k.reusable ? 'default' : 'red'} className="text-10px m-0">{t.devices.preAuthKeyUsed}</Tag>}
                                         {isExpired && <Tag color="default" className="text-10px m-0">{t.devices.preAuthKeyExpired}</Tag>}
-                                        {k.acl_tags?.length > 0 && k.acl_tags.map((tag: string) => (
+                                        {!!k.acl_tags?.length && k.acl_tags.map((tag: string) => (
                                           <Tag key={tag} className="text-10px m-0">{tag}</Tag>
                                         ))}
                                       </Space>
@@ -427,24 +434,24 @@ export default function AddDeviceModal({ open, hsUsers, onCancel, onSuccess }: A
                       notFoundContent={loadingKeys ? t.devices.loadingKeys : t.devices.noPreAuthKeys}
                       options={[
                         ...preAuthKeysList
-                          .filter((k: any) => {
+                          .filter((k) => {
                             const exp = parseTimestamp(k.expiration);
                             const expired = exp && exp < new Date();
                             const used = k.used && !k.reusable;
                             return !expired && !used;
                           })
-                          .map((k: any) => ({
+                          .map((k) => ({
                             value: k.key,
                             label: `${k.key?.length > 16 ? `${k.key.slice(0, 16)}...` : k.key} ${k.reusable ? '[R]' : ''}${k.ephemeral ? '[E]' : ''}`,
                           })),
                         ...preAuthKeysList
-                          .filter((k: any) => {
+                          .filter((k) => {
                             const exp = parseTimestamp(k.expiration);
                             const expired = exp && exp < new Date();
                             const used = k.used && !k.reusable;
                             return expired || used;
                           })
-                          .map((k: any) => ({
+                          .map((k) => ({
                             value: k.key,
                             disabled: true,
                             // eslint-disable-next-line react/unsupported-syntax

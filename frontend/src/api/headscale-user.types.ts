@@ -50,6 +50,6 @@ export type CreatePreAuthKeyRes = HeadscaleAuthKey;
 
 export interface ExpirePreAuthKeyReq {
   user: string;
-  key: string;
+  id: number;
 }
 export interface ExpirePreAuthKeyRes {}

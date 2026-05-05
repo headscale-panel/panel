@@ -3,7 +3,7 @@ package services
 import (
 	"context"
 	"fmt"
-	v1 "headscale-panel/pkg/proto/headscale/v1"
+	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 )
 
 type routeService struct{}

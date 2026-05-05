@@ -24,9 +24,12 @@ func InitRouter() *gin.Engine {
 	r.Use(cors.New(corsConfig))
 
 	// Serve compiled frontend files (SPA with fallback to index.html)
-	exe, _ := os.Executable()
-	frontendDir := filepath.Join(filepath.Dir(exe), constants.FrontendDir)
-	r.Use(middleware.FrontendMiddleware(frontendDir))
+	// Skip in development mode — frontend is served by the Vite dev server instead.
+	if gin.Mode() == gin.ReleaseMode {
+		exe, _ := os.Executable()
+		frontendDir := filepath.Join(filepath.Dir(exe), constants.FrontendDir)
+		r.Use(middleware.FrontendMiddleware(frontendDir))
+	}
 
 	oidcController := controllers.NewOIDCController()
 	r.GET("/.well-known/openid-configuration", oidcController.Discovery)

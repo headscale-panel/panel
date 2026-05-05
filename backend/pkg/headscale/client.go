@@ -5,7 +5,7 @@ import (
 	"crypto/tls"
 	"headscale-panel/pkg/conf"
 	"headscale-panel/pkg/constants"
-	v1 "headscale-panel/pkg/proto/headscale/v1"
+	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"sync"
 	"time"
 

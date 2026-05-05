@@ -1,14 +1,14 @@
 package services
 
 import (
-	"net/http"
-	"headscale-panel/pkg/unifyerror"
 	"context"
 	"crypto/tls"
 	"fmt"
 	"headscale-panel/pkg/conf"
 	"headscale-panel/pkg/headscale"
-	v1 "headscale-panel/pkg/proto/headscale/v1"
+	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
+	"headscale-panel/pkg/unifyerror"
+	"net/http"
 	"strings"
 	"sync"
 	"time"
