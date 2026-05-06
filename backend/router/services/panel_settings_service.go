@@ -1,4 +1,4 @@
-// Copyright (C) 2026 
+// Copyright (C) 2026
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as
@@ -40,10 +40,12 @@ var PanelSettingsService = new(panelSettingsService)
 // PanelConnectionSettings represents the panel's Headscale connection config.
 // API key is never returned in plain text after initial setup.
 type PanelConnectionSettings struct {
-	GRPCAddr    string `json:"grpc_addr"`
-	Insecure    bool   `json:"insecure"`
-	HasAPIKey   bool   `json:"has_api_key"`
-	IsConnected bool   `json:"is_connected"`
+	GRPCAddr      string `json:"grpc_addr"`
+	Insecure      bool   `json:"insecure"`
+	TLSSkipVerify bool   `json:"tls_skip_verify"`
+	TLSCACert     string `json:"tls_ca_cert,omitempty"`
+	HasAPIKey     bool   `json:"has_api_key"`
+	IsConnected   bool   `json:"is_connected"`
 }
 
 // GetConnectionSettings returns current panel connection settings (API key masked).
@@ -56,16 +58,18 @@ func (s *panelSettingsService) GetConnectionSettings(actorUserID uint) (*PanelCo
 	connected := headscale.GlobalClient != nil && headscale.GlobalClient.Conn != nil
 
 	return &PanelConnectionSettings{
-		GRPCAddr:    conf.Conf.Headscale.GRPCAddr,
-		Insecure:    conf.Conf.Headscale.Insecure,
-		HasAPIKey:   hasKey,
-		IsConnected: connected,
+		GRPCAddr:      conf.Conf.Headscale.GRPCAddr,
+		Insecure:      conf.Conf.Headscale.Insecure,
+		TLSSkipVerify: conf.Conf.Headscale.TLSSkipVerify,
+		TLSCACert:     conf.Conf.Headscale.TLSCACert,
+		HasAPIKey:     hasKey,
+		IsConnected:   connected,
 	}, nil
 }
 
 // SaveConnectionSettings persists gRPC connection settings and reinitializes the client.
 // apiKey is optional - if empty, the existing key is preserved.
-func (s *panelSettingsService) SaveConnectionSettings(actorUserID uint, grpcAddr, apiKey string, insecure bool) error {
+func (s *panelSettingsService) SaveConnectionSettings(actorUserID uint, grpcAddr, apiKey string, insecure, tlsSkipVerify bool, tlsCACert string) error {
 	if err := RequireAdmin(actorUserID); err != nil {
 		return err
 	}
@@ -84,7 +88,7 @@ func (s *panelSettingsService) SaveConnectionSettings(actorUserID uint, grpcAddr
 		return unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "API Key 不能为空")
 	}
 
-	if err := SaveConnectionAndInitialize(context.Background(), grpcAddr, effectiveAPIKey, insecure); err != nil {
+	if err := SaveConnectionAndInitialize(context.Background(), grpcAddr, effectiveAPIKey, insecure, tlsSkipVerify, tlsCACert); err != nil {
 		return err
 	}
 
@@ -100,10 +104,12 @@ type headscaleConnectionPayload struct {
 	APIKey          string `json:"api_key,omitempty"`
 	APIKeyEncrypted string `json:"api_key_enc,omitempty"`
 	Insecure        bool   `json:"insecure"`
+	TLSSkipVerify   bool   `json:"tls_skip_verify"`
+	TLSCACert       string `json:"tls_ca_cert,omitempty"` // PEM content
 }
 
 // PersistHeadscaleConnection saves headscale connection settings to the database.
-func PersistHeadscaleConnection(grpcAddr, apiKey string, insecure bool) error {
+func PersistHeadscaleConnection(grpcAddr, apiKey string, insecure, tlsSkipVerify bool, tlsCACert string) error {
 	encryptedAPIKey, err := encryptPanelSecret(apiKey)
 	if err != nil {
 		return err
@@ -113,6 +119,8 @@ func PersistHeadscaleConnection(grpcAddr, apiKey string, insecure bool) error {
 		GRPCAddr:        grpcAddr,
 		APIKeyEncrypted: encryptedAPIKey,
 		Insecure:        insecure,
+		TLSSkipVerify:   tlsSkipVerify,
+		TLSCACert:       tlsCACert,
 	}
 	data, err := json.Marshal(payload)
 	if err != nil {
@@ -151,6 +159,8 @@ func LoadHeadscaleConnectionFromDB() bool {
 	conf.Conf.Headscale.GRPCAddr = payload.GRPCAddr
 	conf.Conf.Headscale.APIKey = apiKey
 	conf.Conf.Headscale.Insecure = payload.Insecure
+	conf.Conf.Headscale.TLSSkipVerify = payload.TLSSkipVerify
+	conf.Conf.Headscale.TLSCACert = payload.TLSCACert
 	return true
 }
 

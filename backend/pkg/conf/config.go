@@ -1,4 +1,4 @@
-// Copyright (C) 2026 
+// Copyright (C) 2026
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as
@@ -49,6 +49,8 @@ type HeadscaleConfig struct {
 	GRPCAddr         string `mapstructure:"grpc_addr"`
 	APIKey           string `mapstructure:"api_key"`
 	Insecure         bool   `mapstructure:"insecure"`
+	TLSSkipVerify    bool   `mapstructure:"tls_skip_verify"`
+	TLSCACert        string `mapstructure:"tls_ca_cert"` // PEM content of custom CA cert
 	ExtraRecordsPath string `mapstructure:"extra_records_path"`
 }
 

@@ -21,6 +21,8 @@ export interface ConnectionSettings {
   grpc_addr: string;
   api_key?: string;
   insecure: boolean;
+  tls_skip_verify?: boolean;
+  tls_ca_cert?: string;
 }
 
 export type GetConnectionRes = ConnectionSettings;
@@ -29,6 +31,8 @@ export interface SaveConnectionReq {
   grpc_addr: string;
   api_key?: string;
   insecure: boolean;
+  tls_skip_verify?: boolean;
+  tls_ca_cert?: string;
 }
 
 export interface SaveConnectionRes { message: string }

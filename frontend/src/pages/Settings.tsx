@@ -149,6 +149,9 @@ export default function Settings() {
   const [grpcAddr, setGrpcAddr] = useState('');
   const [apiKeyInput, setApiKeyInput] = useState('');
   const [insecure, setInsecure] = useState(false);
+  const [tlsSkipVerify, setTlsSkipVerify] = useState(false);
+  const [tlsCACert, setTlsCACert] = useState('');
+  const [useCACert, setUseCACert] = useState(false);
   const [hasApiKey, setHasApiKey] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
   const [showApiKeyInput, setShowApiKeyInput] = useState(false);
@@ -293,6 +296,9 @@ export default function Settings() {
         setConnectionInitialized(true);
         setGrpcAddr(data.grpc_addr);
         setInsecure(data.insecure);
+        setTlsSkipVerify(data.tls_skip_verify ?? false);
+        setTlsCACert(data.tls_ca_cert ?? '');
+        setUseCACert(!!(data.tls_ca_cert ?? '').trim());
         setHasApiKey(data.has_api_key);
         setIsConnected(data.is_connected);
         setApiKeyInput('');
@@ -373,6 +379,8 @@ export default function Settings() {
         api_key: effectiveKey,
         strict_api: !!effectiveKey,
         grpc_allow_insecure: insecure,
+        grpc_tls_skip_verify: !insecure ? tlsSkipVerify : false,
+        grpc_tls_ca_cert: (!insecure && !tlsSkipVerify && useCACert) ? tlsCACert.trim() : '',
       });
       const allOk = data?.all_reachable === true;
       if (allOk) {
@@ -398,6 +406,8 @@ export default function Settings() {
         grpc_addr: grpcAddr.trim(),
         api_key: apiKeyInput.trim() || undefined,
         insecure,
+        tls_skip_verify: !insecure ? tlsSkipVerify : false,
+        tls_ca_cert: (!insecure && !tlsSkipVerify && useCACert) ? tlsCACert.trim() : '',
       });
       message.success(t.settings.toast.connectionSaved);
       setApiKeyInput('');
@@ -551,8 +561,50 @@ export default function Settings() {
                       label={t.settings.headscaleConnection.skipTlsLabel}
                       description={t.settings.headscaleConnection.skipTlsDesc}
                       checked={insecure}
-                      onCheckedChange={setInsecure}
+                      onCheckedChange={(v) => { setInsecure(v); if (v) { setTlsSkipVerify(false); setTlsCACert(''); setUseCACert(false); } }}
                     />
+
+                    {!insecure && (
+                      <SwitchRow
+                        label={t.settings.headscaleConnection.tlsSkipVerifyLabel}
+                        description={t.settings.headscaleConnection.tlsSkipVerifyDesc}
+                        checked={tlsSkipVerify}
+                        onCheckedChange={(v) => {
+                          setTlsSkipVerify(v);
+                          if (v) {
+                            setTlsCACert('');
+                            setUseCACert(false);
+                          }
+                        }}
+                      />
+                    )}
+
+                    {!insecure && !tlsSkipVerify && (
+                      <>
+                        <SwitchRow
+                          label={t.settings.headscaleConnection.useCaCertLabel}
+                          description={t.settings.headscaleConnection.useCaCertDesc}
+                          checked={useCACert}
+                          onCheckedChange={(v) => {
+                            setUseCACert(v);
+                            if (!v) {
+                              setTlsCACert('');
+                            }
+                          }}
+                        />
+                        {useCACert && (
+                          <FieldRow label={t.settings.headscaleConnection.caCertLabel} description={t.settings.headscaleConnection.caCertDesc}>
+                            <Input.TextArea
+                              value={tlsCACert}
+                              onChange={(e) => setTlsCACert(e.target.value)}
+                              placeholder={t.settings.headscaleConnection.caCertPlaceholder}
+                              autoSize={{ minRows: 3, maxRows: 8 }}
+                              style={{ fontFamily: 'monospace', fontSize: 11 }}
+                            />
+                          </FieldRow>
+                        )}
+                      </>
+                    )}
 
                     <Space className="pt-2">
                       <Button onClick={handleTestConnection} loading={testingConnection}>

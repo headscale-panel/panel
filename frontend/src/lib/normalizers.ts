@@ -130,6 +130,8 @@ export interface OIDCStatusData {
 export interface PanelConnectionSettings {
   grpc_addr: string;
   insecure: boolean;
+  tls_skip_verify: boolean;
+  tls_ca_cert: string;
   has_api_key: boolean;
   is_connected: boolean;
 }
@@ -473,6 +475,8 @@ export function normalizePanelConnectionSettings(value: unknown): PanelConnectio
   return {
     grpc_addr: asString(data.grpc_addr),
     insecure: asBoolean(data.insecure),
+    tls_skip_verify: asBoolean(data.tls_skip_verify),
+    tls_ca_cert: asString(data.tls_ca_cert),
     has_api_key: asBoolean(data.has_api_key),
     is_connected: asBoolean(data.is_connected),
   };

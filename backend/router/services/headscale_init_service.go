@@ -1,4 +1,4 @@
-// Copyright (C) 2026 
+// Copyright (C) 2026
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as
@@ -18,15 +18,17 @@ package services
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"headscale-panel/pkg/conf"
 	"headscale-panel/pkg/headscale"
-	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"headscale-panel/pkg/unifyerror"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
+
+	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
@@ -41,7 +43,7 @@ type headscaleInitService struct {
 var HeadscaleInitService = &headscaleInitService{}
 
 // CheckHeadscaleConnectivityWithConfig verifies the provided Headscale config can make API calls.
-func CheckHeadscaleConnectivityWithConfig(ctx context.Context, addr, apiKey string, allowInsecure bool) (bool, string) {
+func CheckHeadscaleConnectivityWithConfig(ctx context.Context, addr, apiKey string, allowInsecure, tlsSkipVerify bool, caCert string) (bool, string) {
 	targetAddr := strings.TrimSpace(addr)
 	if targetAddr == "" {
 		return false, "headscale gRPC address is required"
@@ -56,7 +58,18 @@ func CheckHeadscaleConnectivityWithConfig(ctx context.Context, addr, apiKey stri
 	if allowInsecure {
 		transport = insecure.NewCredentials()
 	} else {
-		transport = credentials.NewTLS(&tls.Config{MinVersion: tls.VersionTLS12})
+		tlsCfg := &tls.Config{
+			MinVersion:         tls.VersionTLS12,
+			InsecureSkipVerify: tlsSkipVerify, //nolint:gosec // user-opt-in for self-signed certs
+		}
+		if caCert != "" && !tlsSkipVerify {
+			pool := x509.NewCertPool()
+			if !pool.AppendCertsFromPEM([]byte(caCert)) {
+				return false, "failed to parse CA certificate PEM"
+			}
+			tlsCfg.RootCAs = pool
+		}
+		transport = credentials.NewTLS(tlsCfg)
 	}
 
 	conn, err := grpc.NewClient(targetAddr, grpc.WithTransportCredentials(transport))
@@ -84,6 +97,8 @@ func (s *headscaleInitService) CheckCurrentConfigConnectivity(ctx context.Contex
 		conf.Conf.Headscale.GRPCAddr,
 		conf.Conf.Headscale.APIKey,
 		conf.Conf.Headscale.Insecure,
+		conf.Conf.Headscale.TLSSkipVerify,
+		conf.Conf.Headscale.TLSCACert,
 	)
 	if !ok {
 		return unifyerror.New(http.StatusBadGateway, unifyerror.CodeGRPCErr, detail)
@@ -115,7 +130,7 @@ func (s *headscaleInitService) InitializeFromCurrentConfig(ctx context.Context) 
 
 // SaveConnectionAndInitialize persists Headscale connection settings, then initializes runtime clients.
 // If persistence or initialization fails, runtime config is rolled back to the previous values.
-func SaveConnectionAndInitialize(ctx context.Context, grpcAddr, apiKey string, insecure bool) error {
+func SaveConnectionAndInitialize(ctx context.Context, grpcAddr, apiKey string, insecure, tlsSkipVerify bool, caCert string) error {
 	grpcAddr = strings.TrimSpace(grpcAddr)
 	if grpcAddr == "" {
 		return unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "headscale grpc address is required")
@@ -130,8 +145,10 @@ func SaveConnectionAndInitialize(ctx context.Context, grpcAddr, apiKey string, i
 	conf.Conf.Headscale.GRPCAddr = grpcAddr
 	conf.Conf.Headscale.APIKey = apiKey
 	conf.Conf.Headscale.Insecure = insecure
+	conf.Conf.Headscale.TLSSkipVerify = tlsSkipVerify
+	conf.Conf.Headscale.TLSCACert = caCert
 
-	if err := PersistHeadscaleConnection(grpcAddr, apiKey, insecure); err != nil {
+	if err := PersistHeadscaleConnection(grpcAddr, apiKey, insecure, tlsSkipVerify, caCert); err != nil {
 		conf.Conf.Headscale = old
 		return unifyerror.New(http.StatusInternalServerError, unifyerror.CodeDBErr, "failed to persist Headscale connection settings to DB")
 	}

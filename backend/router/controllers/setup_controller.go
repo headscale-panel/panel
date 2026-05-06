@@ -1,4 +1,4 @@
-// Copyright (C) 2026 
+// Copyright (C) 2026
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as
@@ -129,6 +129,8 @@ type ConnectivityCheckRequest struct {
 	APIKey            string `json:"api_key"`
 	StrictAPI         bool   `json:"strict_api"`
 	GRPCAllowInsecure *bool  `json:"grpc_allow_insecure"`
+	GRPCTLSSkipVerify *bool  `json:"grpc_tls_skip_verify"`
+	GRPCTLSCACert     string `json:"grpc_tls_ca_cert"`
 }
 
 // ConnectivityPollRequest holds the parameters for polling Headscale connectivity.
@@ -136,6 +138,8 @@ type ConnectivityPollRequest struct {
 	HeadscaleGRPCAddr string `json:"headscale_grpc_addr"`
 	APIKey            string `json:"api_key"`
 	GRPCAllowInsecure *bool  `json:"grpc_allow_insecure"`
+	GRPCTLSSkipVerify *bool  `json:"grpc_tls_skip_verify"`
+	GRPCTLSCACert     string `json:"grpc_tls_ca_cert"`
 	MaxAttempts       int    `json:"max_attempts"`
 	IntervalSeconds   int    `json:"interval_seconds"`
 }
@@ -174,7 +178,11 @@ func (s *SetupController) ConnectivityCheck(ctx *gin.Context) {
 		if req.GRPCAllowInsecure != nil {
 			allowInsecure = *req.GRPCAllowInsecure
 		}
-		ok, detail = services.CheckHeadscaleConnectivityWithConfig(ctx.Request.Context(), grpcAddr, req.APIKey, allowInsecure)
+		tlsSkipVerify := false
+		if req.GRPCTLSSkipVerify != nil {
+			tlsSkipVerify = *req.GRPCTLSSkipVerify
+		}
+		ok, detail = services.CheckHeadscaleConnectivityWithConfig(ctx.Request.Context(), grpcAddr, req.APIKey, allowInsecure, tlsSkipVerify, req.GRPCTLSCACert)
 		results = append(results, gin.H{
 			"name":      "headscale_api",
 			"address":   grpcAddr,
@@ -218,6 +226,10 @@ func (s *SetupController) ConnectivityPoll(ctx *gin.Context) {
 	if req.GRPCAllowInsecure != nil {
 		allowInsecure = *req.GRPCAllowInsecure
 	}
+	tlsSkipVerify := false
+	if req.GRPCTLSSkipVerify != nil {
+		tlsSkipVerify = *req.GRPCTLSSkipVerify
+	}
 
 	maxAttempts := req.MaxAttempts
 	if maxAttempts <= 0 || maxAttempts > 30 {
@@ -230,7 +242,7 @@ func (s *SetupController) ConnectivityPoll(ctx *gin.Context) {
 
 	var lastDetail string
 	for i := 0; i < maxAttempts; i++ {
-		ok, detail := services.CheckHeadscaleConnectivityWithConfig(ctx.Request.Context(), grpcAddr, req.APIKey, allowInsecure)
+		ok, detail := services.CheckHeadscaleConnectivityWithConfig(ctx.Request.Context(), grpcAddr, req.APIKey, allowInsecure, tlsSkipVerify, req.GRPCTLSCACert)
 		lastDetail = detail
 		if ok {
 			unifyerror.Success(ctx, gin.H{
@@ -267,6 +279,8 @@ type InitializeRequest struct {
 	HeadscaleGRPCAddr string `json:"headscale_grpc_addr"`
 	APIKey            string `json:"api_key"`
 	EnableTLS         *bool  `json:"enable_tls"`
+	TLSSkipVerify     *bool  `json:"tls_skip_verify"`
+	TLSCACert         string `json:"tls_ca_cert"`
 
 	Username string `json:"username"`
 	Password string `json:"password"`
@@ -327,13 +341,17 @@ func (s *SetupController) Initialize(ctx *gin.Context) {
 		enableTLS = *req.EnableTLS
 	}
 	allowInsecure := !enableTLS
+	tlsSkipVerify := false
+	if req.TLSSkipVerify != nil {
+		tlsSkipVerify = *req.TLSSkipVerify
+	}
 
-	if ok, detail := services.CheckHeadscaleConnectivityWithConfig(ctx.Request.Context(), grpcAddr, apiKey, allowInsecure); !ok {
+	if ok, detail := services.CheckHeadscaleConnectivityWithConfig(ctx.Request.Context(), grpcAddr, apiKey, allowInsecure, tlsSkipVerify, req.TLSCACert); !ok {
 		unifyerror.Fail(ctx, unifyerror.New(http.StatusBadGateway, unifyerror.CodeGRPCErr, detail))
 		return
 	}
 
-	if err := services.SaveConnectionAndInitialize(ctx.Request.Context(), grpcAddr, apiKey, allowInsecure); err != nil {
+	if err := services.SaveConnectionAndInitialize(ctx.Request.Context(), grpcAddr, apiKey, allowInsecure, tlsSkipVerify, req.TLSCACert); err != nil {
 		unifyerror.Fail(ctx, err)
 		return
 	}
@@ -395,6 +413,8 @@ func (s *SetupController) Initialize(ctx *gin.Context) {
 		"connection": gin.H{
 			"headscale_grpc_addr": grpcAddr,
 			"enable_tls":          enableTLS,
+			"tls_skip_verify":     tlsSkipVerify,
+			"has_ca_cert":         req.TLSCACert != "",
 		},
 		"password_generated": passwordGenerated,
 	}

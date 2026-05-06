@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2026 
+ * Copyright (C) 2026
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -655,8 +655,15 @@ const zh = {
       apiKeyConfigured: '已配置',
       changeApiKey: '修改密钥',
       hideApiKey: '隐藏',
-      skipTlsLabel: '跳过 TLS 验证',
-      skipTlsDesc: '仅用于开发环境或自签名证书',
+      skipTlsLabel: '允许不安全 gRPC（无 TLS）',
+      skipTlsDesc: '不使用 TLS 直接连接 headscale gRPC。',
+      tlsSkipVerifyLabel: '跳过 TLS 证书验证',
+      tlsSkipVerifyDesc: '接受自签名或不受信任的证书。仅当 headscale gRPC 端口使用自签名证书时启用。',
+      useCaCertLabel: '使用自定义 CA 证书',
+      useCaCertDesc: '开启后可提供私有 CA 证书的 PEM 内容用于 TLS 验证。',
+      caCertLabel: '自定义 CA 证书（PEM）',
+      caCertDesc: '粘贴私有 CA 证书的 PEM 内容。留空则使用系统根证书。',
+      caCertPlaceholder: '-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----',
       saveSettings: '保存设置',
       connectionTestTitle: '连接测试',
       connectionTestDesc: '连接测试通过',
@@ -944,7 +951,12 @@ const zh = {
     grpcAddressPlaceholder: '127.0.0.1:50443',
     apiKeyLabel: 'API Key',
     tlsToggleLabel: '启用 TLS',
-    tlsToggleHint: '关闭时使用非 TLS 连接（insecure）。',
+    tlsToggleHint: '仅当 headscale 直接在 gRPC 端口上启用了 TLS 时才开启。反向代理场景请保持关闭。',
+    tlsSkipVerifyLabel: '跳过 TLS 证书验证',
+    tlsSkipVerifyHint: '接受 headscale gRPC 端口上的自签名或不受信任的证书。仅在启用 TLS 且 headscale 使用自签名证书时才需要。',
+    caCertLabel: '自定义 CA 证书（PEM）',
+    caCertHint: '粘贴私有 CA 证书的 PEM 内容。留空则使用系统根证书。',
+    caCertPlaceholder: '-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----',
     checkConnection: '校验连接',
     checkingConnection: '校验中...',
     adminTitle: '管理员配置',

@@ -48,6 +48,8 @@ export const panelSettingsApi = {
         grpc_addr: req.grpc_addr,
         api_key: req.api_key,
         insecure: req.insecure,
+        tls_skip_verify: req.tls_skip_verify,
+        tls_ca_cert: req.tls_ca_cert,
       },
     }),
 

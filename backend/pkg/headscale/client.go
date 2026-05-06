@@ -1,4 +1,4 @@
-// Copyright (C) 2026 
+// Copyright (C) 2026
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as
@@ -18,11 +18,13 @@ package headscale
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"headscale-panel/pkg/conf"
 	"headscale-panel/pkg/constants"
-	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"sync"
 	"time"
+
+	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
@@ -83,9 +85,17 @@ func initLocked() error {
 	if conf.Conf.Headscale.Insecure {
 		creds = insecure.NewCredentials()
 	} else {
-		creds = credentials.NewTLS(&tls.Config{
-			MinVersion: tls.VersionTLS12,
-		})
+		tlsCfg := &tls.Config{
+			MinVersion:         tls.VersionTLS12,
+			InsecureSkipVerify: conf.Conf.Headscale.TLSSkipVerify, //nolint:gosec // user-opt-in
+		}
+		if pem := conf.Conf.Headscale.TLSCACert; pem != "" && !conf.Conf.Headscale.TLSSkipVerify {
+			pool := x509.NewCertPool()
+			if pool.AppendCertsFromPEM([]byte(pem)) {
+				tlsCfg.RootCAs = pool
+			}
+		}
+		creds = credentials.NewTLS(tlsCfg)
 	}
 
 	opts := []grpc.DialOption{

@@ -60,6 +60,9 @@ export default function SetupWelcome() {
   const [grpcAddr, setGrpcAddr] = useState('127.0.0.1:50443');
   const [apiKey, setApiKey] = useState('');
   const [enableTLS, setEnableTLS] = useState(false);
+  const [tlsSkipVerify, setTlsSkipVerify] = useState(false);
+  const [tlsCACert, setTlsCACert] = useState('');
+  const [useCACert, setUseCACert] = useState(false);
   const [connectResults, setConnectResults] = useState<ConnectivityResult[]>([]);
   const [connectPassed, setConnectPassed] = useState(false);
 
@@ -111,6 +114,8 @@ export default function SetupWelcome() {
         api_key: apiKey.trim(),
         strict_api: true,
         grpc_allow_insecure: !enableTLS,
+        grpc_tls_skip_verify: enableTLS ? tlsSkipVerify : false,
+        grpc_tls_ca_cert: (enableTLS && !tlsSkipVerify && useCACert) ? tlsCACert.trim() : '',
       });
     },
     {
@@ -141,6 +146,8 @@ export default function SetupWelcome() {
         headscale_grpc_addr: grpcAddr.trim(),
         api_key: apiKey.trim(),
         enable_tls: enableTLS,
+        tls_skip_verify: enableTLS ? tlsSkipVerify : false,
+        tls_ca_cert: (enableTLS && !tlsSkipVerify && useCACert) ? tlsCACert.trim() : '',
         username: adminUsername.trim(),
         password: adminPassword,
         email: adminEmail.trim(),
@@ -283,8 +290,70 @@ export default function SetupWelcome() {
                     <Text className="text-13px block">{t.setupWelcome.tlsToggleLabel}</Text>
                     <Text type="secondary" className="text-12px">{t.setupWelcome.tlsToggleHint}</Text>
                   </div>
-                  <Switch checked={enableTLS} onChange={setEnableTLS} />
+                  <Switch
+                    checked={enableTLS}
+                    onChange={(v) => {
+                      setEnableTLS(v);
+                      if (!v) {
+                        setTlsSkipVerify(false);
+                        setTlsCACert('');
+                        setUseCACert(false);
+                      }
+                    }}
+                  />
                 </div>
+
+                {enableTLS && (
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <Text className="text-13px block">{t.setupWelcome.tlsSkipVerifyLabel}</Text>
+                      <Text type="secondary" className="text-12px">{t.setupWelcome.tlsSkipVerifyHint}</Text>
+                    </div>
+                    <Switch
+                      checked={tlsSkipVerify}
+                      onChange={(v) => {
+                        setTlsSkipVerify(v);
+                        if (v) {
+                          setTlsCACert('');
+                          setUseCACert(false);
+                        }
+                      }}
+                    />
+                  </div>
+                )}
+
+                {enableTLS && !tlsSkipVerify && (
+                  <>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <Text className="text-13px block">{t.settings.headscaleConnection.useCaCertLabel}</Text>
+                        <Text type="secondary" className="text-12px">{t.settings.headscaleConnection.useCaCertDesc}</Text>
+                      </div>
+                      <Switch
+                        checked={useCACert}
+                        onChange={(v) => {
+                          setUseCACert(v);
+                          if (!v) {
+                            setTlsCACert('');
+                          }
+                        }}
+                      />
+                    </div>
+                    {useCACert && (
+                      <div>
+                        <Text className="form-label">{t.setupWelcome.caCertLabel}</Text>
+                        <Input.TextArea
+                          value={tlsCACert}
+                          onChange={(e) => setTlsCACert(e.target.value)}
+                          placeholder={t.setupWelcome.caCertPlaceholder}
+                          autoSize={{ minRows: 4, maxRows: 10 }}
+                          style={{ fontFamily: 'monospace', fontSize: 11 }}
+                        />
+                        <Text type="secondary" className="text-12px">{t.setupWelcome.caCertHint}</Text>
+                      </div>
+                    )}
+                  </>
+                )}
 
                 {connectResults.length > 0 && (
                   <div style={{ borderTop: `1px solid ${themeToken.colorBorderSecondary}`, paddingTop: 12 }}>

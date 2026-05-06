@@ -30,6 +30,8 @@ export interface ConnectivityCheckReq {
   api_key?: string;
   strict_api?: boolean;
   grpc_allow_insecure?: boolean;
+  grpc_tls_skip_verify?: boolean;
+  grpc_tls_ca_cert?: string;
 }
 
 export interface ConnectivityCheckRes {
@@ -46,6 +48,8 @@ export interface InitSetupReq {
   headscale_grpc_addr?: string;
   api_key?: string;
   enable_tls?: boolean;
+  tls_skip_verify?: boolean;
+  tls_ca_cert?: string;
   username?: string;
   password?: string;
   email?: string;

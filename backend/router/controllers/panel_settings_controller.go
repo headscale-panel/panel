@@ -1,4 +1,4 @@
-// Copyright (C) 2026 
+// Copyright (C) 2026
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as
@@ -30,9 +30,11 @@ func NewPanelSettingsController() *PanelSettingsController {
 
 // SaveConnectionRequest holds the Headscale connection settings form data.
 type SaveConnectionRequest struct {
-	GRPCAddr string `json:"grpc_addr"`
-	APIKey   string `json:"api_key"`
-	Insecure bool   `json:"insecure"`
+	GRPCAddr      string `json:"grpc_addr"`
+	APIKey        string `json:"api_key"`
+	Insecure      bool   `json:"insecure"`
+	TLSSkipVerify bool   `json:"tls_skip_verify"`
+	TLSCACert     string `json:"tls_ca_cert"`
 }
 
 // GetConnection godoc
@@ -72,7 +74,7 @@ func (c *PanelSettingsController) SaveConnection(ctx *gin.Context) {
 	}
 
 	userID := ctx.GetUint("userID")
-	if err := services.PanelSettingsService.SaveConnectionSettings(userID, req.GRPCAddr, req.APIKey, req.Insecure); err != nil {
+	if err := services.PanelSettingsService.SaveConnectionSettings(userID, req.GRPCAddr, req.APIKey, req.Insecure, req.TLSSkipVerify, req.TLSCACert); err != nil {
 		unifyerror.Fail(ctx, err)
 		return
 	}

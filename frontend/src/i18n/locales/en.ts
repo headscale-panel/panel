@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2026 
+ * Copyright (C) 2026
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -657,8 +657,15 @@ const en: Translations = {
       apiKeyConfigured: 'Configured',
       changeApiKey: 'Change Key',
       hideApiKey: 'Hide',
-      skipTlsLabel: 'Skip TLS Verification',
-      skipTlsDesc: 'For development or self-signed certificates only',
+      skipTlsLabel: 'Allow Insecure gRPC (No TLS)',
+      skipTlsDesc: 'Connect to headscale gRPC without TLS.',
+      tlsSkipVerifyLabel: 'Skip TLS Certificate Verification',
+      tlsSkipVerifyDesc: 'Accept self-signed or untrusted certificates. Only enable if headscale uses a self-signed cert on its gRPC port.',
+      useCaCertLabel: 'Use Custom CA Certificate',
+      useCaCertDesc: 'Enable to provide a private CA certificate PEM for TLS verification.',
+      caCertLabel: 'Custom CA Certificate (PEM)',
+      caCertDesc: 'Paste your private CA certificate PEM. Leave empty to use system CA roots.',
+      caCertPlaceholder: '-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----',
       saveSettings: 'Save Settings',
       connectionTestTitle: 'Connection Test',
       connectionTestDesc: 'Connection test passed',
@@ -946,7 +953,12 @@ const en: Translations = {
     grpcAddressPlaceholder: '127.0.0.1:50443',
     apiKeyLabel: 'API Key',
     tlsToggleLabel: 'Enable TLS',
-    tlsToggleHint: 'When disabled, an insecure non-TLS connection is used.',
+    tlsToggleHint: 'Enable only if headscale serves gRPC with TLS directly. Leave disabled for typical reverse-proxy setups.',
+    tlsSkipVerifyLabel: 'Skip TLS Certificate Verification',
+    tlsSkipVerifyHint: 'Accept self-signed or untrusted certificates on the headscale gRPC port. Only needed when TLS is enabled and headscale uses a self-signed cert.',
+    caCertLabel: 'Custom CA Certificate (PEM)',
+    caCertHint: 'Paste the PEM content of your private CA certificate. Leave empty to use system CA roots.',
+    caCertPlaceholder: '-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----',
     checkConnection: 'Check Connectivity',
     checkingConnection: 'Checking...',
     adminTitle: 'Administrator Settings',
