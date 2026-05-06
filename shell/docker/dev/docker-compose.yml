@@ -55,8 +55,11 @@ services:
     image: tailscale/tailscale:stable
     container_name: panel-dev-tailscale-router
     restart: unless-stopped
+    environment:
+      SSL_CERT_FILE: /etc/cert/selfsigned.crt
     volumes:
       - ./data/tailscale:/var/lib/tailscale
+      - ../../../shell/docker/dev/cert:/etc/cert:ro
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
     cap_add:

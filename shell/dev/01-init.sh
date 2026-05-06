@@ -36,6 +36,8 @@ listen_addr: 0.0.0.0:8080
 metrics_listen_addr: 0.0.0.0:9090
 grpc_listen_addr: 0.0.0.0:50443
 grpc_allow_insecure: true
+tls_cert_path: /etc/cert/selfsigned.crt
+tls_key_path: /etc/cert/selfsigned.key
 private_key_path: /var/lib/headscale/private.key
 noise:
     private_key_path: /var/lib/headscale/noise_private.key
@@ -94,6 +96,18 @@ if [[ ! -f "$HS_LIB_DIR/extra-records.json" ]]; then
     echo -e "${GREEN}[init]${NC} Created extra records: $HS_LIB_DIR/extra-records.json"
 else
     echo -e "${YELLOW}[init]${NC} Extra records already exist, keeping: $HS_LIB_DIR/extra-records.json"
+fi
+
+# ── Step 3: Generate self-signed TLS certificate if missing ──────────────────
+CERT_DIR="$ROOT_SHELL_DIR/docker/dev/cert"
+CERT_SCRIPT="$ROOT_SHELL_DIR/certs/01-self-signed.sh"
+
+if [[ ! -f "$CERT_DIR/selfsigned.crt" || ! -f "$CERT_DIR/selfsigned.key" ]]; then
+    echo -e "${CYAN}[init]${NC} Generating self-signed TLS certificate..."
+    bash "$CERT_SCRIPT"
+    echo -e "${GREEN}[init]${NC} Self-signed certificate created in: $CERT_DIR"
+else
+    echo -e "${YELLOW}[init]${NC} Self-signed certificate already exists, keeping: $CERT_DIR/selfsigned.{crt,key}"
 fi
 
 echo ""

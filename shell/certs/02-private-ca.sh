@@ -9,7 +9,7 @@
 #   server.crt  — headscale server certificate signed by the private CA
 #
 # Usage:
-#   CN=headscale.internal bash 02-private-ca.sh
+#   CN=headscale          bash 02-private-ca.sh
 #   CN=192.168.1.10       bash 02-private-ca.sh   # IP address
 #
 # Output directory:
@@ -27,7 +27,7 @@
 # ---------------------------------------------------------------------------
 set -euo pipefail
 
-CN="${CN:-headscale.internal}"
+CN="${CN:-headscale}"
 DAYS_CA=3650   # 10 years
 DAYS_CERT=825  # ~2 years
 

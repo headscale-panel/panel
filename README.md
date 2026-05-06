@@ -398,7 +398,7 @@ tls_cert_path: /etc/cert/server.crt
 tls_key_path:  /etc/cert/server.key
 ```
 
-> **Note**: the `CN` parameter must match the gRPC address you connect to from the panel. For example, `CN=127.0.0.1` generates an IP SAN; `CN=headscale.internal` generates a DNS SAN. Mismatched SANs cause `x509: cannot validate certificate ... doesn't contain any IP SANs` errors.
+> **Note**: the `CN` parameter must match the gRPC address you connect to from the panel. For example, `CN=127.0.0.1` generates an IP SAN; `CN=headscale` generates a DNS SAN. Mismatched SANs cause `x509: cannot validate certificate ... doesn't contain any IP SANs` errors.
 
 ### Usage And Dev Test Flow
 

@@ -398,7 +398,7 @@ tls_cert_path: /etc/cert/server.crt
 tls_key_path:  /etc/cert/server.key
 ```
 
-> **注意**：`CN` 参数必须与面板实际连接的 gRPC 地址一致。例如 `CN=127.0.0.1` 会生成 IP SAN，`CN=headscale.internal` 会生成 DNS SAN。不匹配会导致 `x509: cannot validate certificate ... doesn't contain any IP SANs` 错误。
+> **注意**：`CN` 参数必须与面板实际连接的 gRPC 地址一致。例如 `CN=127.0.0.1` 会生成 IP SAN，`CN=headscale` 会生成 DNS SAN。不匹配会导致 `x509: cannot validate certificate ... doesn't contain any IP SANs` 错误。
 
 ### 使用与开发测试流程
 

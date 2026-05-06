@@ -1,4 +1,4 @@
-// Copyright (C) 2026 
+// Copyright (C) 2026
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as
@@ -208,6 +208,8 @@ func (s *headscaleConfigService) defaultConfig() *HeadscaleConfigFile {
 		MetricsListenAddr: "0.0.0.0:9090",
 		GRPCListenAddr:    "0.0.0.0:50443",
 		GRPCAllowInsecure: true,
+		TLSCertPath:       "",
+		TLSKeyPath:        "",
 		PrivateKeyPath:    constants.HSPrivateKeyPath,
 		Noise: NoiseConfig{
 			PrivateKeyPath: constants.HSNoiseKeyPath,

@@ -10,7 +10,7 @@
 #   selfsigned.crt  — self-signed server certificate
 #
 # Usage:
-#   CN=headscale.internal bash 01-self-signed.sh
+#   CN=headscale          bash 01-self-signed.sh
 #   CN=192.168.1.10       bash 01-self-signed.sh   # IP address
 #
 # Output directory:
@@ -28,7 +28,7 @@
 # ---------------------------------------------------------------------------
 set -euo pipefail
 
-CN="${CN:-headscale.internal}"
+CN="${CN:-headscale}"
 DAYS=825  # ~2 years
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"

@@ -63,7 +63,7 @@ print_tailscale_login_instructions() {
     local -a client_login_servers
     local ip
 
-    login_server="http://headscale:8080"
+    login_server="https://headscale:8080"
     advertise_routes="172.30.0.0/24"
     headscale_http_port="5080"
     gateway_login_server="http://172.30.0.1:${headscale_http_port}"
