@@ -27,6 +27,8 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+
+	"github.com/tailscale/hujson"
 )
 
 type aclService struct {
@@ -87,8 +89,13 @@ func (s *aclService) GetPolicyWithContext(ctx context.Context, actorUserID uint)
 		return &model.ACLPolicyStructure{}, nil
 	}
 
+	standardizedPolicy, err := standardizeACLPolicyJSON(rawPolicy)
+	if err != nil {
+		return nil, err
+	}
+
 	var policy model.ACLPolicyStructure
-	if err := json.Unmarshal([]byte(rawPolicy), &policy); err != nil {
+	if err := json.Unmarshal(standardizedPolicy, &policy); err != nil {
 		return nil, err
 	}
 
@@ -193,9 +200,14 @@ func normalizeRawACLPolicyJSON(policyJSON string) (string, error) {
 		return "", unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "ACL 策略不能为空")
 	}
 
+	standardizedPolicy, err := standardizeACLPolicyJSON(trimmed)
+	if err != nil {
+		return "", err
+	}
+
 	var raw map[string]any
-	if err := json.Unmarshal([]byte(trimmed), &raw); err != nil {
-		return "", unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "ACL 策略不是合法的 JSON")
+	if err := json.Unmarshal(standardizedPolicy, &raw); err != nil {
+		return "", unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "ACL 策略不是合法的 JSON 或 HuJSON")
 	}
 
 	if err := normalizeRawACLRules(raw); err != nil {
@@ -208,6 +220,16 @@ func normalizeRawACLPolicyJSON(policyJSON string) (string, error) {
 	}
 
 	return string(normalized), nil
+}
+
+func standardizeACLPolicyJSON(policyJSON string) ([]byte, error) {
+	ast, err := hujson.Parse([]byte(policyJSON))
+	if err != nil {
+		return nil, unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "ACL 策略不是合法的 JSON 或 HuJSON")
+	}
+
+	ast.Standardize()
+	return ast.Pack(), nil
 }
 
 func normalizeRawACLRules(raw map[string]any) error {

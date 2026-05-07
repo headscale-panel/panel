@@ -97,3 +97,40 @@ func TestNormalizeRawACLPolicyJSON(t *testing.T) {
 		}
 	}
 }
+
+func TestNormalizeRawACLPolicyJSONSupportsHuJSONComments(t *testing.T) {
+	t.Parallel()
+
+	raw := `{
+		// Operators can reach tagged services.
+		"acls": [
+			{
+				"action": "accept",
+				"src": ["group:ops"],
+				"dst": ["tag:service"],
+			},
+		],
+	}`
+
+	normalized, err := normalizeRawACLPolicyJSON(raw)
+	if err != nil {
+		t.Fatalf("normalizeRawACLPolicyJSON should accept HuJSON comments: %v", err)
+	}
+
+	var parsed struct {
+		ACLs []struct {
+			Dst []string `json:"dst"`
+		} `json:"acls"`
+	}
+	if err := json.Unmarshal([]byte(normalized), &parsed); err != nil {
+		t.Fatalf("normalized HuJSON should be valid JSON: %v", err)
+	}
+
+	if len(parsed.ACLs) != 1 || len(parsed.ACLs[0].Dst) != 1 {
+		t.Fatalf("expected one normalized ACL destination, got %#v", parsed.ACLs)
+	}
+
+	if parsed.ACLs[0].Dst[0] != "tag:service:*" {
+		t.Fatalf("expected normalized destination to include wildcard port, got %q", parsed.ACLs[0].Dst[0])
+	}
+}

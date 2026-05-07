@@ -26,6 +26,12 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+const frontendFrameAncestorsCSP = "frame-ancestors 'none'"
+
+func setFrontendSecurityHeaders(header http.Header) {
+	header.Set("Content-Security-Policy", frontendFrameAncestorsCSP)
+}
+
 // FrontendMiddleware serves compiled frontend static files under the /panel path prefix
 // and handles SPA routing by falling back to index.html.
 func FrontendMiddleware(staticDir string) gin.HandlerFunc {
@@ -74,6 +80,7 @@ func FrontendMiddleware(staticDir string) gin.HandlerFunc {
 
 		// Serve static file if it exists
 		if info, err := os.Stat(filePath); err == nil && !info.IsDir() {
+			setFrontendSecurityHeaders(c.Writer.Header())
 			fileServer.ServeHTTP(c.Writer, c.Request)
 			c.Abort()
 			return
@@ -82,6 +89,7 @@ func FrontendMiddleware(staticDir string) gin.HandlerFunc {
 		// SPA fallback: serve index.html for all /panel/* routes
 		indexFile := path.Join(staticDir, "index.html")
 		if _, err := os.Stat(indexFile); err == nil {
+			setFrontendSecurityHeaders(c.Writer.Header())
 			c.File(indexFile)
 			c.Abort()
 			return
@@ -108,6 +116,7 @@ func EmbedFrontendMiddleware(fsys fs.FS) gin.HandlerFunc {
 		cleanPath := strings.TrimPrefix(reqPath, "/")
 		if f, err := fsys.Open(cleanPath); err == nil {
 			f.Close()
+			setFrontendSecurityHeaders(c.Writer.Header())
 			fileServer.ServeHTTP(c.Writer, c.Request)
 			c.Abort()
 			return
@@ -116,6 +125,7 @@ func EmbedFrontendMiddleware(fsys fs.FS) gin.HandlerFunc {
 		// SPA fallback
 		if f, err := fsys.Open("index.html"); err == nil {
 			f.Close()
+			setFrontendSecurityHeaders(c.Writer.Header())
 			c.Request.URL.Path = "/"
 			fileServer.ServeHTTP(c.Writer, c.Request)
 			c.Abort()
