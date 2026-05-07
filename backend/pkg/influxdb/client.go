@@ -1,4 +1,4 @@
-// Copyright (C) 2026 
+// Copyright (C) 2026
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as
@@ -167,7 +167,7 @@ func WriteDeviceTraffic(machineID string, rxBytes, txBytes uint64) {
 }
 
 // QueryOnlineDuration queries the total online duration for a user or device
-func QueryOnlineDuration(ctx context.Context, userID, machineID string, start, end time.Time) (time.Duration, error) {
+func QueryOnlineDuration(ctx context.Context, userID, machineID string, start *time.Time, end time.Time) (time.Duration, error) {
 	var err error
 	normalizedUserID := ""
 	normalizedMachineID := ""
@@ -197,16 +197,18 @@ func QueryOnlineDuration(ctx context.Context, userID, machineID string, start, e
 		filter = fmt.Sprintf(`r["machine_id"] == %s`, fluxStringLiteral(normalizedMachineID))
 	}
 
+	rangeClause := buildFluxRangeClause(start, end)
+
 	query := fmt.Sprintf(`
 		from(bucket: %s)
-			|> range(start: %s, stop: %s)
+			%s
 			|> filter(fn: (r) => r["_measurement"] == "device_status")
 			|> filter(fn: (r) => %s)
 			|> filter(fn: (r) => r["_field"] == "online")
 			|> filter(fn: (r) => r["_value"] == true)
 			|> elapsed(unit: 1s)
-			|> sum()
-	`, fluxStringLiteral(bucket), start.Format(time.RFC3339), end.Format(time.RFC3339), filter)
+			|> sum(column: "elapsed")
+	`, fluxStringLiteral(bucket), rangeClause, filter)
 
 	result, err := QueryAPI.Query(ctx, query)
 	if err != nil {
@@ -229,7 +231,7 @@ func QueryOnlineDuration(ctx context.Context, userID, machineID string, start, e
 }
 
 // GetDeviceStatusHistory gets device status history
-func GetDeviceStatusHistory(ctx context.Context, machineID string, start, end time.Time) ([]map[string]interface{}, error) {
+func GetDeviceStatusHistory(ctx context.Context, machineID string, start *time.Time, end time.Time) ([]map[string]interface{}, error) {
 	normalizedMachineID, err := normalizeNumericID("machine_id", machineID, true)
 	if err != nil {
 		return nil, err
@@ -239,13 +241,15 @@ func GetDeviceStatusHistory(ctx context.Context, machineID string, start, end ti
 		return nil, fmt.Errorf("InfluxDB not configured")
 	}
 
+	rangeClause := buildFluxRangeClause(start, end)
+
 	query := fmt.Sprintf(`
 		from(bucket: %s)
-			|> range(start: %s, stop: %s)
+			%s
 			|> filter(fn: (r) => r["_measurement"] == "device_status")
 			|> filter(fn: (r) => r["machine_id"] == %s)
 			|> filter(fn: (r) => r["_field"] == "status")
-	`, fluxStringLiteral(bucket), start.Format(time.RFC3339), end.Format(time.RFC3339), fluxStringLiteral(normalizedMachineID))
+	`, fluxStringLiteral(bucket), rangeClause, fluxStringLiteral(normalizedMachineID))
 
 	result, err := QueryAPI.Query(ctx, query)
 	if err != nil {
@@ -269,6 +273,58 @@ func GetDeviceStatusHistory(ctx context.Context, machineID string, start, end ti
 	return records, nil
 }
 
+// GetDeviceStatusHistories gets device status history for multiple machines in one query.
+func GetDeviceStatusHistories(ctx context.Context, machineIDs []string, start *time.Time, end time.Time) (map[string][]map[string]interface{}, error) {
+	if QueryAPI == nil {
+		return nil, fmt.Errorf("InfluxDB not configured")
+	}
+
+	machineFilterClause, normalizedMachineIDs, err := buildMachineIDFilterClause(machineIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	rangeClause := buildFluxRangeClause(start, end)
+
+	query := fmt.Sprintf(`
+		from(bucket: %s)
+			%s
+			|> filter(fn: (r) => r["_measurement"] == "device_status")
+			|> filter(fn: (r) => r["_field"] == "status")
+			|> filter(fn: (r) => %s)
+	`, fluxStringLiteral(bucket), rangeClause, machineFilterClause)
+
+	result, err := QueryAPI.Query(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("query failed: %w", err)
+	}
+	defer result.Close()
+
+	histories := make(map[string][]map[string]interface{}, len(normalizedMachineIDs))
+	for _, machineID := range normalizedMachineIDs {
+		histories[machineID] = make([]map[string]interface{}, 0)
+	}
+
+	for result.Next() {
+		record := result.Record()
+		machineID := strings.TrimSpace(fmt.Sprintf("%v", record.ValueByKey("machine_id")))
+		if machineID == "" {
+			continue
+		}
+
+		histories[machineID] = append(histories[machineID], map[string]interface{}{
+			"time":   record.Time(),
+			"status": record.Value(),
+		})
+	}
+
+	if result.Err() != nil {
+		return nil, result.Err()
+	}
+
+	return histories, nil
+}
+
 func fluxStringLiteral(input string) string {
 	replacer := strings.NewReplacer(
 		"\\", "\\\\",
@@ -278,6 +334,41 @@ func fluxStringLiteral(input string) string {
 		"\t", " ",
 	)
 	return fmt.Sprintf("\"%s\"", replacer.Replace(input))
+}
+
+func buildFluxRangeClause(start *time.Time, end time.Time) string {
+	if start == nil {
+		return fmt.Sprintf(`|> range(start: 0, stop: %s)`, end.Format(time.RFC3339))
+	}
+	return fmt.Sprintf(`|> range(start: %s, stop: %s)`, start.Format(time.RFC3339), end.Format(time.RFC3339))
+}
+
+func buildMachineIDFilterClause(machineIDs []string) (string, []string, error) {
+	normalized := make([]string, 0, len(machineIDs))
+	seen := make(map[string]struct{}, len(machineIDs))
+
+	for _, machineID := range machineIDs {
+		id, err := normalizeNumericID("machine_id", machineID, true)
+		if err != nil {
+			return "", nil, err
+		}
+		if _, exists := seen[id]; exists {
+			continue
+		}
+		seen[id] = struct{}{}
+		normalized = append(normalized, id)
+	}
+
+	if len(normalized) == 0 {
+		return "", nil, fmt.Errorf("machine_ids is required")
+	}
+
+	filters := make([]string, 0, len(normalized))
+	for _, machineID := range normalized {
+		filters = append(filters, fmt.Sprintf(`r["machine_id"] == %s`, fluxStringLiteral(machineID)))
+	}
+
+	return strings.Join(filters, " or "), normalized, nil
 }
 
 func normalizeNumericID(field, value string, required bool) (string, error) {

@@ -19,6 +19,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"fmt"
 	"headscale-panel/pkg/conf"
 	"headscale-panel/pkg/constants"
 	"sync"
@@ -75,6 +76,12 @@ func Init() error {
 func initLocked() error {
 	addr := conf.Conf.Headscale.GRPCAddr
 	apiKey := conf.Conf.Headscale.APIKey
+	if addr == "" {
+		return fmt.Errorf("headscale grpc address is empty; persisted connection settings may not have loaded")
+	}
+	if apiKey == "" {
+		return fmt.Errorf("headscale api key is empty; persisted encrypted secret may not decrypt with the current JWT_SECRET")
+	}
 
 	perRPC := &apiKeyAuth{
 		apiKey:                 apiKey,

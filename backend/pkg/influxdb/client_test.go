@@ -1,4 +1,4 @@
-// Copyright (C) 2026 
+// Copyright (C) 2026
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as
@@ -108,7 +108,7 @@ func TestQueryOnlineDurationRejectsInvalidIDs(t *testing.T) {
 	start := time.Now().Add(-time.Hour)
 	end := time.Now()
 
-	_, err := QueryOnlineDuration(context.Background(), `1" or true`, "", start, end)
+	_, err := QueryOnlineDuration(context.Background(), `1" or true`, "", &start, end)
 	if err == nil {
 		t.Fatalf("expected error for invalid user_id")
 	}
@@ -116,7 +116,7 @@ func TestQueryOnlineDurationRejectsInvalidIDs(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	_, err = QueryOnlineDuration(context.Background(), "", `7 |> drop(columns: ["_value"])`, start, end)
+	_, err = QueryOnlineDuration(context.Background(), "", `7 |> drop(columns: ["_value"])`, &start, end)
 	if err == nil {
 		t.Fatalf("expected error for invalid machine_id")
 	}
@@ -126,7 +126,8 @@ func TestQueryOnlineDurationRejectsInvalidIDs(t *testing.T) {
 }
 
 func TestGetDeviceStatusHistoryRejectsInvalidMachineID(t *testing.T) {
-	_, err := GetDeviceStatusHistory(context.Background(), `1") |> from(bucket:"x")`, time.Now().Add(-time.Hour), time.Now())
+	start := time.Now().Add(-time.Hour)
+	_, err := GetDeviceStatusHistory(context.Background(), `1") |> from(bucket:"x")`, &start, time.Now())
 	if err == nil {
 		t.Fatalf("expected error for invalid machine_id")
 	}

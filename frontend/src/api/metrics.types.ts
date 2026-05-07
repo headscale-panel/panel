@@ -55,6 +55,12 @@ export interface GetDeviceStatusHistoryReq {
   end?: string;
 }
 
+export interface GetDeviceStatusHistoriesReq {
+  machine_ids: string[];
+  start?: string;
+  end?: string;
+}
+
 export interface DeviceStatusHistoryRecord {
   timestamp: string;
   online: boolean;
@@ -62,6 +68,8 @@ export interface DeviceStatusHistoryRecord {
 }
 
 export type GetDeviceStatusHistoryRes = DeviceStatusHistoryRecord[];
+
+export type GetDeviceStatusHistoriesRes = Record<string, DeviceStatusHistoryRecord[]>;
 
 export interface GetTrafficStatsReq {
   machine_id?: string;

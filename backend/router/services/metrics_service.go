@@ -1,4 +1,4 @@
-// Copyright (C) 2026 
+// Copyright (C) 2026
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as
@@ -18,8 +18,8 @@ package services
 import (
 	"context"
 	"fmt"
-	"headscale-panel/pkg/influxdb"
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
+	"headscale-panel/pkg/influxdb"
 	"headscale-panel/pkg/unifyerror"
 	"net/http"
 	"strconv"
@@ -53,18 +53,8 @@ func (s *metricsService) CollectDeviceStatus(ctx context.Context) error {
 	}
 
 	for _, node := range nodes.Nodes {
-		if node.User == nil {
-			logrus.WithField("node_id", node.Id).Warn("Skip metrics collection for node without user")
-			continue
-		}
-
-		// Determine if device is online based on last seen time
-		online := false
-		if node.LastSeen != nil {
-			lastSeen := node.LastSeen.AsTime()
-			// Consider online if last seen within 5 minutes
-			online = time.Since(lastSeen) < 5*time.Minute
-		}
+		// Align with device list semantics: trust Headscale's online flag.
+		online := node.GetOnline()
 
 		// Get primary IP
 		ipAddress := ""
@@ -72,9 +62,14 @@ func (s *metricsService) CollectDeviceStatus(ctx context.Context) error {
 			ipAddress = node.IpAddresses[0]
 		}
 
+		userID := "0"
+		if node.User != nil {
+			userID = fmt.Sprintf("%d", node.User.Id)
+		}
+
 		// Write to InfluxDB
 		influxdb.WriteDeviceStatus(
-			fmt.Sprintf("%d", node.User.Id),
+			userID,
 			fmt.Sprintf("%d", node.Id),
 			node.Name,
 			ipAddress,
@@ -151,7 +146,7 @@ func (s *metricsService) GetOnlineDuration(ctx context.Context, actorUserID uint
 		}
 		for _, node := range nodes {
 			if fmt.Sprintf("%d", node.Id) == strings.TrimSpace(machineID) {
-				return influxdb.QueryOnlineDuration(ctx, "", machineID, start, end)
+				return influxdb.QueryOnlineDuration(ctx, "", machineID, &start, end)
 			}
 		}
 		return 0, unifyerror.Forbidden()
@@ -165,11 +160,11 @@ func (s *metricsService) GetOnlineDuration(ctx context.Context, actorUserID uint
 			return 0, err
 		}
 	}
-	return influxdb.QueryOnlineDuration(ctx, userID, machineID, start, end)
+	return influxdb.QueryOnlineDuration(ctx, userID, machineID, &start, end)
 }
 
 // GetDeviceStatusHistory gets device status history
-func (s *metricsService) GetDeviceStatusHistory(ctx context.Context, actorUserID uint, machineID string, start, end time.Time) ([]map[string]interface{}, error) {
+func (s *metricsService) GetDeviceStatusHistory(ctx context.Context, actorUserID uint, machineID string, start *time.Time, end time.Time) ([]map[string]interface{}, error) {
 	if err := RequirePermission(actorUserID, "metrics:device_status_history:view"); err != nil {
 		return nil, err
 	}
@@ -188,8 +183,51 @@ func (s *metricsService) GetDeviceStatusHistory(ctx context.Context, actorUserID
 	return nil, unifyerror.Forbidden()
 }
 
+// GetDeviceStatusHistories gets device status histories for multiple devices.
+func (s *metricsService) GetDeviceStatusHistories(ctx context.Context, actorUserID uint, machineIDs []string, start *time.Time, end time.Time) (map[string][]map[string]interface{}, error) {
+	if err := RequirePermission(actorUserID, "metrics:device_status_history:view"); err != nil {
+		return nil, err
+	}
+	if len(machineIDs) == 0 {
+		return nil, unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "machine_ids is required")
+	}
+
+	nodes, _, err := listAccessibleNodes(ctx, actorUserID)
+	if err != nil {
+		return nil, err
+	}
+
+	accessibleIDs := make(map[string]struct{}, len(nodes))
+	for _, node := range nodes {
+		accessibleIDs[fmt.Sprintf("%d", node.Id)] = struct{}{}
+	}
+
+	filteredMachineIDs := make([]string, 0, len(machineIDs))
+	seen := make(map[string]struct{}, len(machineIDs))
+	for _, machineID := range machineIDs {
+		trimmed := strings.TrimSpace(machineID)
+		if trimmed == "" {
+			continue
+		}
+		if _, ok := accessibleIDs[trimmed]; !ok {
+			return nil, unifyerror.Forbidden()
+		}
+		if _, exists := seen[trimmed]; exists {
+			continue
+		}
+		seen[trimmed] = struct{}{}
+		filteredMachineIDs = append(filteredMachineIDs, trimmed)
+	}
+
+	if len(filteredMachineIDs) == 0 {
+		return nil, unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "machine_ids is required")
+	}
+
+	return influxdb.GetDeviceStatusHistories(ctx, filteredMachineIDs, start, end)
+}
+
 // GetOnlineDurationStats gets online duration statistics for all users
-func (s *metricsService) GetOnlineDurationStats(ctx context.Context, actorUserID uint, start, end time.Time) ([]map[string]interface{}, error) {
+func (s *metricsService) GetOnlineDurationStats(ctx context.Context, actorUserID uint, start *time.Time, end time.Time) ([]map[string]interface{}, error) {
 	if err := RequirePermission(actorUserID, "metrics:online_duration_stats:view"); err != nil {
 		return nil, err
 	}
@@ -238,11 +276,7 @@ func (s *metricsService) GetDeviceStatus(ctx context.Context, actorUserID uint) 
 
 	var devices []map[string]interface{}
 	for _, node := range nodes {
-		online := false
-		if node.LastSeen != nil {
-			lastSeen := node.LastSeen.AsTime()
-			online = time.Since(lastSeen) < 5*time.Minute
-		}
+		online := node.GetOnline()
 
 		ipAddress := ""
 		if len(node.IpAddresses) > 0 {
@@ -291,11 +325,7 @@ func (s *metricsService) GetTrafficStats(ctx context.Context, actorUserID uint, 
 			continue
 		}
 
-		online := false
-		if node.LastSeen != nil {
-			lastSeen := node.LastSeen.AsTime()
-			online = time.Since(lastSeen) < 5*time.Minute
-		}
+		online := node.GetOnline()
 
 		totalDevices++
 		if online {

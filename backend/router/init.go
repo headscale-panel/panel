@@ -172,6 +172,7 @@ func InitRouter() *gin.Engine {
 			auth.GET("/metrics/online-duration-stats", middleware.PermissionMiddleware("metrics:online_duration_stats:view"), metricsController.GetOnlineDurationStats)
 			auth.GET("/metrics/device-status", middleware.PermissionMiddleware("metrics:device_status:view"), metricsController.GetDeviceStatus)
 			auth.GET("/metrics/device-status-history", middleware.PermissionMiddleware("metrics:device_status_history:view"), metricsController.GetDeviceStatusHistory)
+			auth.GET("/metrics/device-status-histories", middleware.PermissionMiddleware("metrics:device_status_history:view"), metricsController.GetDeviceStatusHistories)
 			auth.GET("/metrics/traffic", middleware.PermissionMiddleware("metrics:traffic:view"), metricsController.GetTrafficStats)
 			auth.GET("/metrics/influxdb-status", middleware.PermissionMiddleware("metrics:influxdb:view"), metricsController.GetInfluxDBStatus)
 

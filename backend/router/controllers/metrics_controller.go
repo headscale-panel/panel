@@ -1,4 +1,4 @@
-// Copyright (C) 2026 
+// Copyright (C) 2026
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as
@@ -16,11 +16,12 @@
 package controllers
 
 import (
-	"net/http"
-	"headscale-panel/pkg/unifyerror"
 	"headscale-panel/pkg/influxdb"
+	"headscale-panel/pkg/unifyerror"
 	"headscale-panel/router/services"
+	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -94,13 +95,17 @@ func (c *MetricsController) GetOnlineDuration(ctx *gin.Context) {
 // GET /api/metrics/online-duration-stats?start=2024-01-01&end=2024-01-31
 func (c *MetricsController) GetOnlineDurationStats(ctx *gin.Context) {
 	actorUserID := ctx.GetUint("userID")
-	startStr := ctx.DefaultQuery("start", time.Now().AddDate(0, 0, -7).Format("2006-01-02"))
+	startStr := strings.TrimSpace(ctx.Query("start"))
 	endStr := ctx.DefaultQuery("end", time.Now().Format("2006-01-02"))
 
-	start, err := time.Parse("2006-01-02", startStr)
-	if err != nil {
-		unifyerror.Fail(ctx, unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "Invalid start date format"))
-		return
+	var start *time.Time
+	if startStr != "" {
+		parsedStart, err := time.Parse("2006-01-02", startStr)
+		if err != nil {
+			unifyerror.Fail(ctx, unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "Invalid start date format"))
+			return
+		}
+		start = &parsedStart
 	}
 
 	end, err := time.Parse("2006-01-02", endStr)
@@ -160,13 +165,17 @@ func (c *MetricsController) GetDeviceStatusHistory(ctx *gin.Context) {
 		return
 	}
 
-	startStr := ctx.DefaultQuery("start", time.Now().AddDate(0, 0, -7).Format("2006-01-02"))
+	startStr := strings.TrimSpace(ctx.Query("start"))
 	endStr := ctx.DefaultQuery("end", time.Now().Format("2006-01-02"))
 
-	start, err := time.Parse("2006-01-02", startStr)
-	if err != nil {
-		unifyerror.Fail(ctx, unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "Invalid start date format"))
-		return
+	var start *time.Time
+	if startStr != "" {
+		parsedStart, err := time.Parse("2006-01-02", startStr)
+		if err != nil {
+			unifyerror.Fail(ctx, unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "Invalid start date format"))
+			return
+		}
+		start = &parsedStart
 	}
 
 	end, err := time.Parse("2006-01-02", endStr)
@@ -183,6 +192,58 @@ func (c *MetricsController) GetDeviceStatusHistory(ctx *gin.Context) {
 	}
 
 	unifyerror.Success(ctx, history)
+}
+
+// GetDeviceStatusHistories gets status histories for multiple devices
+// GET /api/metrics/device-status-histories?machine_ids=1,2,3&start=2024-01-01&end=2024-01-31
+func (c *MetricsController) GetDeviceStatusHistories(ctx *gin.Context) {
+	actorUserID := ctx.GetUint("userID")
+	machineIDsRaw := strings.TrimSpace(ctx.Query("machine_ids"))
+	if machineIDsRaw == "" {
+		unifyerror.Fail(ctx, unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "machine_ids is required"))
+		return
+	}
+
+	parts := strings.Split(machineIDsRaw, ",")
+	machineIDs := make([]string, 0, len(parts))
+	for _, part := range parts {
+		trimmed := strings.TrimSpace(part)
+		if trimmed != "" {
+			machineIDs = append(machineIDs, trimmed)
+		}
+	}
+	if len(machineIDs) == 0 {
+		unifyerror.Fail(ctx, unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "machine_ids is required"))
+		return
+	}
+
+	startStr := strings.TrimSpace(ctx.Query("start"))
+	endStr := ctx.DefaultQuery("end", time.Now().Format("2006-01-02"))
+
+	var start *time.Time
+	if startStr != "" {
+		parsedStart, err := time.Parse("2006-01-02", startStr)
+		if err != nil {
+			unifyerror.Fail(ctx, unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "Invalid start date format"))
+			return
+		}
+		start = &parsedStart
+	}
+
+	end, err := time.Parse("2006-01-02", endStr)
+	if err != nil {
+		unifyerror.Fail(ctx, unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "Invalid end date format"))
+		return
+	}
+	end = end.Add(24 * time.Hour)
+
+	historyMap, err := services.MetricsService.GetDeviceStatusHistories(ctx.Request.Context(), actorUserID, machineIDs, start, end)
+	if err != nil {
+		unifyerror.Fail(ctx, err)
+		return
+	}
+
+	unifyerror.Success(ctx, historyMap)
 }
 
 // GetTrafficStats godoc

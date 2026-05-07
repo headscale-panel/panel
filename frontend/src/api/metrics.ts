@@ -16,6 +16,8 @@
  */
 
 import type {
+  GetDeviceStatusHistoriesReq,
+  GetDeviceStatusHistoriesRes,
   GetDeviceStatusHistoryReq,
   GetDeviceStatusHistoryRes,
   GetDeviceStatusRes,
@@ -65,6 +67,17 @@ export const metricsApi = {
       method: 'GET',
       params: {
         machine_id: req.machine_id,
+        start: req.start,
+        end: req.end,
+      },
+    }),
+
+  getDeviceStatusHistories: (req: GetDeviceStatusHistoriesReq) =>
+    request<RespType<GetDeviceStatusHistoriesRes>>({
+      url: '/metrics/device-status-histories',
+      method: 'GET',
+      params: {
+        machine_ids: req.machine_ids.join(','),
         start: req.start,
         end: req.end,
       },

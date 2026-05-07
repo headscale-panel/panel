@@ -31,6 +31,8 @@ import (
 	"headscale-panel/pkg/unifyerror"
 	"net/http"
 	"strings"
+
+	"github.com/sirupsen/logrus"
 )
 
 type panelSettingsService struct{}
@@ -143,17 +145,21 @@ func PersistHeadscaleConnection(grpcAddr, apiKey string, insecure, tlsSkipVerify
 func LoadHeadscaleConnectionFromDB() bool {
 	var setting model.PanelSetting
 	if err := model.DB.Where("key = ?", panelSettingKeyHeadscale).First(&setting).Error; err != nil {
+		logrus.WithError(err).Debug("No persisted Headscale connection settings found in panel_settings")
 		return false
 	}
 	var payload headscaleConnectionPayload
 	if err := json.Unmarshal([]byte(setting.Value), &payload); err != nil {
+		logrus.WithError(err).Warn("Failed to parse persisted Headscale connection settings")
 		return false
 	}
 	if strings.TrimSpace(payload.GRPCAddr) == "" {
+		logrus.Warn("Persisted Headscale connection settings are missing grpc_addr")
 		return false
 	}
 	apiKey, err := decryptPanelSecret(payload.APIKeyEncrypted, payload.APIKey)
 	if err != nil {
+		logrus.WithError(err).Warn("Failed to decrypt persisted Headscale API key; check that JWT_SECRET is stable across restarts")
 		return false
 	}
 	conf.Conf.Headscale.GRPCAddr = payload.GRPCAddr
