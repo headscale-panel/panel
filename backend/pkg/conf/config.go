@@ -20,6 +20,8 @@ import (
 	"encoding/base64"
 	"fmt"
 	"log"
+	"net"
+	"net/url"
 	"strings"
 
 	"github.com/joho/godotenv"
@@ -123,6 +125,10 @@ func Init(path string) {
 	if err := validateSecurityConfig(Conf); err != nil {
 		log.Fatalf("Invalid security configuration: %v", err)
 	}
+
+	if shouldWarnInsecureBaseURL(Conf.System.BaseURL) {
+		log.Printf("Warning: SYSTEM_BASE_URL=%q is not using https in a non-local environment; secure cookies, OIDC, and browser security headers may not behave safely behind a reverse proxy", strings.TrimSpace(Conf.System.BaseURL))
+	}
 }
 
 func validateSecurityConfig(cfg Config) error {
@@ -170,4 +176,35 @@ func validateSecurityConfig(cfg Config) error {
 	}
 
 	return nil
+}
+
+func shouldWarnInsecureBaseURL(baseURL string) bool {
+	trimmed := strings.TrimSpace(baseURL)
+	if trimmed == "" {
+		return false
+	}
+
+	parsed, err := url.Parse(trimmed)
+	if err != nil || parsed.Host == "" {
+		return false
+	}
+
+	if strings.EqualFold(parsed.Scheme, "https") {
+		return false
+	}
+
+	hostname := strings.TrimSpace(parsed.Hostname())
+	if hostname == "" {
+		return false
+	}
+
+	if strings.EqualFold(hostname, "localhost") || strings.EqualFold(hostname, "127.0.0.1") || strings.EqualFold(hostname, "::1") {
+		return false
+	}
+
+	if ip := net.ParseIP(hostname); ip != nil && ip.IsLoopback() {
+		return false
+	}
+
+	return true
 }

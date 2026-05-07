@@ -47,3 +47,26 @@ func TestValidateSecurityConfig(t *testing.T) {
 		})
 	}
 }
+
+func TestShouldWarnInsecureBaseURL(t *testing.T) {
+	tests := []struct {
+		name    string
+		baseURL string
+		want    bool
+	}{
+		{name: "empty base url", baseURL: "", want: false},
+		{name: "localhost http", baseURL: "http://localhost:8080", want: false},
+		{name: "loopback ip http", baseURL: "http://127.0.0.1:8080", want: false},
+		{name: "https public host", baseURL: "https://panel.example.com", want: false},
+		{name: "http public host", baseURL: "http://panel.example.com", want: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := shouldWarnInsecureBaseURL(tt.baseURL)
+			if got != tt.want {
+				t.Fatalf("shouldWarnInsecureBaseURL(%q) = %v, want %v", tt.baseURL, got, tt.want)
+			}
+		})
+	}
+}

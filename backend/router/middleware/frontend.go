@@ -16,6 +16,7 @@
 package middleware
 
 import (
+	"headscale-panel/pkg/conf"
 	"io/fs"
 	"net/http"
 	"os"
@@ -26,10 +27,18 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-const frontendFrameAncestorsCSP = "frame-ancestors 'none'"
+const frontendContentSecurityPolicy = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: https:; connect-src 'self' ws: wss:; worker-src 'self' blob:; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
 
 func setFrontendSecurityHeaders(header http.Header) {
-	header.Set("Content-Security-Policy", frontendFrameAncestorsCSP)
+	header.Set("Content-Security-Policy", frontendContentSecurityPolicy)
+	header.Set("Referrer-Policy", "strict-origin-when-cross-origin")
+	header.Set("X-Content-Type-Options", "nosniff")
+	header.Set("X-Frame-Options", "DENY")
+	header.Set("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+	header.Set("Cross-Origin-Opener-Policy", "same-origin")
+	if strings.HasPrefix(strings.ToLower(strings.TrimSpace(conf.Conf.System.BaseURL)), "https://") {
+		header.Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+	}
 }
 
 // FrontendMiddleware serves compiled frontend static files under the /panel path prefix
