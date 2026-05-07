@@ -27,6 +27,7 @@ import {
   DesktopOutlined,
   DownOutlined,
   EditOutlined,
+  TagOutlined,
   LaptopOutlined,
   LoadingOutlined,
   NodeIndexOutlined,
@@ -62,6 +63,7 @@ import { useLocation } from 'wouter';
 import { aclApi, authApi, deviceApi, headscaleUserApi, publicAuthApi } from '@/api';
 import DashboardLayout from '@/components/DashboardLayout';
 import PageHeaderStatCards from '@/components/PageHeaderStatCards';
+import EditDeviceTagsModal from '@/components/shared/EditDeviceTagsModal';
 import RenameDeviceModal from '@/components/shared/RenameDeviceModal';
 import AddDeviceModal from '@/components/users/AddDeviceModal';
 import CreateGroupModal from '@/components/users/CreateGroupModal';
@@ -88,6 +90,7 @@ type DeviceData = NormalizedDevice;
 type TreeSelection
   = | { type: 'all' }
     | { type: 'ungrouped' }
+    | { type: 'tagged' }
     | { type: 'group'; groupName: string }
     | { type: 'user'; userId: number; groupName?: string };
 
@@ -118,8 +121,11 @@ export default function UsersPage() {
   const [renameDeviceDialogOpen, setRenameDeviceDialogOpen] = useState(false);
   const [selectedDevice, setSelectedDevice] = useState<DeviceData | null>(null);
   const [addDeviceDialogOpen, setAddDeviceDialogOpen] = useState(false);
+  const [tagDialogOpen, setTagDialogOpen] = useState(false);
+  const [tagDevice, setTagDevice] = useState<DeviceData | null>(null);
   const [onlineUsers, setOnlineUsers] = useState<Set<string>>(new Set());
   const [oidcEnabled, setOidcEnabled] = useState(false);
+  const [taggedDevices, setTaggedDevices] = useState<DeviceData[]>([]);
 
   const { loading, refreshAsync } = useRequest(
     async () => loadUsersPageData(),
@@ -129,6 +135,7 @@ export default function UsersPage() {
         setHsUsers(hsUsers);
         setAclPolicy(aclPolicy);
         setUserDevicesByOwner(userDevicesByOwner || {});
+        setTaggedDevices(userDevicesByOwner?.__tagged__ || []);
         setLoadingDeviceOwners(new Set());
         setAclGroups(
           Object.entries(aclPolicy?.groups || {}).map(([key, members]) => ({
@@ -376,19 +383,21 @@ export default function UsersPage() {
 
   const filteredDevices = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
+    const source = selectedNode.type === 'tagged' ? taggedDevices : selectedTreeUserDevices;
     if (!q) {
-      return selectedTreeUserDevices;
+      return source;
     }
 
-    return selectedTreeUserDevices.filter((device) => {
+    return source.filter((device) => {
       return (
         device.name.toLowerCase().includes(q)
         || (device.given_name && device.given_name.toLowerCase().includes(q))
         || device.ip_addresses.some((ip) => ip.toLowerCase().includes(q))
         || (device.user?.name && device.user.name.toLowerCase().includes(q))
+        || (device.tags || []).some((tag) => tag.toLowerCase().includes(q))
       );
     });
-  }, [searchQuery, selectedTreeUserDevices]);
+  }, [searchQuery, selectedTreeUserDevices, taggedDevices, selectedNode.type]);
 
   const onlineCount = hsUsers.filter((user) => onlineUsers.has(user.headscale_name || user.username)).length;
 
@@ -579,6 +588,11 @@ export default function UsersPage() {
     setRenameDeviceDialogOpen(true);
   };
 
+  const openTagDialog = (device: DeviceData) => {
+    setTagDevice(device);
+    setTagDialogOpen(true);
+  };
+
   const handleDeleteDevice = (device: DeviceData) => {
     Modal.confirm({
       title: t.devices.confirmDelete.replace('{name}', device.given_name || device.name),
@@ -642,6 +656,11 @@ export default function UsersPage() {
               <CopyOutlined className="text-10px" />
             </Tag>
           ))}
+          {(device.tags || []).map((tag) => (
+            <Tag key={tag} color="gold" className="m-0 text-11px">
+              {tag}
+            </Tag>
+          ))}
           {device.last_seen && (
             <Text type="secondary" className="text-11px">
               <ClockCircleOutlined className="mr-1 text-10px" />
@@ -651,6 +670,9 @@ export default function UsersPage() {
         </div>
       </div>
       <Space size={4}>
+        <Tooltip title={t.devices.editTags}>
+          <Button type="text" size="small" icon={<TagOutlined />} onClick={() => openTagDialog(device)} />
+        </Tooltip>
         <Tooltip title={t.devices.renameDialogTitle}>
           <Button type="text" size="small" icon={<EditOutlined />} onClick={() => openRenameDeviceDialog(device)} />
         </Tooltip>
@@ -866,9 +888,11 @@ export default function UsersPage() {
       ? t.users.allUsers
       : selectedNode.type === 'ungrouped'
         ? t.users.ungroupedUsers
-        : selectedNode.type === 'group'
-          ? getGroupByName(selectedNode.groupName)?.name || t.users.groups
-          : selectedTreeUser?.display_name || selectedTreeUser?.username || t.users.userDevices;
+        : selectedNode.type === 'tagged'
+          ? t.users.taggedDevices
+          : selectedNode.type === 'group'
+            ? getGroupByName(selectedNode.groupName)?.name || t.users.groups
+            : selectedTreeUser?.display_name || selectedTreeUser?.username || t.users.userDevices;
 
   const selectedUserDevicesLoading
     = selectedNode.type === 'user' && selectedTreeUser
@@ -879,7 +903,9 @@ export default function UsersPage() {
     ? selectedUserDevicesLoading
       ? '...'
       : filteredDevices.length
-    : filteredUsers.length;
+    : selectedNode.type === 'tagged'
+      ? filteredDevices.length
+      : filteredUsers.length;
 
   return (
     <DashboardLayout>
@@ -961,6 +987,31 @@ export default function UsersPage() {
                     {groups.map(renderGroupBranch)}
                   </Space>
                 </div>
+
+                {/* Tagged Devices */}
+                {taggedDevices.length > 0 && (
+                  <div style={{ border: `1px dashed ${token.colorWarning}`, borderRadius: token.borderRadius }}>
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 10,
+                        padding: '8px 12px',
+                        borderRadius: token.borderRadius,
+                        cursor: 'pointer',
+                        fontSize: 13,
+                        background: selectedNode.type === 'tagged' ? token.colorPrimaryBg : 'transparent',
+                        color: selectedNode.type === 'tagged' ? token.colorPrimaryText : token.colorText,
+                        fontWeight: selectedNode.type === 'tagged' ? 500 : 400,
+                      }}
+                      onClick={() => selectNode({ type: 'tagged' })}
+                    >
+                      <TagOutlined className="opacity-60" />
+                      <span className="flex-1">{t.users.taggedDevices}</span>
+                      <Text type="secondary" className="text-12px">{taggedDevices.length}</Text>
+                    </div>
+                  </div>
+                )}
 
                 {/* Ungrouped */}
                 <div style={{ border: `1px dashed ${token.colorBorderSecondary}`, borderRadius: token.borderRadius }}>
@@ -1051,25 +1102,41 @@ export default function UsersPage() {
             </div>
 
             <div className="overflow-auto" style={{ height: 'calc(100vh - 360px)' }}>
-              {selectedNode.type === 'user' && selectedTreeUser
+              {selectedNode.type === 'tagged'
                 ? (
-                    <div>{renderUserRow(selectedTreeUser, 0)}</div>
-                  )
-                : (
-                    <div>
-                      {filteredUsers.length === 0
-                        ? (
-                            <Empty
-                              className="empty-state-box"
-                              image={Empty.PRESENTED_IMAGE_SIMPLE}
-                              description={searchQuery ? t.users.noSearchResult : t.users.noUsers}
-                            />
-                          )
-                        : (
-                            filteredUsers.map(renderUserRow)
-                          )}
+                    <div className="p-4">
+                      <Space direction="vertical" className="w-full" size={6}>
+                        {filteredDevices.length === 0
+                          ? (
+                              <Empty
+                                className="empty-state-box"
+                                image={Empty.PRESENTED_IMAGE_SIMPLE}
+                                description={t.users.noTaggedDevices}
+                              />
+                            )
+                          : filteredDevices.map((device) => renderDeviceCard(device, device as any))}
+                      </Space>
                     </div>
-                  )}
+                  )
+                : selectedNode.type === 'user' && selectedTreeUser
+                  ? (
+                      <div>{renderUserRow(selectedTreeUser, 0)}</div>
+                    )
+                  : (
+                      <div>
+                        {filteredUsers.length === 0
+                          ? (
+                              <Empty
+                                className="empty-state-box"
+                                image={Empty.PRESENTED_IMAGE_SIMPLE}
+                                description={searchQuery ? t.users.noSearchResult : t.users.noUsers}
+                              />
+                            )
+                          : (
+                              filteredUsers.map(renderUserRow)
+                            )}
+                      </div>
+                    )}
             </div>
           </Card>
         </div>
@@ -1112,6 +1179,13 @@ export default function UsersPage() {
           device={selectedDevice}
           onCancel={() => { setRenameDeviceDialogOpen(false); setSelectedDevice(null); }}
           onSuccess={loadData}
+        />
+
+        <EditDeviceTagsModal
+          open={tagDialogOpen}
+          device={tagDevice}
+          onCancel={() => { setTagDialogOpen(false); setTagDevice(null); }}
+          onSuccess={() => { setTagDialogOpen(false); setTagDevice(null); loadData(); }}
         />
 
         <AddDeviceModal

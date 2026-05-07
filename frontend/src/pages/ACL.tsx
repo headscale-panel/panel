@@ -50,8 +50,9 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { useRequest } from 'ahooks';
-import { Button, Card, Empty, message, Space, Spin, Tag, theme, Tooltip, Typography } from 'antd';
-import { useCallback, useEffect, useState } from 'react';
+import { Alert, Button, Card, Empty, message, Space, Spin, Tag, theme, Tooltip, Typography } from 'antd';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useLocation } from 'wouter';
 import { aclApi } from '@/api';
 import JsonEditorModal from '@/components/acl/JsonEditorModal';
 
@@ -132,6 +133,7 @@ function SortableRuleCard({ id, children }: SortableRuleCardProps) {
 export default function ACL() {
   const t = useTranslation();
   const { token } = theme.useToken();
+  const [location, setLocation] = useLocation();
   const [initialLoading, setInitialLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [rules, setRules] = useState<ACLRule[]>([]);
@@ -296,6 +298,26 @@ export default function ACL() {
     hosts: policy?.hosts ? Object.keys(policy.hosts).length : 0,
   };
 
+  const highlightedTag = useMemo(() => {
+    const query = location.includes('?') ? location.slice(location.indexOf('?') + 1) : '';
+    return new URLSearchParams(query).get('tag') || '';
+  }, [location]);
+
+  const navigateToDevicesByTag = (tag: string) => {
+    setLocation(`/devices?tag=${encodeURIComponent(tag)}&identity=tagged`);
+  };
+
+  const extractRuleTag = (value: string) => {
+    const trimmed = value.trim();
+    if (!trimmed.startsWith('tag:')) {
+      return '';
+    }
+    if (trimmed.endsWith(':*')) {
+      return trimmed.slice(0, -2);
+    }
+    return trimmed;
+  };
+
   if (initialLoading && loading) {
     return (
       <DashboardLayout>
@@ -334,6 +356,14 @@ export default function ACL() {
             </Button>
           </Space>
         </div>
+
+        {highlightedTag && (
+          <Alert
+            showIcon
+            type="info"
+            message={t.acl.tagFilterHint.replace('{tag}', highlightedTag)}
+          />
+        )}
 
         {/* Stats Grid */}
         <PageHeaderStatCards
@@ -380,11 +410,37 @@ export default function ACL() {
                             </div>
                             <div className="flex items-center gap-2 flex-wrap text-13px">
                               <Space size={4} wrap>
-                                {rule.sources.map((src, idx) => (<Tag key={idx} color="blue">{src}</Tag>))}
+                                {rule.sources.map((src, idx) => {
+                                  const tagValue = extractRuleTag(src);
+                                  const isHighlighted = highlightedTag && tagValue === highlightedTag;
+                                  return (
+                                    <Tag
+                                      key={idx}
+                                      color={isHighlighted ? 'gold' : 'blue'}
+                                      className={tagValue ? 'cursor-pointer' : ''}
+                                      onClick={tagValue ? () => navigateToDevicesByTag(tagValue) : undefined}
+                                    >
+                                      {src}
+                                    </Tag>
+                                  );
+                                })}
                               </Space>
                               <span style={{ color: token.colorTextSecondary }}>→</span>
                               <Space size={4} wrap>
-                                {rule.destinations.map((dest, idx) => (<Tag key={idx} color="orange">{dest}</Tag>))}
+                                {rule.destinations.map((dest, idx) => {
+                                  const tagValue = extractRuleTag(dest);
+                                  const isHighlighted = highlightedTag && tagValue === highlightedTag;
+                                  return (
+                                    <Tag
+                                      key={idx}
+                                      color={isHighlighted ? 'gold' : 'orange'}
+                                      className={tagValue ? 'cursor-pointer' : ''}
+                                      onClick={tagValue ? () => navigateToDevicesByTag(tagValue) : undefined}
+                                    >
+                                      {dest}
+                                    </Tag>
+                                  );
+                                })}
                               </Space>
                             </div>
                           </div>
@@ -436,7 +492,7 @@ export default function ACL() {
                     <Space direction="vertical" className="w-full" size={8}>
                       {Object.entries(policy.tagOwners).map(([tagName, owners]) => (
                         <div key={tagName} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: 8, borderRadius: token.borderRadius, background: token.colorBgLayout }}>
-                          <Tag color="green">{tagName}</Tag>
+                          <Tag color="green" className="cursor-pointer" onClick={() => navigateToDevicesByTag(tagName)}>{tagName}</Tag>
                           <Space size={4} wrap>{owners.map((owner, idx) => (<Text key={idx} type="secondary" className="text-13px">{owner}</Text>))}</Space>
                         </div>
                       ))}

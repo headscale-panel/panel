@@ -47,13 +47,20 @@ export async function loadUsersPageData() {
   );
   const userDevicesByOwner = allDevices.reduce<Record<string, typeof allDevices>>((record, device) => {
     const ownerKey = device.user?.name?.trim().toLowerCase();
-    if (!ownerKey) {
-      return record;
+    // Put device under its user bucket if it has an owner
+    if (ownerKey) {
+      if (!record[ownerKey]) {
+        record[ownerKey] = [];
+      }
+      record[ownerKey].push(device);
     }
-    if (!record[ownerKey]) {
-      record[ownerKey] = [];
+    // Also bucket under __tagged__ if the device has any tags (regardless of user)
+    if (device.tags && device.tags.length > 0) {
+      if (!record.__tagged__) {
+        record.__tagged__ = [];
+      }
+      record.__tagged__.push(device);
     }
-    record[ownerKey].push(device);
     return record;
   }, {});
 

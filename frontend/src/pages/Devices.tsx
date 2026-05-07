@@ -26,38 +26,77 @@ import {
   LoadingOutlined,
   PlusOutlined,
   ReloadOutlined,
+  TagOutlined,
   WifiOutlined,
 } from '@ant-design/icons';
 import { useRequest } from 'ahooks';
 import {
+  Alert,
   Button,
   Card,
   Input,
   message,
   Modal,
+  Segmented,
   Space,
   Spin,
+  Switch,
   Tag,
   theme,
   Tooltip,
   Typography,
 } from 'antd';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { deviceApi } from '@/api';
 import DashboardLayout from '@/components/DashboardLayout';
 import AddDeviceModal from '@/components/devices/AddDeviceModal';
+import EditDeviceTagsModal from '@/components/shared/EditDeviceTagsModal';
 import PageHeaderStatCards from '@/components/PageHeaderStatCards';
 import RenameDeviceModal from '@/components/shared/RenameDeviceModal';
 import { useTranslation } from '@/i18n/index';
 import { normalizeDeviceListResponse } from '@/lib/normalizers';
 import { hasPermission } from '@/lib/permissions';
 import { useAuthStore } from '@/lib/store';
+import { useLocation } from 'wouter';
 
 const { Text, Title } = Typography;
+
+type IdentityFilter = 'all' | 'owner' | 'tagged' | 'unassigned';
+
+function parseTagSearchTokens(rawQuery: string) {
+  const tokens = rawQuery
+    .trim()
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(Boolean);
+
+  const tagTokens: string[] = [];
+  const textTokens: string[] = [];
+  for (const token of tokens) {
+    if (token.startsWith('tag:') && token.length > 4) {
+      tagTokens.push(token.slice(4));
+    } else {
+      textTokens.push(token);
+    }
+  }
+
+  return { tagTokens, textTokens };
+}
+
+function getIdentityKind(device: NormalizedDevice): Exclude<IdentityFilter, 'all'> {
+  const hasOwner = Boolean(device.user?.name?.trim());
+  const hasTags = (device.tags || []).length > 0;
+  if (hasOwner)
+    return 'owner';
+  if (hasTags)
+    return 'tagged';
+  return 'unassigned';
+}
 
 export default function Devices() {
   const t = useTranslation();
   const { token } = theme.useToken();
+  const [location, setLocation] = useLocation();
   const { user } = useAuthStore();
   const [initialLoading, setInitialLoading] = useState(true);
 
@@ -66,14 +105,19 @@ export default function Devices() {
   const canCreatePreAuthKey = hasPermission(user, 'headscale:preauthkey:create');
   const canRegisterNode = hasPermission(user, 'headscale:machine:create');
   const canRenameDevice = hasPermission(user, 'headscale:machine:update');
+  const canManageTags = hasPermission(user, 'headscale:machine:tags');
   const canDeleteDevice = hasPermission(user, 'headscale:machine:delete');
 
   const [searchQuery, setSearchQuery] = useState('');
+  const [identityFilter, setIdentityFilter] = useState<IdentityFilter>('all');
+  const [hasTagOnly, setHasTagOnly] = useState(false);
 
   const [addDeviceDialogOpen, setAddDeviceDialogOpen] = useState(false);
 
   const [renameDeviceDialogOpen, setRenameDeviceDialogOpen] = useState(false);
   const [selectedDevice, setSelectedDevice] = useState<NormalizedDevice | null>(null);
+  const [tagDialogOpen, setTagDialogOpen] = useState(false);
+  const [tagDevice, setTagDevice] = useState<NormalizedDevice | null>(null);
 
   const { data: listData, loading, refresh } = useRequest(
     async () => {
@@ -98,20 +142,63 @@ export default function Devices() {
 
   const devices: NormalizedDevice[] = listData?.list || [];
 
-  const filteredDevices = useMemo(() => {
-    const query = searchQuery.trim().toLowerCase();
-    if (!query) {
-      return devices;
+  useEffect(() => {
+    const queryString = location.includes('?') ? location.slice(location.indexOf('?') + 1) : '';
+    const params = new URLSearchParams(queryString);
+    const tag = (params.get('tag') || '').trim();
+    const identity = (params.get('identity') || '').trim();
+
+    if (tag) {
+      setSearchQuery(`tag:${tag}`);
+      setHasTagOnly(true);
     }
 
-    return devices.filter((device) => (
-      device.name.toLowerCase().includes(query)
-      || device.given_name.toLowerCase().includes(query)
-      || device.ip_addresses.some((ip) => ip.toLowerCase().includes(query))
-    ));
-  }, [devices, searchQuery]);
+    if (identity === 'owner' || identity === 'tagged' || identity === 'unassigned' || identity === 'all') {
+      setIdentityFilter(identity);
+    }
+  }, [location]);
+
+  const filteredDevices = useMemo(() => {
+    const { tagTokens, textTokens } = parseTagSearchTokens(searchQuery);
+
+    return devices.filter((device) => {
+      const identity = getIdentityKind(device);
+      if (identityFilter !== 'all' && identity !== identityFilter) {
+        return false;
+      }
+
+      const deviceTags = device.tags || [];
+      if (hasTagOnly && deviceTags.length === 0) {
+        return false;
+      }
+
+      if (tagTokens.length > 0) {
+        const normalizedTags = deviceTags.map((tag) => tag.toLowerCase());
+        const hasAllTagTokens = tagTokens.every((tagToken) => normalizedTags.some((tag) => tag.includes(tagToken)));
+        if (!hasAllTagTokens) {
+          return false;
+        }
+      }
+
+      if (textTokens.length === 0) {
+        return true;
+      }
+
+      const searchable = [
+        device.name,
+        device.given_name,
+        ...(device.ip_addresses || []),
+        device.user?.name || '',
+        ...(device.tags || []),
+      ].join(' ').toLowerCase();
+
+      return textTokens.every((token) => searchable.includes(token));
+    });
+  }, [devices, hasTagOnly, identityFilter, searchQuery]);
 
   const onlineCount = filteredDevices.filter((device) => device.online).length;
+
+  const taggedOnlyCount = filteredDevices.filter((device) => getIdentityKind(device) === 'tagged').length;
 
   const openAddDeviceDialog = () => {
     if (!owner) {
@@ -124,6 +211,11 @@ export default function Devices() {
   const openRenameDeviceDialog = (device: NormalizedDevice) => {
     setSelectedDevice(device);
     setRenameDeviceDialogOpen(true);
+  };
+
+  const openTagDialog = (device: NormalizedDevice) => {
+    setTagDevice(device);
+    setTagDialogOpen(true);
   };
 
   const handleDeleteDevice = (device: NormalizedDevice) => {
@@ -147,6 +239,10 @@ export default function Devices() {
   const handleCopy = async (value: string, successMessage: string) => {
     await navigator.clipboard.writeText(value);
     message.success(successMessage);
+  };
+
+  const navigateToACLByTag = (tag: string) => {
+    setLocation(`/acl?tag=${encodeURIComponent(tag)}`);
   };
 
   if (initialLoading && loading) {
@@ -185,8 +281,14 @@ export default function Devices() {
           items={[
             { label: t.dashboard.totalDevicesLabel, value: devices.length, icon: <DesktopOutlined className="stat-icon-primary" />, watermark: 'ALL' },
             { label: t.dashboard.onlineDevices, value: onlineCount, icon: <WifiOutlined className="stat-icon-success" />, watermark: 'ON' },
-            { label: t.devices.tableOwner, value: owner || t.setupWelcome.noDataPlaceholder, icon: <LaptopOutlined className="stat-icon-accent" />, watermark: 'OWN' },
+            { label: t.devices.taggedOnly, value: taggedOnlyCount, icon: <LaptopOutlined className="stat-icon-accent" />, watermark: 'TAG' },
           ]}
+        />
+
+        <Alert
+          showIcon
+          type="info"
+          message={t.devices.identityModeNotice}
         />
 
         <Card data-tour-id="devices-list">
@@ -199,6 +301,20 @@ export default function Devices() {
               allowClear
               className="max-w-90"
             />
+            <Segmented
+              value={identityFilter}
+              onChange={(value) => setIdentityFilter(value as IdentityFilter)}
+              options={[
+                { value: 'all', label: t.devices.identityAll },
+                { value: 'owner', label: t.devices.identityOwnerBased },
+                { value: 'tagged', label: t.devices.identityTaggedOnly },
+                { value: 'unassigned', label: t.devices.identityUnassigned },
+              ]}
+            />
+            <div className="flex items-center gap-2 px-2">
+              <Text type="secondary">{t.devices.hasTagOnly}</Text>
+              <Switch checked={hasTagOnly} onChange={setHasTagOnly} />
+            </div>
             {!canListDevices && (
               <Tag color="warning">{t.common.errors.forbidden}</Tag>
             )}
@@ -222,6 +338,7 @@ export default function Devices() {
                         style={{
                           display: 'flex',
                           alignItems: 'center',
+                          flexWrap: 'wrap',
                           gap: 12,
                           borderRadius: token.borderRadius,
                           border: `1px solid ${token.colorBorderSecondary}`,
@@ -235,6 +352,15 @@ export default function Devices() {
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
                             <Text strong>{device.given_name || device.name}</Text>
+                            {getIdentityKind(device) === 'owner' && (
+                              <Tag color="blue" className="m-0">{t.devices.identityOwnerLabel.replace('{owner}', device.user?.name || '-')}</Tag>
+                            )}
+                            {getIdentityKind(device) === 'tagged' && (
+                              <Tag color="gold" className="m-0">{t.devices.identityTaggedOnly}</Tag>
+                            )}
+                            {getIdentityKind(device) === 'unassigned' && (
+                              <Tag className="m-0">{t.devices.identityUnassigned}</Tag>
+                            )}
                             {device.online
                               ? (
                                   <Tag color="success" className="m-0">
@@ -259,6 +385,22 @@ export default function Devices() {
                                 <CopyOutlined className="text-10px" />
                               </Tag>
                             ))}
+                            {(device.tags || []).slice(0, 4).map((tag) => (
+                              <Tooltip key={tag} title={t.devices.openAclTagHint.replace('{tag}', tag)}>
+                                <Tag
+                                  color="gold"
+                                  className="cursor-pointer m-0"
+                                  onClick={() => navigateToACLByTag(tag)}
+                                >
+                                  {tag}
+                                </Tag>
+                              </Tooltip>
+                            ))}
+                            {(device.tags || []).length > 4 && (
+                              <Tooltip title={(device.tags || []).slice(4).join(', ')}>
+                                <Tag className="m-0">+{(device.tags || []).length - 4}</Tag>
+                              </Tooltip>
+                            )}
                             {device.last_seen && (
                               <Text type="secondary" className="text-12px">
                                 <ClockCircleOutlined className="mr-1" />
@@ -267,7 +409,16 @@ export default function Devices() {
                             )}
                           </div>
                         </div>
-                        <Space size={4}>
+                        <Space size={6} style={{ marginLeft: 'auto' }}>
+                          <Tooltip title={t.devices.editTags}>
+                            <Button
+                              type="text"
+                              size="small"
+                              icon={<TagOutlined />}
+                              onClick={() => openTagDialog(device)}
+                              disabled={!canManageTags}
+                            />
+                          </Tooltip>
                           <Tooltip title={t.devices.renameDialogTitle}>
                             <Button
                               type="text"
@@ -311,6 +462,13 @@ export default function Devices() {
           device={selectedDevice}
           onCancel={() => setRenameDeviceDialogOpen(false)}
           onSuccess={() => { setRenameDeviceDialogOpen(false); setSelectedDevice(null); refresh(); }}
+        />
+
+        <EditDeviceTagsModal
+          open={tagDialogOpen}
+          device={tagDevice}
+          onCancel={() => { setTagDialogOpen(false); setTagDevice(null); }}
+          onSuccess={() => { setTagDialogOpen(false); setTagDevice(null); refresh(); }}
         />
       </div>
     </DashboardLayout>
