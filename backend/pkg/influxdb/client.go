@@ -218,7 +218,12 @@ func QueryOnlineDuration(ctx context.Context, userID, machineID string, start *t
 
 	var totalSeconds int64
 	for result.Next() {
-		if val, ok := result.Record().Value().(int64); ok {
+		record := result.Record()
+		if val, ok := toInt64Seconds(record.ValueByKey("elapsed")); ok {
+			totalSeconds += val
+			continue
+		}
+		if val, ok := toInt64Seconds(record.Value()); ok {
 			totalSeconds += val
 		}
 	}
@@ -271,6 +276,36 @@ func GetDeviceStatusHistory(ctx context.Context, machineID string, start *time.T
 	}
 
 	return records, nil
+}
+
+func toInt64Seconds(value interface{}) (int64, bool) {
+	switch v := value.(type) {
+	case int64:
+		return v, true
+	case int:
+		return int64(v), true
+	case int32:
+		return int64(v), true
+	case uint64:
+		if v > uint64(^uint64(0)>>1) {
+			return 0, false
+		}
+		return int64(v), true
+	case uint32:
+		return int64(v), true
+	case float64:
+		if v < 0 {
+			return 0, false
+		}
+		return int64(v), true
+	case float32:
+		if v < 0 {
+			return 0, false
+		}
+		return int64(v), true
+	default:
+		return 0, false
+	}
 }
 
 // GetDeviceStatusHistories gets device status history for multiple machines in one query.

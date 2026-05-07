@@ -37,6 +37,25 @@ export interface GetOnlineDurationStatsReq {
 
 export type GetOnlineDurationStatsRes = Record<string, unknown>;
 
+export interface OnlineDurationSummaryItem {
+  total_hours: number;
+  avg_hours: number;
+  device_count: number;
+  active_device_count?: number;
+  online_rate?: number;
+}
+
+export interface GetOnlineDurationSummaryReq {
+  end?: string;
+}
+
+export interface GetOnlineDurationSummaryRes {
+  today?: OnlineDurationSummaryItem;
+  week?: OnlineDurationSummaryItem;
+  month?: OnlineDurationSummaryItem;
+  history?: OnlineDurationSummaryItem;
+}
+
 export interface GetDeviceStatusReq {}
 
 export interface DeviceStatusItem {

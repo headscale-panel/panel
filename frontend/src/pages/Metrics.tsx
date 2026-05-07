@@ -32,6 +32,7 @@ interface DurationSummary {
   totalHours: number;
   avgHours: number;
   deviceCount: number;
+  onlineRate: number;
 }
 
 interface DeviceMetricsStatus {
@@ -91,10 +92,12 @@ function buildRangeWindow(key: SummaryRangeKey): RangeWindow {
 function normalizeDurationSummary(records: any[]): DurationSummary {
   const totalHours = records.reduce((sum, record) => sum + Number(record?.online_hours || 0), 0);
   const deviceCount = records.length;
+  const activeDeviceCount = records.filter((record) => Number(record?.online_hours || 0) > 0).length;
   return {
     totalHours,
     avgHours: deviceCount > 0 ? totalHours / deviceCount : 0,
     deviceCount,
+    onlineRate: deviceCount > 0 ? (activeDeviceCount / deviceCount) * 100 : 0,
   };
 }
 
@@ -145,6 +148,11 @@ function formatHours(hours: number) {
   return `${hours.toFixed(1)}h`;
 }
 
+function formatRate(rate: number) {
+  const bounded = Math.max(0, Math.min(100, rate));
+  return `${bounded.toFixed(1)}%`;
+}
+
 function parseIPv4ToNumber(ipAddress: string): number | null {
   const parts = ipAddress.trim().split('.');
   if (parts.length !== 4) {
@@ -191,7 +199,6 @@ export default function Metrics() {
   const t = useTranslation();
   const { token: themeToken } = theme.useToken();
   const [timelineRange, setTimelineRange] = useState<SummaryRangeKey>('today');
-  const [summaryByRange, setSummaryByRange] = useState<Partial<Record<SummaryRangeKey, DurationSummary>>>({});
 
   const { data: metricsData, loading } = useRequest(
     async () => {
@@ -199,15 +206,43 @@ export default function Metrics() {
         const influxStatus: any = await metricsApi.getInfluxDBStatus().catch(() => ({ connected: false }));
         const influxConnected = !!influxStatus?.connected;
 
-        const selectedSummaryWindow = buildRangeWindow(timelineRange);
+        const selectedRangeWindow = buildRangeWindow(timelineRange);
 
-        const [selectedStats, deviceStatusRaw] = await Promise.all([
-          metricsApi.getOnlineDurationStats({
-            start: selectedSummaryWindow.start ? formatDate(selectedSummaryWindow.start) : undefined,
-            end: formatDate(selectedSummaryWindow.end),
-          }).then((response: any) => Array.isArray(response) ? response : response?.data || []).catch(() => []),
+        const [summaryRaw, deviceStatusRaw] = await Promise.all([
+          metricsApi.getOnlineDurationSummary({
+            end: formatDate(selectedRangeWindow.end),
+          }).then((response: any) => response || {}).catch(() => ({})),
           metricsApi.getDeviceStatus().then((response: any) => Array.isArray(response) ? response : response?.data || []).catch(() => []),
         ]);
+
+        const summaryData: any = summaryRaw || {};
+
+        const summaryByRange: Record<SummaryRangeKey, DurationSummary> = {
+          today: {
+            totalHours: Number(summaryData?.today?.total_hours || 0),
+            avgHours: Number(summaryData?.today?.avg_hours || 0),
+            deviceCount: Number(summaryData?.today?.device_count || 0),
+            onlineRate: Number(summaryData?.today?.online_rate || 0),
+          },
+          week: {
+            totalHours: Number(summaryData?.week?.total_hours || 0),
+            avgHours: Number(summaryData?.week?.avg_hours || 0),
+            deviceCount: Number(summaryData?.week?.device_count || 0),
+            onlineRate: Number(summaryData?.week?.online_rate || 0),
+          },
+          month: {
+            totalHours: Number(summaryData?.month?.total_hours || 0),
+            avgHours: Number(summaryData?.month?.avg_hours || 0),
+            deviceCount: Number(summaryData?.month?.device_count || 0),
+            onlineRate: Number(summaryData?.month?.online_rate || 0),
+          },
+          history: {
+            totalHours: Number(summaryData?.history?.total_hours || 0),
+            avgHours: Number(summaryData?.history?.avg_hours || 0),
+            deviceCount: Number(summaryData?.history?.device_count || 0),
+            onlineRate: Number(summaryData?.history?.online_rate || 0),
+          },
+        };
 
         const deviceStatus = normalizeDeviceStatus(deviceStatusRaw).sort((left, right) => {
           if (left.online !== right.online) {
@@ -222,7 +257,6 @@ export default function Metrics() {
           return left.machineName.localeCompare(right.machineName);
         });
 
-        const selectedRangeWindow = buildRangeWindow(timelineRange);
         const selectedRangeStart = selectedRangeWindow.start;
         const histories = new Map<string, DeviceHistoryPoint[]>();
         const machineIDs = deviceStatus.map((device) => device.machineId).filter(Boolean);
@@ -275,8 +309,7 @@ export default function Metrics() {
 
         return {
           influxConnected,
-          selectedRange: timelineRange,
-          selectedSummary: normalizeDurationSummary(selectedStats),
+          summaryByRange,
           timelineRows,
           totalOnline: onlineCount,
           totalDevices: deviceStatus.length,
@@ -290,28 +323,20 @@ export default function Metrics() {
     },
     {
       refreshDeps: [timelineRange],
-      onSuccess: (data: any) => {
-        if (!data?.selectedRange || !data?.selectedSummary) {
-          return;
-        }
-        setSummaryByRange((prev) => ({
-          ...prev,
-          [data.selectedRange]: data.selectedSummary,
-        }));
-      },
       onError: () => {
         // Error already handled
       },
     },
   );
 
+  const summaryByRange = metricsData?.summaryByRange;
   const timelineRows: TimelineRow[] = metricsData?.timelineRows || [];
   const totalOnline = metricsData?.totalOnline || 0;
   const totalDevices = metricsData?.totalDevices || 0;
   const influxConnected = metricsData?.influxConnected ?? null;
 
   const summaryCards = useMemo(() => {
-    const fallback: DurationSummary = { totalHours: 0, avgHours: 0, deviceCount: 0 };
+    const fallback: DurationSummary = { totalHours: 0, avgHours: 0, deviceCount: 0, onlineRate: 0 };
     const today = summaryByRange?.today || fallback;
     const week = summaryByRange?.week || fallback;
     const month = summaryByRange?.month || fallback;
@@ -320,28 +345,28 @@ export default function Metrics() {
     return [
       {
         label: t.metrics.todayDuration,
-        value: formatHours(today.totalHours),
+        value: formatRate(today.onlineRate),
         subText: t.metrics.avgDurationPerDevice.replace('{value}', formatHours(today.avgHours)),
         icon: <ClockCircleOutlined style={{ fontSize: 28, color: themeToken.colorPrimary }} />,
         watermark: 'DAY',
       },
       {
         label: t.metrics.weekDuration,
-        value: formatHours(week.totalHours),
+        value: formatRate(week.onlineRate),
         subText: t.metrics.avgDurationPerDevice.replace('{value}', formatHours(week.avgHours)),
         icon: <ClockCircleOutlined style={{ fontSize: 28, color: themeToken.colorSuccess }} />,
         watermark: '7D',
       },
       {
         label: t.metrics.monthDuration,
-        value: formatHours(month.totalHours),
+        value: formatRate(month.onlineRate),
         subText: t.metrics.avgDurationPerDevice.replace('{value}', formatHours(month.avgHours)),
         icon: <ClockCircleOutlined style={{ fontSize: 28, color: themeToken.colorWarning }} />,
         watermark: '30D',
       },
       {
         label: t.metrics.historyDuration,
-        value: formatHours(history.totalHours),
+        value: formatRate(history.onlineRate),
         subText: t.metrics.avgDurationPerDevice.replace('{value}', formatHours(history.avgHours)),
         icon: <ClockCircleOutlined style={{ fontSize: 28, color: themeToken.colorInfo }} />,
         watermark: 'ALL',

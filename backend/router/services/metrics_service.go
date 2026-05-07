@@ -21,6 +21,7 @@ import (
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"headscale-panel/pkg/influxdb"
 	"headscale-panel/pkg/unifyerror"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -28,6 +29,7 @@ import (
 	"time"
 
 	"github.com/sirupsen/logrus"
+	"golang.org/x/sync/errgroup"
 )
 
 type metricsService struct {
@@ -262,6 +264,126 @@ func (s *metricsService) GetOnlineDurationStats(ctx context.Context, actorUserID
 	}
 
 	return stats, nil
+}
+
+// GetOnlineDurationSummary gets summarized online duration in multiple windows.
+func (s *metricsService) GetOnlineDurationSummary(ctx context.Context, actorUserID uint, end time.Time) (map[string]interface{}, error) {
+	if err := RequirePermission(actorUserID, "metrics:online_duration_stats:view"); err != nil {
+		return nil, err
+	}
+
+	todayStart := end.Add(-24 * time.Hour)
+	weekStart := end.AddDate(0, 0, -7)
+	monthStart := end.AddDate(0, 0, -30)
+
+	var (
+		todayStats   []map[string]interface{}
+		weekStats    []map[string]interface{}
+		monthStats   []map[string]interface{}
+		historyStats []map[string]interface{}
+	)
+
+	g, gctx := errgroup.WithContext(ctx)
+	g.Go(func() error {
+		stats, err := s.GetOnlineDurationStats(gctx, actorUserID, &todayStart, end)
+		if err != nil {
+			return err
+		}
+		todayStats = stats
+		return nil
+	})
+	g.Go(func() error {
+		stats, err := s.GetOnlineDurationStats(gctx, actorUserID, &weekStart, end)
+		if err != nil {
+			return err
+		}
+		weekStats = stats
+		return nil
+	})
+	g.Go(func() error {
+		stats, err := s.GetOnlineDurationStats(gctx, actorUserID, &monthStart, end)
+		if err != nil {
+			return err
+		}
+		monthStats = stats
+		return nil
+	})
+	g.Go(func() error {
+		stats, err := s.GetOnlineDurationStats(gctx, actorUserID, nil, end)
+		if err != nil {
+			return err
+		}
+		historyStats = stats
+		return nil
+	})
+
+	if err := g.Wait(); err != nil {
+		return nil, err
+	}
+
+	return map[string]interface{}{
+		"today":   summarizeOnlineDurationStats(todayStats),
+		"week":    summarizeOnlineDurationStats(weekStats),
+		"month":   summarizeOnlineDurationStats(monthStats),
+		"history": summarizeOnlineDurationStats(historyStats),
+	}, nil
+}
+
+func summarizeOnlineDurationStats(stats []map[string]interface{}) map[string]interface{} {
+	totalHours := 0.0
+	deviceCount := 0
+	activeDeviceCount := 0
+
+	for _, stat := range stats {
+		hours, ok := toFloat64(stat["online_hours"])
+		if !ok {
+			continue
+		}
+		totalHours += hours
+		deviceCount++
+		if hours > 0 {
+			activeDeviceCount++
+		}
+	}
+
+	avgHours := 0.0
+	onlineRate := 0.0
+	if deviceCount > 0 {
+		avgHours = totalHours / float64(deviceCount)
+		onlineRate = float64(activeDeviceCount) / float64(deviceCount) * 100
+	}
+
+	return map[string]interface{}{
+		"total_hours":         totalHours,
+		"avg_hours":           avgHours,
+		"device_count":        deviceCount,
+		"active_device_count": activeDeviceCount,
+		"online_rate":         onlineRate,
+	}
+}
+
+func toFloat64(value interface{}) (float64, bool) {
+	switch v := value.(type) {
+	case float64:
+		if math.IsNaN(v) || math.IsInf(v, 0) {
+			return 0, false
+		}
+		return v, true
+	case float32:
+		f := float64(v)
+		if math.IsNaN(f) || math.IsInf(f, 0) {
+			return 0, false
+		}
+		return f, true
+	case int:
+		return float64(v), true
+	case int64:
+		return float64(v), true
+	case uint64:
+		return float64(v), true
+	default:
+		return 0, false
+	}
 }
 
 // GetDeviceStatus gets current device status

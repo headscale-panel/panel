@@ -24,6 +24,8 @@ import type {
   GetInfluxDBStatusRes,
   GetOnlineDurationReq,
   GetOnlineDurationRes,
+  GetOnlineDurationSummaryReq,
+  GetOnlineDurationSummaryRes,
   GetOnlineDurationStatsReq,
   GetOnlineDurationStatsRes,
   GetTrafficStatsReq,
@@ -51,6 +53,15 @@ export const metricsApi = {
       method: 'GET',
       params: {
         start: req?.start,
+        end: req?.end,
+      },
+    }),
+
+  getOnlineDurationSummary: (req?: GetOnlineDurationSummaryReq) =>
+    request<RespType<GetOnlineDurationSummaryRes>>({
+      url: '/metrics/online-duration-summary',
+      method: 'GET',
+      params: {
         end: req?.end,
       },
     }),

@@ -124,6 +124,28 @@ func (c *MetricsController) GetOnlineDurationStats(ctx *gin.Context) {
 	unifyerror.Success(ctx, stats)
 }
 
+// GetOnlineDurationSummary gets summarized online durations for dashboard cards.
+// GET /api/metrics/online-duration-summary?end=2024-01-31
+func (c *MetricsController) GetOnlineDurationSummary(ctx *gin.Context) {
+	actorUserID := ctx.GetUint("userID")
+	endStr := ctx.DefaultQuery("end", time.Now().Format("2006-01-02"))
+
+	end, err := time.Parse("2006-01-02", endStr)
+	if err != nil {
+		unifyerror.Fail(ctx, unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "Invalid end date format"))
+		return
+	}
+	end = end.Add(24 * time.Hour)
+
+	summary, err := services.MetricsService.GetOnlineDurationSummary(ctx.Request.Context(), actorUserID, end)
+	if err != nil {
+		unifyerror.Fail(ctx, err)
+		return
+	}
+
+	unifyerror.Success(ctx, summary)
+}
+
 // GetDeviceStatus godoc
 // @Summary Get current device status
 // @Tags metrics

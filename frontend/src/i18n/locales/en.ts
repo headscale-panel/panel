@@ -474,6 +474,7 @@ const en: Translations = {
     monthDuration: 'Monthly Online Time',
     historyDuration: 'Historical Online Time',
     avgDurationPerDevice: 'Avg. per device {value}',
+    deviceCount: 'Devices: {count}',
     avgOnlineDuration: 'Avg. Online Duration ({range})',
     onlineDevices: 'Online Devices',
     totalDevicesSuffix: ' / {total} total',

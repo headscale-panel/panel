@@ -1,4 +1,4 @@
-// Copyright (C) 2026 
+// Copyright (C) 2026
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as
@@ -170,6 +170,7 @@ func InitRouter() *gin.Engine {
 			metricsController := &controllers.MetricsController{}
 			auth.GET("/metrics/online-duration", middleware.PermissionMiddleware("metrics:online_duration:view"), metricsController.GetOnlineDuration)
 			auth.GET("/metrics/online-duration-stats", middleware.PermissionMiddleware("metrics:online_duration_stats:view"), metricsController.GetOnlineDurationStats)
+			auth.GET("/metrics/online-duration-summary", middleware.PermissionMiddleware("metrics:online_duration_stats:view"), metricsController.GetOnlineDurationSummary)
 			auth.GET("/metrics/device-status", middleware.PermissionMiddleware("metrics:device_status:view"), metricsController.GetDeviceStatus)
 			auth.GET("/metrics/device-status-history", middleware.PermissionMiddleware("metrics:device_status_history:view"), metricsController.GetDeviceStatusHistory)
 			auth.GET("/metrics/device-status-histories", middleware.PermissionMiddleware("metrics:device_status_history:view"), metricsController.GetDeviceStatusHistories)

@@ -472,6 +472,7 @@ const zh = {
     monthDuration: '一月在线时长',
     historyDuration: '历史在线时长',
     avgDurationPerDevice: '平均每台设备 {value}',
+    deviceCount: '设备数：{count}',
     avgOnlineDuration: '平均在线时长 ({range})',
     onlineDevices: '在线设备',
     totalDevicesSuffix: ' / {total} 总设备',
