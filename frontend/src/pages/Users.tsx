@@ -21,6 +21,7 @@ import type {
   NormalizedHeadscaleUser,
 } from '@/lib/normalizers';
 import {
+  AppstoreOutlined,
   ClockCircleOutlined,
   CopyOutlined,
   DeleteOutlined,
@@ -36,6 +37,7 @@ import {
   RightOutlined,
   SearchOutlined,
   TeamOutlined,
+  UnorderedListOutlined,
   UserAddOutlined,
   UsergroupAddOutlined,
   UserOutlined,
@@ -51,8 +53,10 @@ import {
   Input,
   message,
   Modal,
+  Segmented,
   Space,
   Spin,
+  Switch,
   Tag,
   theme,
   Tooltip,
@@ -126,6 +130,10 @@ export default function UsersPage() {
   const [onlineUsers, setOnlineUsers] = useState<Set<string>>(new Set());
   const [oidcEnabled, setOidcEnabled] = useState(false);
   const [taggedDevices, setTaggedDevices] = useState<DeviceData[]>([]);
+  const [viewMode, setViewMode] = useState<'group' | 'list'>('group');
+  const [listSearchQuery, setListSearchQuery] = useState('');
+  const [listIdentityFilter, setListIdentityFilter] = useState<'all' | 'owner' | 'tagged' | 'unassigned'>('all');
+  const [listHasTagOnly, setListHasTagOnly] = useState(false);
 
   const { loading, refreshAsync } = useRequest(
     async () => loadUsersPageData(),
@@ -400,6 +408,44 @@ export default function UsersPage() {
   }, [searchQuery, selectedTreeUserDevices, taggedDevices, selectedNode.type]);
 
   const onlineCount = hsUsers.filter((user) => onlineUsers.has(user.headscale_name || user.username)).length;
+
+  // Flat list of all devices (for list mode), deduplicated by id, with filters
+  const allDevicesList = useMemo(() => {
+    const seen = new Set<string>();
+    const { tagTokens, textTokens } = (() => {
+      const tokens = listSearchQuery.trim().toLowerCase().split(/\s+/).filter(Boolean);
+      const tagT: string[] = [];
+      const textT: string[] = [];
+      for (const token of tokens) {
+        if (token.startsWith('tag:') && token.length > 4) tagT.push(token.slice(4));
+        else textT.push(token);
+      }
+      return { tagTokens: tagT, textTokens: textT };
+    })();
+
+    return Object.entries(userDevicesByOwner)
+      .filter(([key]) => key !== '__tagged__')
+      .flatMap(([, list]) => list)
+      .filter((device) => {
+        if (seen.has(device.id)) return false;
+        seen.add(device.id);
+
+        const hasOwner = Boolean(device.user?.name?.trim());
+        const hasTags = (device.tags || []).length > 0;
+        const kind = hasOwner ? 'owner' : hasTags ? 'tagged' : 'unassigned';
+        if (listIdentityFilter !== 'all' && kind !== listIdentityFilter) return false;
+        if (listHasTagOnly && !hasTags) return false;
+
+        const deviceTags = device.tags || [];
+        if (tagTokens.length > 0) {
+          const normalized = deviceTags.map((t) => t.toLowerCase());
+          if (!tagTokens.every((tt) => normalized.some((t) => t.includes(tt)))) return false;
+        }
+        if (textTokens.length === 0) return true;
+        const searchable = [device.name, device.given_name, ...device.ip_addresses, device.user?.name || '', ...deviceTags].join(' ').toLowerCase();
+        return textTokens.every((tt) => searchable.includes(tt));
+      });
+  }, [userDevicesByOwner, listSearchQuery, listIdentityFilter, listHasTagOnly]);
 
   const toggleGroupExpanded = (groupName: string) => {
     setExpandedGroups((current) => {
@@ -916,6 +962,14 @@ export default function UsersPage() {
             <Text type="secondary">{t.users.description}</Text>
           </div>
           <Space data-tour-id="users-actions">
+            <Segmented
+              value={viewMode}
+              onChange={(v) => setViewMode(v as 'group' | 'list')}
+              options={[
+                { value: 'group', icon: <AppstoreOutlined />, label: t.users.viewModeGroup },
+                { value: 'list', icon: <UnorderedListOutlined />, label: t.users.viewModeList },
+              ]}
+            />
             <Tooltip title={t.common.actions.refresh}>
               <Button icon={<ReloadOutlined spin={refreshing} />} onClick={loadData} disabled={refreshing} />
             </Tooltip>
@@ -948,7 +1002,8 @@ export default function UsersPage() {
           ]}
         />
 
-        {/* Two-panel layout */}
+        {/* Two-panel layout (group mode) */}
+        {viewMode === 'group' && (
         <div className="grid gap-4" style={{ gridTemplateColumns: '280px 1fr' }}>
           {/* Left: Tree sidebar */}
           <Card data-tour-id="users-tree" styles={{ body: { padding: 0 } }}>
@@ -1140,6 +1195,55 @@ export default function UsersPage() {
             </div>
           </Card>
         </div>
+        )}
+
+        {/* List mode: flat device list */}
+        {viewMode === 'list' && (
+          <Card styles={{ body: { padding: 0 } }}>
+            <div className="flex gap-3 flex-wrap items-center px-5 py-3.5" style={{ borderBottom: `1px solid ${token.colorBorderSecondary}` }}>
+              <Input
+                prefix={<SearchOutlined style={{ color: token.colorTextSecondary }} />}
+                placeholder={t.devices.searchPlaceholder}
+                className="max-w-90"
+                value={listSearchQuery}
+                onChange={(e) => setListSearchQuery(e.target.value)}
+                allowClear
+              />
+              <Segmented
+                value={listIdentityFilter}
+                onChange={(v) => setListIdentityFilter(v as typeof listIdentityFilter)}
+                options={[
+                  { value: 'all', label: t.devices.identityAll },
+                  { value: 'owner', label: t.devices.identityOwnerBased },
+                  { value: 'tagged', label: t.devices.identityTaggedOnly },
+                  { value: 'unassigned', label: t.devices.identityUnassigned },
+                ]}
+              />
+              <div className="flex items-center gap-2 px-2">
+                <Text type="secondary">{t.devices.hasTagOnly}</Text>
+                <Switch checked={listHasTagOnly} onChange={setListHasTagOnly} />
+              </div>
+              <div style={{ marginLeft: 'auto' }}>
+                <Text type="secondary" className="text-13px">{allDevicesList.length}</Text>
+              </div>
+            </div>
+            <div className="overflow-auto p-4" style={{ height: 'calc(100vh - 400px)' }}>
+              {allDevicesList.length === 0
+                ? (
+                    <Empty
+                      className="empty-state-box"
+                      image={Empty.PRESENTED_IMAGE_SIMPLE}
+                      description={listSearchQuery || listIdentityFilter !== 'all' || listHasTagOnly ? t.users.noSearchResult : t.users.noDevices}
+                    />
+                  )
+                : (
+                    <Space direction="vertical" className="w-full" size={6}>
+                      {allDevicesList.map((device) => renderDeviceCard(device, device as any))}
+                    </Space>
+                  )}
+            </div>
+          </Card>
+        )}
 
         <CreateUserModal
           open={createUserDialogOpen}
