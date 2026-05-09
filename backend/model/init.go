@@ -18,6 +18,7 @@ package model
 import (
 	"errors"
 	"fmt"
+	"headscale-panel/pkg/conf"
 	"headscale-panel/pkg/constants"
 	"log"
 	"os"
@@ -27,6 +28,7 @@ import (
 	"github.com/glebarez/sqlite"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
 var DB *gorm.DB
@@ -36,8 +38,16 @@ func Init() {
 	if err := os.MkdirAll(constants.DataDir, 0700); err != nil {
 		log.Fatalf("models.Setup: failed to create data directory: %v", err)
 	}
+
+	gormLogger := logger.Default.LogMode(logger.Silent)
+	if conf.Conf.System.Debug {
+		gormLogger = logger.Default.LogMode(logger.Info)
+	}
+
 	var err error
-	DB, err = gorm.Open(sqlite.Open(dbPath), &gorm.Config{})
+	DB, err = gorm.Open(sqlite.Open(dbPath), &gorm.Config{
+		Logger: gormLogger,
+	})
 	if err != nil {
 		log.Fatalf("models.Setup err: %v", err)
 	}

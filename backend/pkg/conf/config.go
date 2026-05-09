@@ -38,6 +38,7 @@ type Config struct {
 
 type SystemConfig struct {
 	Port                string `mapstructure:"port"`
+	Debug               bool   `mapstructure:"debug"`
 	BaseURL             string `mapstructure:"base_url"`
 	SetupBootstrapToken string `mapstructure:"setup_bootstrap_token"`
 }
@@ -104,6 +105,7 @@ func Init(path string) {
 	viper.SetDefault("influxdb.bucket", "metrics")
 	// Manually bind env vars to nested keys because Viper doesn't automatically map flat env keys to nested structs
 	viper.BindEnv("system.port", "SYSTEM_PORT")
+	viper.BindEnv("system.debug", "SYSTEM_DEBUG")
 	viper.BindEnv("system.base_url", "SYSTEM_BASE_URL")
 	viper.BindEnv("system.setup_bootstrap_token", "SYSTEM_SETUP_BOOTSTRAP_TOKEN")
 	viper.BindEnv("jwt.secret", "JWT_SECRET")

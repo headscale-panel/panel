@@ -48,6 +48,12 @@ func NewServer() (*Server, error) {
 	}
 	conf.Init(confPath)
 
+	if conf.Conf.System.Debug {
+		gin.SetMode(gin.DebugMode)
+	} else {
+		gin.SetMode(gin.ReleaseMode)
+	}
+
 	model.Init()
 
 	// Restore headscale connection settings from DB (survives container restart)
@@ -84,8 +90,6 @@ func NewServer() (*Server, error) {
 }
 
 func (s *Server) Run() {
-	gin.SetMode(gin.ReleaseMode)
-
 	s.server = &http.Server{
 		Addr:    conf.Conf.System.Port,
 		Handler: s.router,
