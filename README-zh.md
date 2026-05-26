@@ -17,6 +17,9 @@
     </a>
 </p>
 
+> [!IMPORTANT]
+> 由于 headscale 不同版本之间存在大量 breaking change，当前版本仅面向 headscale v0.28.0 提供支持。
+
 > [!WARNING]
 > 本项目目前处于非常初期的开发阶段，可能存在严重错误、功能缺失或完全不可用等问题。我们会积极跟进并解决已上报的 issue，并持续推进功能开发与 Bug 修复。非常不推荐用于公网及生产环境。
 
@@ -129,50 +132,50 @@ networks:
       config:
         - subnet: 172.20.200.0/24
 
-services:
-  headscale:
+  headscale-server:
     image: headscale/headscale:stable
-    container_name: headscale
-    networks:
-      - private
+    container_name: headscale-server
+    hostname: headscale-server
     volumes:
-      - ./headscale/config:/etc/headscale         # Headscale 配置目录
-      - ./headscale/data:/var/lib/headscale       # Headscale 持久化数据
-      - /usr/share/zoneinfo/Asia/Shanghai:/etc/localtime:ro
-    ports:
-      - "8080:8080"   # Tailscale 客户端接入端口（需对外暴露）
+      - ./headscale/config:/etc/headscale
+      - ./headscale/data:/var/lib/headscale
+    environment:
+      TZ: Asia/Shanghai
     expose:
-      - "50443"       # gRPC 端口（仅面板访问，不建议对外暴露）
+      - '8080'
+      - '50443'
     command: serve
-    restart: unless-stopped
     healthcheck:
       test: ["CMD", "headscale", "health"]
       interval: 5s
       timeout: 3s
       retries: 5
-
-  panel:
-    image: ghcr.io/headscale-panel/panel:latest
-    container_name: headscale-panel
-    restart: unless-stopped
     networks:
       - private
-    ports:
-      - "8090:8080"   # 面板 Web 界面（建议配合反向代理，不直接对外暴露）
+    restart: unless-stopped
+    tty: true
+
+  headscale-panel:
+    image: ghcr.io/headscale-panel/panel:latest
+    container_name: headscale-panel
+    hostname: headscale-panel
     volumes:
       - ./headscale/config:/app/headscale/etc
       - ./headscale/data:/app/headscale/lib
       - ./headscale/panel:/app/data
-      - /var/run/docker.sock:/var/run/docker.sock
     environment:
-      - TZ=Asia/Shanghai
-      - SYSTEM_BASE_URL=https://vpn.example.com
-      - JWT_SECRET=random_str_len_32
-      - DOCKER_DIND_ENABLED=true
-      - DOCKER_HEADSCALE_CONTAINER_NAME=headscale
+      SYSTEM_BASE_URL: https://vpn.example.com/panel
+      JWT_SECRET: 32_random_string
+      JWT_EXPIRE: 24
+    expose:
+      - '8080'
+    networks:
+      - private
     depends_on:
-      headscale:
+      headscale-server:
         condition: service_healthy
+    restart: unless-stopped
+    tty: true
 ```
 
 **启动服务：**
@@ -215,6 +218,8 @@ docker exec headscale headscale apikeys create
 
 面板通过 gRPC 连接 Headscale，需提前准备好 Headscale 配置文件。以下为推荐最小配置（`./headscale/config/config.yaml`）：
 
+> **安全建议**：建议启用 `grpc_allow_insecure: true` 并将 gRPC 连接限制在内网环境。从安全角度考虑，通过网络隔离实现的内网无TLS连接，其安全性优于将gRPC暴露在公网并依赖证书加密的方案。
+
 ```yaml
 server_url: https://vpn.example.com
 listen_addr: 0.0.0.0:8080
@@ -226,7 +231,7 @@ noise:
     private_key_path: /var/lib/headscale/noise_private.key
 prefixes:
     v4: 100.100.0.0/16
-    v6: 64:ff9b::/96
+    v6: fd7a:115c:a1e0::/48
     allocation: sequential
 derp:
     server:
@@ -318,9 +323,8 @@ server {
     ssl_certificate     /etc/ssl/certs/vpn.example.com/fullchain.pem;
     ssl_certificate_key /etc/ssl/private/vpn.example.com/privkey.pem;
 
-    # 管理面板 UI + API
-    location /panel/ {
-        proxy_pass http://panel:8080/;
+    location ^~ /panel/ {
+        proxy_pass http://headscale-panel:8080;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -330,10 +334,8 @@ server {
         proxy_set_header Connection "upgrade";
     }
 
-    # 其余流量交给 Headscale（Tailscale 客户端连接）
-    # Headscale 反向代理配置参考：https://headscale.net/stable/ref/integration/reverse-proxy
-    location / {
-        proxy_pass http://headscale:8080;  # Headscale HTTP 端口
+    location ^~ / {
+        proxy_pass http://headscale-server:8080;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -345,7 +347,7 @@ server {
 }
 ```
 
-> 面板内置 OIDC 时，还需确保 `/.well-known/openid-configuration` 和 `/api/v1/oidc/` 路径能到达面板（即额外添加对应 `location` 块，`proxy_pass` 同面板地址）。
+> 使用面板内置 OIDC 时，还需确保 `/.well-known/openid-configuration` 和 `/api/v1/oidc/` 路径能到达面板（即额外添加对应 `location` 块，`proxy_pass` 同面板地址）。
 
 ---
 

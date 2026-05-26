@@ -17,6 +17,9 @@
     </a>
 </p>
 
+> [!IMPORTANT]
+> Due to the large number of breaking changes between headscale versions, the current release only supports headscale v0.28.0.
+
 > [!WARNING]
 > This project is in a very early stage of development. You may encounter critical bugs, missing features, or complete unavailability. We are actively working to resolve reported issues and will continue to push forward with fixes and new features. Use on public networks or in production environments is strongly discouraged.
 
@@ -129,50 +132,50 @@ networks:
       config:
         - subnet: 172.20.200.0/24
 
-services:
-  headscale:
+  headscale-server:
     image: headscale/headscale:stable
-    container_name: headscale
-    networks:
-      - private
+    container_name: headscale-server
+    hostname: headscale-server
     volumes:
-      - ./headscale/config:/etc/headscale        # Headscale config directory
-      - ./headscale/data:/var/lib/headscale       # Headscale persistent data
-      - /usr/share/zoneinfo/Asia/Shanghai:/etc/localtime:ro
-    ports:
-      - "8080:8080"    # Tailscale client ingress port (must be publicly accessible)
+      - ./headscale/config:/etc/headscale
+      - ./headscale/data:/var/lib/headscale
+    environment:
+      TZ: Asia/Shanghai
     expose:
-      - "50443"   # gRPC port (internal panel access only; no need to expose externally)
+      - '8080'
+      - '50443'
     command: serve
-    restart: unless-stopped
     healthcheck:
       test: ["CMD", "headscale", "health"]
       interval: 5s
       timeout: 3s
       retries: 5
-
-  panel:
-    image: ghcr.io/headscale-panel/panel:latest
-    container_name: headscale-panel
-    restart: unless-stopped
     networks:
       - private
-    ports:
-      - "8090:8080"    # Panel web interface (pair with a reverse proxy; avoid direct public exposure)
+    restart: unless-stopped
+    tty: true
+
+  headscale-panel:
+    image: ghcr.io/headscale-panel/panel:latest
+    container_name: headscale-panel
+    hostname: headscale-panel
     volumes:
       - ./headscale/config:/app/headscale/etc
       - ./headscale/data:/app/headscale/lib
       - ./headscale/panel:/app/data
-      - /var/run/docker.sock:/var/run/docker.sock
     environment:
-      - TZ=Asia/Shanghai
-      - SYSTEM_BASE_URL=https://vpn.example.com
-      - JWT_SECRET=random_str_len_32
-      - DOCKER_DIND_ENABLED=true
-      - DOCKER_HEADSCALE_CONTAINER_NAME=headscale
+      SYSTEM_BASE_URL: https://vpn.example.com/panel
+      JWT_SECRET: 32_random_string
+      JWT_EXPIRE: 24
+    expose:
+      - '8080'
+    networks:
+      - private
     depends_on:
-      headscale:
+      headscale-server:
         condition: service_healthy
+    restart: unless-stopped
+    tty: true
 ```
 
 **Start the services:**
@@ -215,6 +218,8 @@ The panel supports three gRPC connection modes. Choose based on how your Headsca
 
 The panel connects to Headscale over gRPC. Below is the recommended minimal Headscale config (`./headscale/config/config.yaml`):
 
+> **Security recommendation**: We recommend enabling `grpc_allow_insecure: true` and restricting the gRPC connection to an internal network. From a security perspective, a non-TLS gRPC connection protected by network isolation is safer than exposing gRPC publicly and relying on certificate-based encryption alone.
+
 ```yaml
 server_url: https://vpn.example.com
 listen_addr: 0.0.0.0:8080
@@ -226,7 +231,7 @@ noise:
     private_key_path: /var/lib/headscale/noise_private.key
 prefixes:
     v4: 100.100.0.0/16
-    v6: 64:ff9b::/96
+    v6: fd7a:115c:a1e0::/48
     allocation: sequential
 derp:
     server:
@@ -318,9 +323,8 @@ server {
     ssl_certificate     /etc/ssl/certs/vpn.example.com/fullchain.pem;
     ssl_certificate_key /etc/ssl/private/vpn.example.com/privkey.pem;
 
-    # Panel UI + API
-    location /panel/ {
-        proxy_pass http://127.0.0.1:8090/;
+    location ^~ /panel/ {
+        proxy_pass http://headscale-panel:8080;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -330,10 +334,8 @@ server {
         proxy_set_header Connection "upgrade";
     }
 
-    # All other traffic goes to Headscale (Tailscale client connections)
-    # Headscale reverse-proxy reference: https://headscale.net/stable/ref/integration/reverse-proxy
-    location / {
-        proxy_pass http://127.0.0.1:8080;  # Headscale HTTP port
+    location ^~ / {
+        proxy_pass http://headscale-server:8080;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
