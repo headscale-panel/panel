@@ -17,6 +17,7 @@ package services
 
 import (
 	"headscale-panel/model"
+	"headscale-panel/pkg/constants"
 	"headscale-panel/pkg/unifyerror"
 )
 
@@ -104,7 +105,7 @@ func (s *groupService) Delete(actorUserID uint, id uint) error {
 		return unifyerror.DbError(err)
 	}
 	if count > 0 {
-		return unifyerror.Conflict("分组下存在用户，无法删除")
+		return unifyerror.Conflict(constants.MsgGroupHasUsers)
 	}
 	return model.DB.Delete(&model.Group{}, id).Error
 }

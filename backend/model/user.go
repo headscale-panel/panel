@@ -27,7 +27,7 @@ import (
 type User struct {
 	gorm.Model
 	Username string `json:"username" gorm:"uniqueIndex;not null"`
-	Password string `json:"-"` // JSON 中不返回密码
+	Password string `json:"-"` // Password is not returned in JSON
 	Email    string `json:"email"`
 	IsActive bool   `json:"is_active" gorm:"default:true"`
 	GroupID  uint   `json:"group_id"`

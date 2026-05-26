@@ -19,6 +19,7 @@ import (
 	"context"
 	"headscale-panel/model"
 	"headscale-panel/pkg/conf"
+	"headscale-panel/pkg/constants"
 	"headscale-panel/pkg/headscale"
 	"headscale-panel/pkg/influxdb"
 	"headscale-panel/router"
@@ -44,7 +45,7 @@ func NewServer() (*Server, error) {
 
 	confPath, err := filepath.Abs(".env")
 	if err != nil {
-		logrus.WithError(err).Warn("无法获取配置文件路径，使用默认配置")
+		logrus.WithError(err).Warn(constants.LogConfigPathFailed)
 	}
 	conf.Init(confPath)
 

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2026 
+ * Copyright (C) 2026
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -31,6 +31,7 @@ import { CheckCircleOutlined, LoadingOutlined, WarningOutlined } from '@ant-desi
 import { Button, Modal, Result, Spin } from 'antd';
 import { useEffect, useReducer } from 'react';
 import { statusApi } from '@/api';
+import { useTranslation } from '@/i18n';
 import { useSystemStatusStore } from '@/lib/store';
 
 const POLL_INTERVAL_MS = 2_000;
@@ -75,6 +76,7 @@ function restartReducer(state: RestartState, action: RestartAction): RestartStat
 }
 
 export default function RestartModal({ open, onClose }: RestartModalProps) {
+  const t = useTranslation();
   const { status } = useSystemStatusStore();
   const dindMode = status?.dind_mode ?? false;
 
@@ -127,19 +129,19 @@ export default function RestartModal({ open, onClose }: RestartModalProps) {
     return (
       <Modal
         open={open}
-        title="Configuration Saved"
+        title={t.restart.configSaved}
         onCancel={onClose}
         footer={(
           <Button type="primary" onClick={onClose}>
-            OK
+            {t.restart.ok}
           </Button>
         )}
         width={420}
       >
         <Result
           icon={<WarningOutlined style={{ color: '#faad14' }} />}
-          title="Manual Restart Required"
-          subTitle="The configuration has been saved. Restart the Headscale server manually for the changes to take effect."
+          title={t.restart.manualRestartRequired}
+          subTitle={t.restart.manualRestartSubtitle}
           style={{ paddingBlock: 8 }}
         />
       </Modal>
@@ -149,13 +151,13 @@ export default function RestartModal({ open, onClose }: RestartModalProps) {
   return (
     <Modal
       open={open}
-      title="Restarting Headscale"
+      title={t.restart.restarting}
       closable={timedOut}
       onCancel={timedOut ? onClose : undefined}
       footer={
         timedOut
           ? (
-              <Button onClick={onClose}>Close</Button>
+              <Button onClick={onClose}>{t.restart.close}</Button>
             )
           : connected ? null : null
       }
@@ -165,8 +167,8 @@ export default function RestartModal({ open, onClose }: RestartModalProps) {
         ? (
             <Result
               icon={<CheckCircleOutlined style={{ color: '#52c41a' }} />}
-              title="Headscale is Online"
-              subTitle="The server restarted successfully."
+              title={t.restart.restartSuccess}
+              subTitle={t.restart.restartSuccessSubtitle}
               style={{ paddingBlock: 8 }}
             />
           )
@@ -174,8 +176,8 @@ export default function RestartModal({ open, onClose }: RestartModalProps) {
           ? (
               <Result
                 icon={<WarningOutlined style={{ color: '#faad14' }} />}
-                title="Restart Timed Out"
-                subTitle="Headscale did not come back online within 60 seconds. Please check the container logs."
+                title={t.restart.restartTimeout}
+                subTitle={t.restart.restartTimeoutSubtitle}
                 style={{ paddingBlock: 8 }}
               />
             )
@@ -183,7 +185,7 @@ export default function RestartModal({ open, onClose }: RestartModalProps) {
               <div className="text-center py-6">
                 <Spin indicator={<LoadingOutlined style={{ fontSize: 36 }} spin />} />
                 <div className="mt-4 text-secondary">
-                  Waiting for Headscale to come back online…
+                  {t.restart.waiting}
                 </div>
               </div>
             )}

@@ -17,6 +17,7 @@ package controllers
 
 import (
 	"net/http"
+	"headscale-panel/pkg/constants"
 	"headscale-panel/pkg/unifyerror"
 	"headscale-panel/router/services"
 	"strconv"
@@ -42,7 +43,6 @@ func NewDNSController() *DNSController {
 // @Success 200 {object} unifyerror.Response{data=unifyerror.PaginatedData{list=[]model.DNSRecord}}
 // @Security BearerAuth
 // @Router /dns/records [get]
-// List 获取 DNS 记录列表
 func (c *DNSController) List(ctx *gin.Context) {
 	var req services.ListDNSRecordRequest
 	if err := ctx.ShouldBindQuery(&req); err != nil {
@@ -71,7 +71,6 @@ func (c *DNSController) List(ctx *gin.Context) {
 // @Failure 400 {object} unifyerror.Response
 // @Security BearerAuth
 // @Router /dns/records [post]
-// Create 创建 DNS 记录
 func (c *DNSController) Create(ctx *gin.Context) {
 	var req services.CreateDNSRecordRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {
@@ -99,7 +98,6 @@ func (c *DNSController) Create(ctx *gin.Context) {
 // @Failure 400 {object} unifyerror.Response
 // @Security BearerAuth
 // @Router /dns/records [put]
-// Update 更新 DNS 记录
 func (c *DNSController) Update(ctx *gin.Context) {
 	var req services.UpdateDNSRecordRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {
@@ -126,12 +124,11 @@ func (c *DNSController) Update(ctx *gin.Context) {
 // @Failure 400 {object} unifyerror.Response
 // @Security BearerAuth
 // @Router /dns/records [delete]
-// Delete 删除 DNS 记录
 func (c *DNSController) Delete(ctx *gin.Context) {
 	idStr := ctx.Query("id")
 	id, err := strconv.ParseUint(idStr, 10, 32)
 	if err != nil {
-		unifyerror.Fail(ctx, unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "无效的 ID"))
+		unifyerror.Fail(ctx, unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, constants.MsgInvalidID))
 		return
 	}
 
@@ -153,12 +150,11 @@ func (c *DNSController) Delete(ctx *gin.Context) {
 // @Failure 404 {object} unifyerror.Response
 // @Security BearerAuth
 // @Router /dns/records/{id} [get]
-// Get 获取单个 DNS 记录
 func (c *DNSController) Get(ctx *gin.Context) {
 	idStr := ctx.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 32)
 	if err != nil {
-		unifyerror.Fail(ctx, unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "无效的 ID"))
+		unifyerror.Fail(ctx, unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, constants.MsgInvalidID))
 		return
 	}
 
@@ -179,14 +175,13 @@ func (c *DNSController) Get(ctx *gin.Context) {
 // @Success 200 {object} unifyerror.Response
 // @Security BearerAuth
 // @Router /dns/sync [post]
-// Sync 将 DNS 记录同步到文件
 func (c *DNSController) Sync(ctx *gin.Context) {
 	userID := ctx.GetUint("userID")
 	if err := services.DNSService.SyncToFile(userID); err != nil {
 		unifyerror.Fail(ctx, err)
 		return
 	}
-	unifyerror.Success(ctx, gin.H{"message": "同步成功"})
+	unifyerror.Success(ctx, gin.H{"message": constants.MsgSyncSuccessful})
 }
 
 // Import godoc
@@ -196,7 +191,6 @@ func (c *DNSController) Sync(ctx *gin.Context) {
 // @Success 200 {object} unifyerror.Response
 // @Security BearerAuth
 // @Router /dns/import [post]
-// Import 从文件导入 DNS 记录
 func (c *DNSController) Import(ctx *gin.Context) {
 	userID := ctx.GetUint("userID")
 	imported, err := services.DNSService.ImportFromFile(userID)
@@ -205,7 +199,7 @@ func (c *DNSController) Import(ctx *gin.Context) {
 		return
 	}
 	unifyerror.Success(ctx, gin.H{
-		"message":  "导入成功",
+		"message":  constants.MsgImportSuccessful,
 		"imported": imported,
 	})
 }
@@ -217,7 +211,6 @@ func (c *DNSController) Import(ctx *gin.Context) {
 // @Success 200 {object} unifyerror.Response{data=[]services.ExtraRecord}
 // @Security BearerAuth
 // @Router /dns/file [get]
-// GetFile 获取文件中的 DNS 记录
 func (c *DNSController) GetFile(ctx *gin.Context) {
 	userID := ctx.GetUint("userID")
 	records, err := services.DNSService.GetExtraRecordsFromFile(userID)

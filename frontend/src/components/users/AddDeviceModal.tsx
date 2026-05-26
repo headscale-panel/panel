@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2026 
+ * Copyright (C) 2026
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -564,7 +564,7 @@ export default function AddDeviceModal({ open, hsUsers, onCancel, onSuccess }: A
                           ))}
                         </div>
                         <div>
-                          <Text className="text-12px block mb-1">Operator</Text>
+                          <Text className="text-12px block mb-1">{t.devices.paramOperator}</Text>
                           <Input
                             value={deployParams.operator}
                             onChange={(e) => setDeployParams((p) => ({ ...p, operator: e.target.value }))}
@@ -574,7 +574,7 @@ export default function AddDeviceModal({ open, hsUsers, onCancel, onSuccess }: A
                           />
                         </div>
                         <div>
-                          <Text className="text-12px block mb-1">Netfilter Mode</Text>
+                          <Text className="text-12px block mb-1">{t.devices.paramNetfilterMode}</Text>
                           <Select
                             size="small"
                             className="w-full"

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2026 
+ * Copyright (C) 2026
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -16,9 +16,11 @@
  */
 
 import type { ReactNode } from 'react';
+import type { I18nContextType } from '@/i18n';
 import { ReloadOutlined } from '@ant-design/icons';
 import { Button, Result, Typography } from 'antd';
 import { Component } from 'react';
+import { I18nContext } from '@/i18n';
 
 const { Paragraph, Text } = Typography;
 
@@ -32,6 +34,9 @@ interface State {
 }
 
 class ErrorBoundary extends Component<Props, State> {
+  static contextType = I18nContext;
+  declare context: I18nContextType;
+
   constructor(props: Props) {
     super(props);
     this.state = { hasError: false, error: null };
@@ -43,18 +48,19 @@ class ErrorBoundary extends Component<Props, State> {
 
   render() {
     if (this.state.hasError) {
+      const t = this.context?.t;
       return (
         <div className="auth-page p-8">
           <Result
             status="error"
-            title="An unexpected error occurred."
+            title={t?.errorBoundary.title ?? 'An unexpected error occurred.'}
             extra={(
               <Button
                 type="primary"
                 icon={<ReloadOutlined />}
                 onClick={() => window.location.reload()}
               >
-                Reload Page
+                {t?.errorBoundary.reload ?? 'Reload Page'}
               </Button>
             )}
           >

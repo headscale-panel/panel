@@ -20,6 +20,8 @@ import (
 	"net/http"
 	"strings"
 
+	"headscale-panel/pkg/constants"
+
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
 	"github.com/samber/lo"
@@ -32,7 +34,7 @@ type ValidationError struct {
 }
 
 func (v ValidationError) Error() string {
-	return fmt.Sprintf("参数验证失败 %s: %s", v.Field, v.Message)
+	return fmt.Sprintf("%s %s: %s", constants.MsgParamValidateFailed, v.Field, v.Message)
 }
 
 // ValidationErrors is a list of field-level validation failures.
@@ -42,7 +44,7 @@ type ValidationErrors struct {
 }
 
 func (v ValidationErrors) Error() string {
-	return fmt.Sprintf("参数验证失败: %s", strings.Join(lo.Map(v.Errors, func(e ValidationError, _ int) string {
+	return fmt.Sprintf("%s: %s", constants.MsgParamValidateFailed, strings.Join(lo.Map(v.Errors, func(e ValidationError, _ int) string {
 		return fmt.Sprintf("%s: %s", e.Field, e.Message)
 	}), ", "))
 }
@@ -58,7 +60,7 @@ func (v *ValidationErrors) HasErrors() bool {
 }
 
 // ErrBind is returned when request body/query binding fails.
-var ErrBind = New(http.StatusBadRequest, CodeParamErr, "请求参数绑定失败")
+var ErrBind = New(http.StatusBadRequest, CodeParamErr, constants.MsgParamBindFailed)
 
 // BindAndValidate binds the request into obj and returns a *UniErr on failure.
 // The returned error is always a *UniErr and can be passed directly to Fail.
@@ -69,9 +71,9 @@ func BindAndValidate(c *gin.Context, obj interface{}) error {
 			for _, e := range ve {
 				vErrors.AddError(e.Field(), paramErrorMsg(e.Field(), e.Tag()))
 			}
-			return New(http.StatusBadRequest, CodeParamErr, "参数验证失败").WithData(vErrors.Errors)
+			return New(http.StatusBadRequest, CodeParamErr, constants.MsgParamValidateFailed).WithData(vErrors.Errors)
 		}
-		return New(http.StatusBadRequest, CodeParamErr, "请求参数绑定失败")
+		return New(http.StatusBadRequest, CodeParamErr, constants.MsgParamBindFailed)
 	}
 	return nil
 }
@@ -79,16 +81,16 @@ func BindAndValidate(c *gin.Context, obj interface{}) error {
 func paramErrorMsg(field, tag string) string {
 	switch tag {
 	case "required":
-		return field + " 不能为空"
+		return field + " " + constants.MsgCannotBeEmpty
 	case "min":
-		return field + " 值过小"
+		return field + " " + constants.MsgValueTooSmall
 	case "max":
-		return field + " 值过大"
+		return field + " " + constants.MsgValueTooLarge
 	case "email":
-		return field + " 必须是合法的邮箱地址"
+		return field + " " + constants.MsgInvalidEmail
 	case "url":
-		return field + " 必须是合法的URL"
+		return field + " " + constants.MsgInvalidURL
 	default:
-		return field + " 格式错误"
+		return field + " " + constants.MsgInvalidFormat
 	}
 }

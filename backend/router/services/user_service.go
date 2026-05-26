@@ -70,12 +70,12 @@ func (s *userService) RegisterWithContext(ctx context.Context, req *RegisterRequ
 
 	var group model.Group
 	if userCount == 0 {
-		// 第一个用户为管理员
+		// First user is admin
 		if err := model.DB.Where("name = ?", constants.GROUP_ADMIN).First(&group).Error; err != nil {
 			return errors.New("admin group not found")
 		}
 	} else {
-		// 其他用户默认加入普通用户组
+		// Other users join the default user group
 		if err := model.DB.Where("name = ?", constants.GROUP_USER).First(&group).Error; err != nil {
 			return errors.New("default user group not found")
 		}

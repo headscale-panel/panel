@@ -17,6 +17,7 @@ package controllers
 
 import (
 	"net/http"
+	"headscale-panel/pkg/constants"
 	"headscale-panel/pkg/unifyerror"
 	"headscale-panel/router/services"
 	"strconv"
@@ -134,7 +135,7 @@ func (c *OauthClientController) Delete(ctx *gin.Context) {
 	idStr := ctx.Query("id")
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
-		unifyerror.Fail(ctx, unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "无效的 ID"))
+		unifyerror.Fail(ctx, unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, constants.MsgInvalidID))
 		return
 	}
 

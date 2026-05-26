@@ -15,7 +15,11 @@
 
 package unifyerror
 
-import "net/http"
+import (
+	"net/http"
+
+	"headscale-panel/pkg/constants"
+)
 
 // Application error codes.
 // 11xx – base / generic
@@ -49,53 +53,32 @@ const (
 	CodeForbidden     = 1406
 )
 
-// User-facing messages.
-const (
-	msgParamErr      = "Invalid request parameters"
-	msgNotFound      = "Resource not found"
-	msgResNotExist   = "The requested resource does not exist"
-	msgConflict      = "Resource conflict"
-	msgMissingInput  = "Required input is missing"
-	msgFileResolve   = "Failed to process the uploaded file"
-	msgInvalidQuery  = "Invalid query"
-	msgServerErr     = "An internal server error occurred. Please contact the administrator."
-	msgDBErr         = "A database error occurred. Please contact the administrator."
-	msgGRPCErr       = "Failed to communicate with Headscale service"
-	msgUnauth        = "Authentication required"
-	msgLoginFailed   = "Invalid username or password"
-	msgTokenExpired  = "Your session has expired, please log in again"
-	msgInvalidToken  = "Invalid or malformed token"
-	msgUserNotActive = "Your account is not active"
-	msgUserExists    = "Username already exists"
-	msgForbidden     = "Insufficient permissions"
-)
-
 // ---- 11xx base ----
 
 // WrongParam returns a 400 Bad Request error with optional field names.
 func WrongParam(fields ...string) *UniErr {
-	msg := msgParamErr
+	msg := constants.MsgParamErr
 	if len(fields) > 0 {
-		msg = msgParamErr + " [" + joinFields(fields) + "]"
+		msg = constants.MsgParamErr + " [" + joinFields(fields) + "]"
 	}
 	return newUniErr(ErrTypeUser, http.StatusBadRequest, CodeParamErr, msg)
 }
 
 // NotFound returns a 404 Not Found error.
 func NotFound() *UniErr {
-	return newUniErr(ErrTypeHttp, http.StatusNotFound, CodeNotFound, msgNotFound)
+	return newUniErr(ErrTypeHttp, http.StatusNotFound, CodeNotFound, constants.MsgNotFound)
 }
 
 // ResNotExist returns a 200 OK with a "resource not exist" code (used for
 // business-level not-found responses where HTTP 200 is expected).
 func ResNotExist() *UniErr {
-	return newUniErr(ErrTypeUser, http.StatusOK, CodeResNotExist, msgResNotExist)
+	return newUniErr(ErrTypeUser, http.StatusOK, CodeResNotExist, constants.MsgResNotExist)
 }
 
 // Conflict returns a 409 Conflict error.
 func Conflict(msg string) *UniErr {
 	if msg == "" {
-		msg = msgConflict
+		msg = constants.MsgConflict
 	}
 	return newUniErr(ErrTypeUser, http.StatusConflict, CodeConflict, msg)
 }
@@ -104,28 +87,28 @@ func Conflict(msg string) *UniErr {
 
 // MissingInput returns a user-facing error for missing required input.
 func MissingInput() *UniErr {
-	return newUniErr(ErrTypeUser, http.StatusOK, CodeMissingInput, msgMissingInput)
+	return newUniErr(ErrTypeUser, http.StatusOK, CodeMissingInput, constants.MsgMissingInput)
 }
 
 // FileResolveFailed returns a user-facing error when file processing fails.
 func FileResolveFailed(err error, extra ...string) *UniErr {
-	msg := msgFileResolve
+	msg := constants.MsgFileResolve
 	if len(extra) > 0 {
-		msg = msgFileResolve + " [" + joinFields(extra) + "]"
+		msg = constants.MsgFileResolve + " [" + joinFields(extra) + "]"
 	}
 	return newUniErrWithServer(ErrTypeUser, http.StatusOK, CodeFileResolveFailed, msg, err.Error())
 }
 
 // InvalidQuery returns a user-facing error for an invalid query.
 func InvalidQuery() *UniErr {
-	return newUniErr(ErrTypeUser, http.StatusOK, CodeInvalidQuery, msgInvalidQuery)
+	return newUniErr(ErrTypeUser, http.StatusOK, CodeInvalidQuery, constants.MsgInvalidQuery)
 }
 
 // ---- 13xx server ----
 
 // ServerError wraps a Go error as a 500 Internal Server Error.
 func ServerError(err error) *UniErr {
-	return newUniErrWithServer(ErrTypeServer, http.StatusInternalServerError, CodeServerErr, msgServerErr, err.Error())
+	return newUniErrWithServer(ErrTypeServer, http.StatusInternalServerError, CodeServerErr, constants.MsgServerErr, err.Error())
 }
 
 // DbError wraps a database error. If the error is a "record not found" it is
@@ -134,49 +117,49 @@ func DbError(err error) *UniErr {
 	if err != nil && err.Error() == "record not found" {
 		return ResNotExist()
 	}
-	return newUniErrWithServer(ErrTypeDb, http.StatusInternalServerError, CodeDBErr, msgDBErr, err.Error())
+	return newUniErrWithServer(ErrTypeDb, http.StatusInternalServerError, CodeDBErr, constants.MsgDBErr, err.Error())
 }
 
 // GRPCError wraps a gRPC call error.
 func GRPCError(err error) *UniErr {
-	return newUniErrWithServer(ErrTypeGRPC, http.StatusBadGateway, CodeGRPCErr, msgGRPCErr, err.Error())
+	return newUniErrWithServer(ErrTypeGRPC, http.StatusBadGateway, CodeGRPCErr, constants.MsgGRPCErr, err.Error())
 }
 
 // ---- 14xx auth ----
 
 // UnAuth returns a 401 Unauthorized error.
 func UnAuth() *UniErr {
-	return newUniErr(ErrTypeUser, http.StatusUnauthorized, CodeUnauth, msgUnauth)
+	return newUniErr(ErrTypeUser, http.StatusUnauthorized, CodeUnauth, constants.MsgUnauth)
 }
 
 // Forbidden returns a 403 Forbidden error.
 func Forbidden() *UniErr {
-	return newUniErr(ErrTypeUser, http.StatusForbidden, CodeForbidden, msgForbidden)
+	return newUniErr(ErrTypeUser, http.StatusForbidden, CodeForbidden, constants.MsgForbidden)
 }
 
 // LoginFailed returns a login failure error (200 OK with error code).
 func LoginFailed() *UniErr {
-	return newUniErr(ErrTypeUser, http.StatusOK, CodeLoginFailed, msgLoginFailed)
+	return newUniErr(ErrTypeUser, http.StatusOK, CodeLoginFailed, constants.MsgLoginFailed)
 }
 
 // TokenExpired returns a 401 with token-expired code.
 func TokenExpired() *UniErr {
-	return newUniErr(ErrTypeUser, http.StatusUnauthorized, CodeTokenExpired, msgTokenExpired)
+	return newUniErr(ErrTypeUser, http.StatusUnauthorized, CodeTokenExpired, constants.MsgTokenExpired)
 }
 
 // InvalidToken returns a 401 with invalid-token code.
 func InvalidToken() *UniErr {
-	return newUniErr(ErrTypeUser, http.StatusUnauthorized, CodeInvalidToken, msgInvalidToken)
+	return newUniErr(ErrTypeUser, http.StatusUnauthorized, CodeInvalidToken, constants.MsgInvalidToken)
 }
 
 // UserNotActive returns a user-not-active error.
 func UserNotActive() *UniErr {
-	return newUniErr(ErrTypeUser, http.StatusOK, CodeUserNotActive, msgUserNotActive)
+	return newUniErr(ErrTypeUser, http.StatusOK, CodeUserNotActive, constants.MsgUserNotActive)
 }
 
 // UserExists returns a conflict error for duplicate usernames.
 func UserExists() *UniErr {
-	return newUniErr(ErrTypeUser, http.StatusConflict, CodeUserExists, msgUserExists)
+	return newUniErr(ErrTypeUser, http.StatusConflict, CodeUserExists, constants.MsgUserExists)
 }
 
 // ---- helpers ----

@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"headscale-panel/model"
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
+	"headscale-panel/pkg/constants"
 	"headscale-panel/pkg/unifyerror"
 	"net/http"
 	"strconv"
@@ -166,7 +167,7 @@ func (s *aclService) SetPolicyRawWithContext(ctx context.Context, actorUserID ui
 
 func normalizeACLPolicyStructure(policy *model.ACLPolicyStructure) error {
 	if policy == nil {
-		return unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "ACL 策略不能为空")
+		return unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, constants.MsgACLPolicyEmpty)
 	}
 
 	for ruleIndex := range policy.ACLs {
@@ -174,7 +175,7 @@ func normalizeACLPolicyStructure(policy *model.ACLPolicyStructure) error {
 		for _, source := range policy.ACLs[ruleIndex].Src {
 			trimmed := strings.TrimSpace(source)
 			if trimmed == "" {
-				return unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, fmt.Sprintf("ACL 规则第 %d 条包含空的来源标识", ruleIndex+1))
+				return unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, fmt.Sprintf(constants.MsgACLRuleEmptySource, ruleIndex+1))
 			}
 			sources = append(sources, trimmed)
 		}
@@ -184,7 +185,7 @@ func normalizeACLPolicyStructure(policy *model.ACLPolicyStructure) error {
 		for _, destination := range policy.ACLs[ruleIndex].Dst {
 			normalizedDestination, err := normalizeACLDestination(destination)
 			if err != nil {
-				return unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, fmt.Sprintf("ACL 规则第 %d 条的目标 %q 格式不正确", ruleIndex+1, strings.TrimSpace(destination)))
+				return unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, fmt.Sprintf(constants.MsgACLRuleDstFormatInvalid, ruleIndex+1, strings.TrimSpace(destination)))
 			}
 			destinations = append(destinations, normalizedDestination)
 		}
@@ -197,7 +198,7 @@ func normalizeACLPolicyStructure(policy *model.ACLPolicyStructure) error {
 func normalizeRawACLPolicyJSON(policyJSON string) (string, error) {
 	trimmed := strings.TrimSpace(policyJSON)
 	if trimmed == "" {
-		return "", unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "ACL 策略不能为空")
+		return "", unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, constants.MsgACLPolicyEmpty)
 	}
 
 	standardizedPolicy, err := standardizeACLPolicyJSON(trimmed)
@@ -207,7 +208,7 @@ func normalizeRawACLPolicyJSON(policyJSON string) (string, error) {
 
 	var raw map[string]any
 	if err := json.Unmarshal(standardizedPolicy, &raw); err != nil {
-		return "", unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "ACL 策略不是合法的 JSON 或 HuJSON")
+		return "", unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, constants.MsgACLPolicyInvalidJSON)
 	}
 
 	if err := normalizeRawACLRules(raw); err != nil {
@@ -216,7 +217,7 @@ func normalizeRawACLPolicyJSON(policyJSON string) (string, error) {
 
 	normalized, err := json.MarshalIndent(raw, "", "  ")
 	if err != nil {
-		return "", unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "ACL 策略序列化失败")
+		return "", unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, constants.MsgACLPolicySerializeFailed)
 	}
 
 	return string(normalized), nil
@@ -225,7 +226,7 @@ func normalizeRawACLPolicyJSON(policyJSON string) (string, error) {
 func standardizeACLPolicyJSON(policyJSON string) ([]byte, error) {
 	ast, err := hujson.Parse([]byte(policyJSON))
 	if err != nil {
-		return nil, unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "ACL 策略不是合法的 JSON 或 HuJSON")
+		return nil, unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, constants.MsgACLPolicyInvalidJSON)
 	}
 
 	ast.Standardize()
@@ -240,32 +241,32 @@ func normalizeRawACLRules(raw map[string]any) error {
 
 	acls, ok := aclsRaw.([]any)
 	if !ok {
-		return unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "`acls` 必须是数组")
+		return unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, constants.MsgACLMustBeArray)
 	}
 
 	for ruleIndex, aclRaw := range acls {
 		aclRule, ok := aclRaw.(map[string]any)
 		if !ok {
-			return unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, fmt.Sprintf("ACL 规则第 %d 条格式不正确", ruleIndex+1))
+			return unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, fmt.Sprintf(constants.MsgACLRuleFormatInvalid, ruleIndex+1))
 		}
 
 		sourcesRaw, hasSources := aclRule["src"]
 		if hasSources {
 			sources, ok := sourcesRaw.([]any)
 			if !ok {
-				return unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, fmt.Sprintf("ACL 规则第 %d 条的 `src` 必须是字符串数组", ruleIndex+1))
+				return unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, fmt.Sprintf(constants.MsgACLRuleSrcMustBeStrArray, ruleIndex+1))
 			}
 
 			normalizedSources := make([]any, 0, len(sources))
 			for _, sourceRaw := range sources {
 				source, ok := sourceRaw.(string)
 				if !ok {
-					return unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, fmt.Sprintf("ACL 规则第 %d 条的 `src` 必须全部为字符串", ruleIndex+1))
+					return unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, fmt.Sprintf(constants.MsgACLRuleSrcMustBeStrings, ruleIndex+1))
 				}
 
 				trimmed := strings.TrimSpace(source)
 				if trimmed == "" {
-					return unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, fmt.Sprintf("ACL 规则第 %d 条包含空的来源标识", ruleIndex+1))
+					return unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, fmt.Sprintf(constants.MsgACLRuleEmptySource, ruleIndex+1))
 				}
 				normalizedSources = append(normalizedSources, trimmed)
 			}
@@ -279,19 +280,19 @@ func normalizeRawACLRules(raw map[string]any) error {
 
 		destinations, ok := destinationsRaw.([]any)
 		if !ok {
-			return unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, fmt.Sprintf("ACL 规则第 %d 条的 `dst` 必须是字符串数组", ruleIndex+1))
+			return unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, fmt.Sprintf(constants.MsgACLRuleDstMustBeStrArray, ruleIndex+1))
 		}
 
 		normalizedDestinations := make([]any, 0, len(destinations))
 		for _, destinationRaw := range destinations {
 			destination, ok := destinationRaw.(string)
 			if !ok {
-				return unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, fmt.Sprintf("ACL 规则第 %d 条的 `dst` 必须全部为字符串", ruleIndex+1))
+				return unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, fmt.Sprintf(constants.MsgACLRuleDstMustBeStrings, ruleIndex+1))
 			}
 
 			normalizedDestination, err := normalizeACLDestination(destination)
 			if err != nil {
-				return unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, fmt.Sprintf("ACL 规则第 %d 条的目标 %q 格式不正确", ruleIndex+1, strings.TrimSpace(destination)))
+				return unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, fmt.Sprintf(constants.MsgACLRuleDstFormatInvalid, ruleIndex+1, strings.TrimSpace(destination)))
 			}
 			normalizedDestinations = append(normalizedDestinations, normalizedDestination)
 		}
@@ -304,7 +305,7 @@ func normalizeRawACLRules(raw map[string]any) error {
 func normalizeACLDestination(destination string) (string, error) {
 	trimmed := strings.TrimSpace(destination)
 	if trimmed == "" {
-		return "", errors.New("目标不能为空")
+		return "", errors.New(constants.MsgACLDestinationEmpty)
 	}
 
 	switch {
@@ -381,7 +382,7 @@ func wrapACLPolicyApplyError(err error) error {
 		return nil
 	}
 
-	return unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "ACL 策略格式不合法，请检查目标地址是否包含端口，例如 group:admin:*")
+	return unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, constants.MsgACLPolicyFormatInvalid)
 }
 
 // GetParsedRules returns ACL rules with resolved groups and hosts for frontend display
@@ -559,7 +560,7 @@ func (s *aclService) UpdateRuleByIndexWithContext(ctx context.Context, actorUser
 	}
 
 	if index < 0 || index >= len(policy.ACLs) {
-		return errors.New("规则索引超出范围")
+		return errors.New(constants.MsgACLRuleIndexOutOfRange)
 	}
 
 	policy.ACLs[index] = model.ACLRule{
@@ -594,7 +595,7 @@ func (s *aclService) DeleteRuleByIndexWithContext(ctx context.Context, actorUser
 	}
 
 	if index < 0 || index >= len(policy.ACLs) {
-		return errors.New("规则索引超出范围")
+		return errors.New(constants.MsgACLRuleIndexOutOfRange)
 	}
 
 	policy.ACLs = append(policy.ACLs[:index], policy.ACLs[index+1:]...)

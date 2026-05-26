@@ -27,6 +27,7 @@ import (
 	"fmt"
 	"headscale-panel/model"
 	"headscale-panel/pkg/conf"
+	"headscale-panel/pkg/constants"
 	"headscale-panel/pkg/headscale"
 	"headscale-panel/pkg/unifyerror"
 	"net/http"
@@ -78,7 +79,7 @@ func (s *panelSettingsService) SaveConnectionSettings(actorUserID uint, grpcAddr
 
 	grpcAddr = strings.TrimSpace(grpcAddr)
 	if grpcAddr == "" {
-		return unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "gRPC 地址不能为空")
+		return unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, constants.MsgGRPCAddrEmpty)
 	}
 
 	// If no new API key provided, keep existing one
@@ -87,7 +88,7 @@ func (s *panelSettingsService) SaveConnectionSettings(actorUserID uint, grpcAddr
 		effectiveAPIKey = conf.Conf.Headscale.APIKey
 	}
 	if effectiveAPIKey == "" {
-		return unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "API Key 不能为空")
+		return unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, constants.MsgAPIKeyEmpty)
 	}
 
 	if err := SaveConnectionAndInitialize(context.Background(), grpcAddr, effectiveAPIKey, insecure, tlsSkipVerify, tlsCACert); err != nil {
@@ -461,7 +462,7 @@ func (s *panelSettingsService) EnableBuiltinOIDC(actorUserID uint) (*BuiltinOIDC
 
 	issuer := strings.TrimRight(conf.Conf.System.BaseURL, "/")
 	if issuer == "" {
-		return nil, unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "请先在环境变量中配置 BASE_URL")
+		return nil, unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, constants.MsgBaseURLRequired)
 	}
 
 	var client model.OauthClient

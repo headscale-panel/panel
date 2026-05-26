@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2026 
+ * Copyright (C) 2026
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -85,6 +85,7 @@ function ACLTargetPicker({
   children: React.ReactNode;
   searchPlaceholder?: string;
 }) {
+  const t = useTranslation();
   const [search, setSearch] = useState('');
   const [open, setOpen] = useState(false);
 
@@ -119,7 +120,7 @@ function ACLTargetPicker({
             className="mb-2"
           />
           <div className="max-h-100 overflow-auto">
-            {filteredGroups.length === 0 && <Text type="secondary" className="p-2 block">No results</Text>}
+            {filteredGroups.length === 0 && <Text type="secondary" className="p-2 block">{t.acl.noResults}</Text>}
             {filteredGroups.map((group, gi) => (
               <div key={gi}>
                 <Text type="secondary" className="text-12px block py-1 px-2">{group.label}</Text>

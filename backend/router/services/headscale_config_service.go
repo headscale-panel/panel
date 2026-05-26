@@ -253,11 +253,11 @@ func (s *headscaleConfigService) GetConfig() (*HeadscaleConfigFile, error) {
 		if os.IsNotExist(err) {
 			return s.defaultConfig(), nil
 		}
-		return nil, fmt.Errorf("读取配置文件失败: %w", err)
+		return nil, fmt.Errorf("%s: %w", constants.MsgConfigReadFailed, err)
 	}
 	var cfg HeadscaleConfigFile
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
-		return nil, fmt.Errorf("YAML 解析失败: %w", err)
+		return nil, fmt.Errorf("%s: %w", constants.MsgYAMLParseFailed, err)
 	}
 	return &cfg, nil
 }
@@ -284,7 +284,7 @@ func (s *headscaleConfigService) tryRestartHeadscale() {
 func (s *headscaleConfigService) PreviewConfig(cfg *HeadscaleConfigFile) (string, error) {
 	data, err := yaml.Marshal(cfg)
 	if err != nil {
-		return "", fmt.Errorf("YAML 序列化失败: %w", err)
+		return "", fmt.Errorf("%s: %w", constants.MsgYAMLSerializeFailed, err)
 	}
 	return string(data), nil
 }
@@ -403,14 +403,14 @@ func normalizeOIDCAllowlist(values []string) map[string]struct{} {
 func (s *headscaleConfigService) writeConfig(cfg *HeadscaleConfigFile) error {
 	data, err := yaml.Marshal(cfg)
 	if err != nil {
-		return fmt.Errorf("YAML 序列化失败: %w", err)
+		return fmt.Errorf("%s: %w", constants.MsgYAMLSerializeFailed, err)
 	}
 	path := constants.HeadscaleConfigFilePath
 	if err := os.MkdirAll(filepath.Dir(path), 0750); err != nil {
-		return fmt.Errorf("创建配置目录失败: %w", err)
+		return fmt.Errorf("%s: %w", constants.MsgConfigDirCreateFailed, err)
 	}
 	if err := os.WriteFile(path, data, 0600); err != nil {
-		return fmt.Errorf("写入配置文件失败: %w", err)
+		return fmt.Errorf("%s: %w", constants.MsgConfigWriteFailed, err)
 	}
 	return nil
 }

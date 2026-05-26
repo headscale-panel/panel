@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2026 
+ * Copyright (C) 2026
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -42,25 +42,25 @@ import {
 } from 'antd';
 import { useCallback, useState } from 'react';
 import { derpApi } from '@/api';
+import { useTranslation } from '@/i18n';
 
 const { Text } = Typography;
 
 const DEFAULT_NODE: DERPNode = {
   name: '',
-  regionid: 0,
   hostname: '',
   ipv4: '',
   ipv6: '',
+  derpport: 443,
   stunport: 3478,
   stunonly: false,
-  derpport: 443,
+  regionid: 0,
 };
 
-const DEFAULT_REGION: DERPRegion = {
+const DEFAULT_REGION: Omit<DERPRegion, 'nodes'> = {
   regionid: 0,
   regioncode: '',
   regionname: '',
-  nodes: [],
 };
 
 function NodeForm({
@@ -70,41 +70,48 @@ function NodeForm({
   value: DERPNode;
   onChange: (node: DERPNode) => void;
 }) {
+  const t = useTranslation();
   const set = (field: keyof DERPNode, v: any) => onChange({ ...value, [field]: v });
 
   return (
     <Space direction="vertical" className="w-full" size={10}>
       <div className="flex gap-3">
         <div className="flex-1">
-          <Text className="text-12px block mb-1">Node Name *</Text>
+          <Text className="text-12px block mb-1">
+            {t.derp.nodeName}
+            {' *'}
+          </Text>
           <Input value={value.name} onChange={(e) => set('name', e.target.value)} placeholder="node1" />
         </div>
         <div className="flex-1">
-          <Text className="text-12px block mb-1">Hostname *</Text>
+          <Text className="text-12px block mb-1">
+            {t.derp.hostname}
+            {' *'}
+          </Text>
           <Input value={value.hostname} onChange={(e) => set('hostname', e.target.value)} placeholder="derp1.example.com" />
         </div>
       </div>
       <div className="flex gap-3">
         <div className="flex-1">
-          <Text className="text-12px block mb-1">IPv4</Text>
+          <Text className="text-12px block mb-1">{t.derp.ipv4}</Text>
           <Input value={value.ipv4} onChange={(e) => set('ipv4', e.target.value)} placeholder="1.2.3.4" />
         </div>
         <div className="flex-1">
-          <Text className="text-12px block mb-1">IPv6</Text>
+          <Text className="text-12px block mb-1">{t.derp.ipv6}</Text>
           <Input value={value.ipv6} onChange={(e) => set('ipv6', e.target.value)} placeholder="::1" />
         </div>
       </div>
       <div className="flex gap-3 items-end">
         <div>
-          <Text className="text-12px block mb-1">DERP Port</Text>
+          <Text className="text-12px block mb-1">{t.derp.derpPort}</Text>
           <InputNumber min={1} max={65535} value={value.derpport} onChange={(v) => set('derpport', v ?? 443)} style={{ width: 120 }} />
         </div>
         <div>
-          <Text className="text-12px block mb-1">STUN Port</Text>
+          <Text className="text-12px block mb-1">{t.derp.stunPort}</Text>
           <InputNumber min={1} max={65535} value={value.stunport} onChange={(v) => set('stunport', v ?? 3478)} style={{ width: 120 }} />
         </div>
         <div>
-          <Text className="text-12px block mb-1">STUN Only</Text>
+          <Text className="text-12px block mb-1">{t.derp.stunOnly}</Text>
           <Switch checked={value.stunonly} onChange={(v) => set('stunonly', v)} />
         </div>
       </div>
@@ -119,22 +126,32 @@ function RegionForm({
   value: Omit<DERPRegion, 'nodes'>;
   onChange: (region: Omit<DERPRegion, 'nodes'>) => void;
 }) {
+  const t = useTranslation();
   const set = (field: keyof Omit<DERPRegion, 'nodes'>, v: any) => onChange({ ...value, [field]: v });
 
   return (
     <Space direction="vertical" className="w-full" size={10}>
       <div className="flex gap-3">
         <div className="flex-1">
-          <Text className="text-12px block mb-1">Region ID *</Text>
+          <Text className="text-12px block mb-1">
+            {t.derp.regionId}
+            {' *'}
+          </Text>
           <InputNumber min={1} value={value.regionid} onChange={(v) => set('regionid', v ?? 0)} style={{ width: '100%' }} />
         </div>
         <div className="flex-1">
-          <Text className="text-12px block mb-1">Region Code *</Text>
+          <Text className="text-12px block mb-1">
+            {t.derp.regionCode}
+            {' *'}
+          </Text>
           <Input value={value.regioncode} onChange={(e) => set('regioncode', e.target.value)} placeholder="custom" />
         </div>
       </div>
       <div>
-        <Text className="text-12px block mb-1">Region Name *</Text>
+        <Text className="text-12px block mb-1">
+          {t.derp.regionName}
+          {' *'}
+        </Text>
         <Input value={value.regionname} onChange={(e) => set('regionname', e.target.value)} placeholder="Custom Region" />
       </div>
     </Space>
@@ -142,6 +159,7 @@ function RegionForm({
 }
 
 export default function DerpManagement() {
+  const t = useTranslation();
   const [regions, setRegions] = useState<DERPRegion[]>([]);
 
   const { loading, run: refresh } = useRequest(
@@ -151,7 +169,7 @@ export default function DerpManagement() {
       setRegions(regionList);
     }),
     {
-      onError: (e) => message.error(`Failed to load DERP map: ${(e as any).message}`),
+      onError: (e) => message.error(`${t.derp.failedToLoadDERPMap}: ${(e as any).message}`),
     },
   );
 
@@ -176,22 +194,22 @@ export default function DerpManagement() {
 
   const handleSaveRegion = async () => {
     if (!regionForm.regionid || !regionForm.regioncode || !regionForm.regionname) {
-      message.error('Please fill in all required region fields');
+      message.error(t.derp.pleaseFillRequired);
       return;
     }
     setSavingRegion(true);
     try {
       if (editingRegion) {
         await derpApi.updateRegion(editingRegion.regionid, { ...regionForm, nodes: editingRegion.nodes });
-        message.success('Region updated');
+        message.success(t.derp.regionUpdated);
       } else {
         await derpApi.addRegion({ ...regionForm, nodes: [] });
-        message.success('Region added');
+        message.success(t.derp.regionAdded);
       }
       setRegionModalOpen(false);
       refresh();
     } catch (e: any) {
-      message.error(`Failed to save region: ${e.message}`);
+      message.error(`${t.derp.failedToSaveRegion}: ${e.message}`);
     } finally {
       setSavingRegion(false);
     }
@@ -199,16 +217,16 @@ export default function DerpManagement() {
 
   const handleDeleteRegion = useCallback(async (regionId: number) => {
     Modal.confirm({
-      title: 'Delete Region',
-      content: `Are you sure you want to delete region ${regionId}?`,
+      title: t.derp.confirmDeleteRegion,
+      content: t.derp.confirmDeleteRegionContent.replace('{id}', String(regionId)),
       okType: 'danger',
       onOk: async () => {
         await derpApi.deleteRegion(regionId);
-        message.success('Region deleted');
+        message.success(t.derp.regionDeleted);
         refresh();
       },
     });
-  }, [refresh]);
+  }, [refresh, t]);
 
   // ─── Node modal ────────────────────────────────────────────────────────────
   const [nodeModalOpen, setNodeModalOpen] = useState(false);
@@ -233,22 +251,22 @@ export default function DerpManagement() {
 
   const handleSaveNode = async () => {
     if (!nodeForm.name || !nodeForm.hostname) {
-      message.error('Node name and hostname are required');
+      message.error(t.derp.nodeRequired);
       return;
     }
     setSavingNode(true);
     try {
       if (nodeIndex !== null) {
         await derpApi.updateNode(nodeRegionId, nodeIndex, { ...nodeForm, regionid: nodeRegionId });
-        message.success('Node updated');
+        message.success(t.derp.nodeUpdated);
       } else {
         await derpApi.addNode(nodeRegionId, { ...nodeForm, regionid: nodeRegionId });
-        message.success('Node added');
+        message.success(t.derp.nodeAdded);
       }
       setNodeModalOpen(false);
       refresh();
     } catch (e: any) {
-      message.error(`Failed to save node: ${e.message}`);
+      message.error(`${t.derp.failedToSaveNode}: ${e.message}`);
     } finally {
       setSavingNode(false);
     }
@@ -256,24 +274,24 @@ export default function DerpManagement() {
 
   const handleDeleteNode = useCallback(async (regionId: number, idx: number, nodeName: string) => {
     Modal.confirm({
-      title: 'Delete Node',
-      content: `Delete node "${nodeName}"?`,
+      title: t.derp.confirmDeleteNode,
+      content: t.derp.confirmDeleteNodeContent.replace('{name}', nodeName),
       okType: 'danger',
       onOk: async () => {
         await derpApi.deleteNode(regionId, idx);
-        message.success('Node deleted');
+        message.success(t.derp.nodeDeleted);
         refresh();
       },
     });
-  }, [refresh]);
+  }, [refresh, t]);
 
   // ─── Node columns ──────────────────────────────────────────────────────────
   const nodeColumns = (regionId: number): ColumnsType<DERPNode & { _idx: number }> => [
-    { title: 'Name', dataIndex: 'name', key: 'name', render: (v) => <Text code>{v}</Text> },
-    { title: 'Hostname', dataIndex: 'hostname', key: 'hostname' },
-    { title: 'IPv4', dataIndex: 'ipv4', key: 'ipv4', render: (v) => v || '—' },
+    { title: t.derp.name, dataIndex: 'name', key: 'name', render: (v) => <Text code>{v}</Text> },
+    { title: t.derp.hostname, dataIndex: 'hostname', key: 'hostname' },
+    { title: t.derp.ipv4, dataIndex: 'ipv4', key: 'ipv4', render: (v) => v || '—' },
     {
-      title: 'Ports',
+      title: t.derp.ports,
       key: 'ports',
       render: (_, r) => (
         <Space size={4}>
@@ -287,7 +305,7 @@ export default function DerpManagement() {
             STUN:
             {r.stunport}
           </Tag>
-          {r.stunonly && <Tag color="orange">STUN only</Tag>}
+          {r.stunonly && <Tag color="orange">{t.derp.stunOnlyTag}</Tag>}
         </Space>
       ),
     },
@@ -297,10 +315,10 @@ export default function DerpManagement() {
       width: 80,
       render: (_, r) => (
         <Space>
-          <Tooltip title="Edit">
+          <Tooltip title={t.derp.editTooltip}>
             <Button size="small" icon={<EditOutlined />} onClick={() => openEditNode(regionId, r._idx, r)} />
           </Tooltip>
-          <Tooltip title="Delete">
+          <Tooltip title={t.derp.deleteTooltip}>
             <Button size="small" danger icon={<DeleteOutlined />} onClick={() => handleDeleteNode(regionId, r._idx, r.name)} />
           </Tooltip>
         </Space>
@@ -314,7 +332,7 @@ export default function DerpManagement() {
         <Space>
           <Button icon={<ReloadOutlined spin={loading} />} onClick={refresh} />
           <Button type="primary" icon={<PlusOutlined />} onClick={openAddRegion}>
-            Add Region
+            {t.derp.addRegion}
           </Button>
         </Space>
       </div>
@@ -323,7 +341,7 @@ export default function DerpManagement() {
         <Card>
           <div className="text-center py-8">
             <NodeIndexOutlined style={{ fontSize: 32, opacity: 0.3 }} />
-            <div className="mt-2 text-secondary">No DERP regions configured</div>
+            <div className="mt-2 text-secondary">{t.derp.noRegions}</div>
           </div>
         </Card>
       )}
@@ -345,14 +363,14 @@ export default function DerpManagement() {
               <Tag>
                 {region.nodes?.length ?? 0}
                 {' '}
-                node(s)
+                {t.derp.nodeCount}
               </Tag>
             </Space>
           ),
           extra: (
             <Space onClick={(e) => e.stopPropagation()}>
               <Button size="small" icon={<PlusOutlined />} onClick={() => openAddNode(region.regionid)}>
-                Add Node
+                {t.derp.addNode}
               </Button>
               <Button size="small" icon={<EditOutlined />} onClick={() => openEditRegion(region)} />
               <Button size="small" danger icon={<DeleteOutlined />} onClick={() => handleDeleteRegion(region.regionid)} />
@@ -365,7 +383,7 @@ export default function DerpManagement() {
               pagination={false}
               dataSource={(region.nodes ?? []).map((n, i) => ({ ...n, _idx: i }))}
               columns={nodeColumns(region.regionid)}
-              locale={{ emptyText: 'No nodes in this region' }}
+              locale={{ emptyText: t.derp.noNodes }}
             />
           ),
         }))}
@@ -374,7 +392,7 @@ export default function DerpManagement() {
       {/* Region Modal */}
       <Modal
         open={regionModalOpen}
-        title={editingRegion ? 'Edit Region' : 'Add Region'}
+        title={editingRegion ? t.derp.editRegion : t.derp.addRegion}
         onCancel={() => setRegionModalOpen(false)}
         onOk={handleSaveRegion}
         confirmLoading={savingRegion}
@@ -387,7 +405,7 @@ export default function DerpManagement() {
       {/* Node Modal */}
       <Modal
         open={nodeModalOpen}
-        title={nodeIndex !== null ? 'Edit Node' : 'Add Node'}
+        title={nodeIndex !== null ? t.derp.editNode : t.derp.addNode}
         onCancel={() => setNodeModalOpen(false)}
         onOk={handleSaveNode}
         confirmLoading={savingNode}

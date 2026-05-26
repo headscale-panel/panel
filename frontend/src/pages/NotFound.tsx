@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2026 
+ * Copyright (C) 2026
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -18,19 +18,21 @@
 import { HomeOutlined } from '@ant-design/icons';
 import { Button, Result } from 'antd';
 import { useLocation } from 'wouter';
+import { useTranslation } from '@/i18n';
 
 export default function NotFound() {
   const [, setLocation] = useLocation();
+  const t = useTranslation();
 
   return (
     <div className="auth-page">
       <Result
         status="404"
         title="404"
-        subTitle="Sorry, the page you are looking for doesn't exist."
+        subTitle={t.notFound.subTitle}
         extra={(
           <Button type="primary" icon={<HomeOutlined />} onClick={() => setLocation('/')}>
-            Go Home
+            {t.notFound.goHome}
           </Button>
         )}
       />

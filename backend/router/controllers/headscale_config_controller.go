@@ -16,6 +16,7 @@
 package controllers
 
 import (
+	"headscale-panel/pkg/constants"
 	"headscale-panel/pkg/unifyerror"
 	"headscale-panel/router/services"
 
@@ -75,7 +76,7 @@ func (c *HeadscaleConfigController) Update(ctx *gin.Context) {
 		return
 	}
 
-	unifyerror.Success(ctx, gin.H{"message": "配置已保存"})
+	unifyerror.Success(ctx, gin.H{"message": constants.MsgConfigSaved})
 }
 
 // Preview godoc

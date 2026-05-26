@@ -20,6 +20,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"headscale-panel/model"
+	"headscale-panel/pkg/constants"
 	"headscale-panel/pkg/unifyerror"
 	"net/http"
 	"strings"
@@ -1128,10 +1129,10 @@ func (s *headscaleService) RegisterNodeWithContext(ctx context.Context, actorUse
 		Key:  key,
 	})
 	if err != nil {
-		return nil, unifyerror.New(http.StatusBadGateway, unifyerror.CodeGRPCErr, fmt.Sprintf("注册节点失败: %v", err))
+		return nil, unifyerror.New(http.StatusBadGateway, unifyerror.CodeGRPCErr, fmt.Sprintf(constants.MsgRegisterNodeFailed, err))
 	}
 	if resp.Node == nil {
-		return nil, unifyerror.New(http.StatusBadGateway, unifyerror.CodeGRPCErr, "注册节点失败: Headscale 返回空节点")
+		return nil, unifyerror.New(http.StatusBadGateway, unifyerror.CodeGRPCErr, constants.MsgHeadscaleReturnedNil)
 	}
 
 	node := resp.Node

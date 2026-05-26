@@ -16,6 +16,7 @@
 package controllers
 
 import (
+	"headscale-panel/pkg/constants"
 	"headscale-panel/pkg/unifyerror"
 	"headscale-panel/router/services"
 
@@ -79,7 +80,7 @@ func (c *PanelSettingsController) SaveConnection(ctx *gin.Context) {
 		return
 	}
 
-	unifyerror.Success(ctx, gin.H{"message": "连接设置已保存"})
+	unifyerror.Success(ctx, gin.H{"message": constants.MsgConnectionSettingsSaved})
 }
 
 // SyncData godoc
@@ -96,7 +97,7 @@ func (c *PanelSettingsController) SyncData(ctx *gin.Context) {
 		unifyerror.Fail(ctx, err)
 		return
 	}
-	unifyerror.Success(ctx, gin.H{"message": "数据同步完成"})
+	unifyerror.Success(ctx, gin.H{"message": constants.MsgDataSyncCompleted})
 }
 
 // GetBuiltinOIDC godoc
@@ -180,7 +181,7 @@ func (c *PanelSettingsController) SaveOIDCSettings(ctx *gin.Context) {
 		unifyerror.Fail(ctx, err)
 		return
 	}
-	unifyerror.Success(ctx, gin.H{"message": "OIDC 设置已保存"})
+	unifyerror.Success(ctx, gin.H{"message": constants.MsgOIDCSettingsSaved})
 }
 
 // GetOIDCStatus godoc

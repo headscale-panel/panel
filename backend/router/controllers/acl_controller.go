@@ -17,6 +17,7 @@ package controllers
 
 import (
 	"net/http"
+	"headscale-panel/pkg/constants"
 	"headscale-panel/pkg/unifyerror"
 	"headscale-panel/model"
 	"headscale-panel/router/services"
@@ -224,7 +225,7 @@ type DeleteRuleByIndexQuery struct {
 func (c *ACLController) DeleteRuleByIndex(ctx *gin.Context) {
 	var q DeleteRuleByIndexQuery
 	if err := ctx.ShouldBindQuery(&q); err != nil {
-		unifyerror.Fail(ctx, unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "无效的索引"))
+		unifyerror.Fail(ctx, unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, constants.MsgInvalidIndex))
 		return
 	}
 

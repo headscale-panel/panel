@@ -19,6 +19,8 @@ import (
 	"fmt"
 	"time"
 
+	"headscale-panel/pkg/constants"
+
 	"github.com/sirupsen/logrus"
 )
 
@@ -82,5 +84,5 @@ func FromError(err error) *UniErr {
 	if u, ok := err.(*UniErr); ok {
 		return u
 	}
-	return newUniErrWithServer(ErrTypeServer, 500, CodeServerErr, msgServerErr, fmt.Sprintf("%v", err))
+	return newUniErrWithServer(ErrTypeServer, 500, CodeServerErr, constants.MsgServerErr, fmt.Sprintf("%v", err))
 }
