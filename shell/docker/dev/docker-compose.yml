@@ -3,7 +3,7 @@ name: panel-dev
 services:
 
   headscale:
-    image: headscale/headscale:latest
+    image: headscale/headscale:v0.28.0
     container_name: panel-dev-headscale
     restart: unless-stopped
     command: serve
@@ -58,7 +58,6 @@ services:
     environment:
       SSL_CERT_FILE: /etc/cert/selfsigned.crt
     volumes:
-      - ./data/tailscale:/var/lib/tailscale
       - ../../../shell/docker/dev/cert:/etc/cert:ro
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro

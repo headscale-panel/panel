@@ -78,9 +78,9 @@ func (s *statusService) GetSystemStatus(userID uint) (*SystemStatus, error) {
 	// Current user info
 	if userID > 0 {
 		var user model.User
-		if err := model.DB.Preload("Group").First(&user, userID).Error; err == nil {
+		if err := model.DB.First(&user, userID).Error; err == nil {
 			role := constants.ROLE_USER
-			if IsAdminGroupName(user.Group.Name) {
+			if user.IsAdmin {
 				role = constants.ROLE_ADMIN
 			}
 			status.CurrentUser = &StatusUser{

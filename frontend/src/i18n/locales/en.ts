@@ -268,6 +268,7 @@ const en: Translations = {
     deleteUser: 'Delete Headscale User',
     createUserTitle: 'Create Headscale User',
     createUserDesc: 'Create a new Headscale user and optionally add it to an ACL group.',
+    createUserOidcMergeWarning: 'Users created here will not be automatically linked to OIDC authentication. When a user with the same name logs in via OIDC, Headscale will create a separate OIDC account, resulting in two independent accounts under the same username.',
     usernameLabel: 'Headscale Username *',
     usernamePlaceholder: 'Enter Headscale username',
     passwordLabel: 'Password *',

@@ -1,4 +1,4 @@
-// Copyright (C) 2026 
+// Copyright (C) 2026
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as
@@ -18,6 +18,7 @@ package services
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"headscale-panel/model"
 	"headscale-panel/pkg/constants"
@@ -97,11 +98,14 @@ func normalizeHeadscaleProvider(raw string) string {
 	}
 }
 
-// ListHeadscaleUsers fetches users directly from Headscale via gRPC
+// ListHeadscaleUsers fetches users directly from Headscale via gRPC.
+// Returns pure headscale data only — no panel DB overrides.
 func (s *headscaleService) ListHeadscaleUsers(actorUserID uint) ([]HeadscaleUser, error) {
 	return s.ListHeadscaleUsersWithContext(context.Background(), actorUserID)
 }
 
+// ListHeadscaleUsersWithContext returns users from headscale gRPC only.
+// This function does NOT read from or write to the panel database.
 func (s *headscaleService) ListHeadscaleUsersWithContext(ctx context.Context, actorUserID uint) ([]HeadscaleUser, error) {
 	if err := RequirePermission(actorUserID, "headscale:user:list"); err != nil {
 		return nil, err
@@ -118,42 +122,9 @@ func (s *headscaleService) ListHeadscaleUsersWithContext(ctx context.Context, ac
 	queryCtx, cancel := withServiceTimeout(ctx)
 	defer cancel()
 
-	resp, err := client.ListUsers(queryCtx, &v1.ListUsersRequest{})
-	if err != nil {
-		return nil, fmt.Errorf("failed to list users from Headscale: %w", err)
-	}
-
-	nameSet := make(map[string]struct{}, len(resp.Users))
-	for _, u := range resp.Users {
-		name := strings.TrimSpace(u.Name)
-		if name == "" {
-			continue
-		}
-		nameSet[name] = struct{}{}
-	}
-
-	names := make([]string, 0, len(nameSet))
-	for name := range nameSet {
-		names = append(names, name)
-	}
-
-	providerOverrides := make(map[string]model.User, len(names))
-	if len(names) > 0 {
-		var panelUsers []model.User
-		if err := model.DB.Select("username", "headscale_name", "provider", "provider_id", "display_name", "email", "profile_pic_url").
-			Where("headscale_name IN ? OR username IN ?", names, names).
-			Find(&panelUsers).Error; err == nil {
-			for _, panelUser := range panelUsers {
-				primaryKey := strings.ToLower(strings.TrimSpace(panelUser.HeadscaleName))
-				if primaryKey == "" {
-					primaryKey = strings.ToLower(strings.TrimSpace(panelUser.Username))
-				}
-				if primaryKey == "" {
-					continue
-				}
-				providerOverrides[primaryKey] = panelUser
-			}
-		}
+	resp, grpcErr := client.ListUsers(queryCtx, &v1.ListUsersRequest{})
+	if grpcErr != nil {
+		return nil, unifyerror.GRPCError(grpcErr)
 	}
 
 	users := make([]HeadscaleUser, 0, len(resp.Users))
@@ -161,39 +132,17 @@ func (s *headscaleService) ListHeadscaleUsersWithContext(ctx context.Context, ac
 		if !actorCanAccessHeadscaleUser(scope, u.Name) {
 			continue
 		}
-		user := HeadscaleUser{
-			ID:            u.Id,
-			Name:          u.Name,
-			DisplayName:   u.DisplayName,
-			Email:         u.Email,
-			Provider:      normalizeHeadscaleProvider(u.Provider),
-			ProviderID:    u.ProviderId,
-			ProfilePicURL: u.ProfilePicUrl,
-		}
-		if u.CreatedAt != nil {
-			user.CreatedAt = u.CreatedAt.AsTime().Format(time.RFC3339)
-		}
-		if override, ok := providerOverrides[strings.ToLower(strings.TrimSpace(u.Name))]; ok {
-			overrideProvider := strings.ToLower(strings.TrimSpace(override.Provider))
-			if overrideProvider == "oidc" {
-				user.Provider = "oidc"
-				if strings.TrimSpace(override.ProviderID) != "" {
-					user.ProviderID = strings.TrimSpace(override.ProviderID)
-				}
-				if strings.TrimSpace(override.DisplayName) != "" {
-					user.DisplayName = strings.TrimSpace(override.DisplayName)
-				}
-				if strings.TrimSpace(override.Email) != "" {
-					user.Email = strings.TrimSpace(override.Email)
-				}
-				if strings.TrimSpace(override.ProfilePicURL) != "" {
-					user.ProfilePicURL = strings.TrimSpace(override.ProfilePicURL)
-				}
-			}
-		}
-		users = append(users, user)
+		user := headscaleUserFromProto(u)
+		users = append(users, *user)
 	}
 	return users, nil
+}
+
+// ListMergedUsersWithContext fetches users from headscale gRPC.
+// Previously this merged panel OIDC data, but bindings now only store IDs.
+// Use this for OIDC callback validation (checking if a headscale user exists).
+func (s *headscaleService) ListMergedUsersWithContext(ctx context.Context, actorUserID uint) ([]HeadscaleUser, error) {
+	return s.ListHeadscaleUsersWithContext(ctx, actorUserID)
 }
 
 // ListMachines fetches machines directly from Headscale via gRPC with in-memory pagination/filtering
@@ -218,9 +167,9 @@ func (s *headscaleService) ListMachinesWithContext(ctx context.Context, actorUse
 	queryCtx, cancel := withServiceTimeout(ctx)
 	defer cancel()
 
-	resp, err := client.ListNodes(queryCtx, &v1.ListNodesRequest{})
-	if err != nil {
-		return nil, 0, fmt.Errorf("failed to list nodes from Headscale: %w", err)
+	resp, grpcErr := client.ListNodes(queryCtx, &v1.ListNodesRequest{})
+	if grpcErr != nil {
+		return nil, 0, unifyerror.GRPCError(grpcErr)
 	}
 
 	// Convert all nodes to our format
@@ -297,11 +246,11 @@ func (s *headscaleService) GetMachineWithContext(ctx context.Context, actorUserI
 	queryCtx, cancel := withServiceTimeout(ctx)
 	defer cancel()
 
-	resp, err := client.GetNode(queryCtx, &v1.GetNodeRequest{
+	resp, grpcErr := client.GetNode(queryCtx, &v1.GetNodeRequest{
 		NodeId: nodeID,
 	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to get node from Headscale: %w", err)
+	if grpcErr != nil {
+		return nil, unifyerror.GRPCError(grpcErr)
 	}
 	if err := ensureActorCanAccessNode(actorUserID, resp.Node); err != nil {
 		return nil, err
@@ -332,19 +281,31 @@ func (s *headscaleService) GetAccessibleMachinesWithContext(ctx context.Context,
 		return machines, nil
 	}
 
-	targetHeadscaleName, err := resolvePanelUserHeadscaleName(userID)
-	if err != nil {
-		return nil, err
+	targetNames := resolvePanelUserHeadscaleNames(userID)
+	if len(targetNames) == 0 {
+		return nil, unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "target user has no Headscale identity")
 	}
-	if err := ensureActorCanAccessHeadscaleUserName(actorUserID, targetHeadscaleName); err != nil {
-		return nil, err
+
+	nameSet := make(map[string]struct{}, len(targetNames))
+	for _, n := range targetNames {
+		nameSet[strings.ToLower(strings.TrimSpace(n))] = struct{}{}
 	}
+
+	for _, name := range targetNames {
+		if err := ensureActorCanAccessHeadscaleUserName(actorUserID, name); err == nil {
+			goto allowed
+		}
+	}
+	return nil, unifyerror.Forbidden()
+allowed:
 
 	machines := make([]HeadscaleMachine, 0, len(nodes))
 	for _, node := range nodes {
 		machine := s.nodeToMachine(node)
-		if machine.User != nil && strings.EqualFold(strings.TrimSpace(machine.User.Name), targetHeadscaleName) {
-			machines = append(machines, machine)
+		if machine.User != nil {
+			if _, ok := nameSet[strings.ToLower(strings.TrimSpace(machine.User.Name))]; ok {
+				machines = append(machines, machine)
+			}
 		}
 	}
 	return machines, nil
@@ -367,22 +328,22 @@ func (s *headscaleService) RenameMachineWithContext(ctx context.Context, actorUs
 	queryCtx, cancel := withServiceTimeout(ctx)
 	defer cancel()
 
-	nodeResp, err := client.GetNode(queryCtx, &v1.GetNodeRequest{
+	nodeResp, grpcErr := client.GetNode(queryCtx, &v1.GetNodeRequest{
 		NodeId: nodeID,
 	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to get node from Headscale: %w", err)
+	if grpcErr != nil {
+		return nil, unifyerror.GRPCError(grpcErr)
 	}
 	if err := ensureActorCanAccessNode(actorUserID, nodeResp.Node); err != nil {
 		return nil, err
 	}
 
-	resp, err := client.RenameNode(queryCtx, &v1.RenameNodeRequest{
+	resp, grpcErr := client.RenameNode(queryCtx, &v1.RenameNodeRequest{
 		NodeId:  nodeID,
 		NewName: newName,
 	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to rename node: %w", err)
+	if grpcErr != nil {
+		return nil, unifyerror.GRPCError(grpcErr)
 	}
 	machine := s.nodeToMachine(resp.Node)
 	return &machine, nil
@@ -404,20 +365,20 @@ func (s *headscaleService) DeleteMachineWithContext(ctx context.Context, actorUs
 
 	queryCtx, cancel := withServiceTimeout(ctx)
 	defer cancel()
-	nodeResp, err := client.GetNode(queryCtx, &v1.GetNodeRequest{
+	nodeResp, grpcErr := client.GetNode(queryCtx, &v1.GetNodeRequest{
 		NodeId: nodeID,
 	})
-	if err != nil {
-		return fmt.Errorf("failed to get node from Headscale: %w", err)
+	if grpcErr != nil {
+		return unifyerror.GRPCError(grpcErr)
 	}
 	if err := ensureActorCanAccessNode(actorUserID, nodeResp.Node); err != nil {
 		return err
 	}
-	_, err = client.DeleteNode(queryCtx, &v1.DeleteNodeRequest{
+	_, grpcErr = client.DeleteNode(queryCtx, &v1.DeleteNodeRequest{
 		NodeId: nodeID,
 	})
-	if err != nil {
-		return fmt.Errorf("failed to delete node: %w", err)
+	if grpcErr != nil {
+		return unifyerror.GRPCError(grpcErr)
 	}
 	return nil
 }
@@ -439,21 +400,21 @@ func (s *headscaleService) ExpireMachineWithContext(ctx context.Context, actorUs
 	queryCtx, cancel := withServiceTimeout(ctx)
 	defer cancel()
 
-	nodeResp, err := client.GetNode(queryCtx, &v1.GetNodeRequest{
+	nodeResp, grpcErr := client.GetNode(queryCtx, &v1.GetNodeRequest{
 		NodeId: nodeID,
 	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to get node from Headscale: %w", err)
+	if grpcErr != nil {
+		return nil, unifyerror.GRPCError(grpcErr)
 	}
 	if err := ensureActorCanAccessNode(actorUserID, nodeResp.Node); err != nil {
 		return nil, err
 	}
 
-	resp, err := client.ExpireNode(queryCtx, &v1.ExpireNodeRequest{
+	resp, grpcErr := client.ExpireNode(queryCtx, &v1.ExpireNodeRequest{
 		NodeId: nodeID,
 	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to expire node: %w", err)
+	if grpcErr != nil {
+		return nil, unifyerror.GRPCError(grpcErr)
 	}
 	machine := s.nodeToMachine(resp.Node)
 	return &machine, nil
@@ -476,22 +437,22 @@ func (s *headscaleService) SetMachineTagsWithContext(ctx context.Context, actorU
 	queryCtx, cancel := withServiceTimeout(ctx)
 	defer cancel()
 
-	nodeResp, err := client.GetNode(queryCtx, &v1.GetNodeRequest{
+	nodeResp, grpcErr := client.GetNode(queryCtx, &v1.GetNodeRequest{
 		NodeId: nodeID,
 	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to get node from Headscale: %w", err)
+	if grpcErr != nil {
+		return nil, unifyerror.GRPCError(grpcErr)
 	}
 	if err := ensureActorCanAccessNode(actorUserID, nodeResp.Node); err != nil {
 		return nil, err
 	}
 
-	resp, err := client.SetTags(queryCtx, &v1.SetTagsRequest{
+	resp, grpcErr := client.SetTags(queryCtx, &v1.SetTagsRequest{
 		NodeId: nodeID,
 		Tags:   tags,
 	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to set tags: %w", err)
+	if grpcErr != nil {
+		return nil, unifyerror.GRPCError(grpcErr)
 	}
 	machine := s.nodeToMachine(resp.Node)
 	return &machine, nil
@@ -536,9 +497,9 @@ func (s *headscaleService) findAccessibleUserByNameWithContext(ctx context.Conte
 	queryCtx, cancel := withServiceTimeout(ctx)
 	defer cancel()
 
-	resp, err := client.ListUsers(queryCtx, &v1.ListUsersRequest{})
-	if err != nil {
-		return nil, fmt.Errorf("failed to list users from Headscale: %w", err)
+	resp, grpcErr := client.ListUsers(queryCtx, &v1.ListUsersRequest{})
+	if grpcErr != nil {
+		return nil, unifyerror.GRPCError(grpcErr)
 	}
 
 	for _, user := range resp.Users {
@@ -589,9 +550,9 @@ func (s *headscaleService) CreateUserWithContext(ctx context.Context, actorUserI
 	queryCtx, cancel := withServiceTimeout(ctx)
 	defer cancel()
 
-	listResp, err := client.ListUsers(queryCtx, &v1.ListUsersRequest{})
-	if err != nil {
-		return nil, fmt.Errorf("failed to list users from Headscale: %w", err)
+	listResp, grpcErr := client.ListUsers(queryCtx, &v1.ListUsersRequest{})
+	if grpcErr != nil {
+		return nil, unifyerror.GRPCError(grpcErr)
 	}
 	for _, existingUser := range listResp.Users {
 		if strings.EqualFold(strings.TrimSpace(existingUser.Name), trimmedName) {
@@ -599,25 +560,26 @@ func (s *headscaleService) CreateUserWithContext(ctx context.Context, actorUserI
 		}
 	}
 
-	resp, err := client.CreateUser(queryCtx, &v1.CreateUserRequest{
+	resp, grpcErr := client.CreateUser(queryCtx, &v1.CreateUserRequest{
 		Name:        trimmedName,
 		DisplayName: displayName,
 		Email:       email,
 		PictureUrl:  pictureURL,
 	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to create user: %w", err)
+	if grpcErr != nil {
+		return nil, unifyerror.GRPCError(grpcErr)
 	}
 
 	return headscaleUserFromProto(resp.User), nil
 }
 
-// RenameUser renames a user in Headscale
-func (s *headscaleService) RenameUser(actorUserID uint, oldID uint64, newName, displayName, email, pictureURL string) (*HeadscaleUser, error) {
-	return s.RenameUserWithContext(context.Background(), actorUserID, oldID, newName, displayName, email, pictureURL)
+// RenameUser renames a user in Headscale.
+// Returns the raw headscale gRPC response — no panel data patching.
+func (s *headscaleService) RenameUser(actorUserID uint, oldID uint64, newName string) (*HeadscaleUser, error) {
+	return s.RenameUserWithContext(context.Background(), actorUserID, oldID, newName)
 }
 
-func (s *headscaleService) RenameUserWithContext(ctx context.Context, actorUserID uint, oldID uint64, newName, displayName, email, pictureURL string) (*HeadscaleUser, error) {
+func (s *headscaleService) RenameUserWithContext(ctx context.Context, actorUserID uint, oldID uint64, newName string) (*HeadscaleUser, error) {
 	if err := RequirePermission(actorUserID, "headscale:user:update"); err != nil {
 		return nil, err
 	}
@@ -634,30 +596,21 @@ func (s *headscaleService) RenameUserWithContext(ctx context.Context, actorUserI
 	queryCtx, cancel := withServiceTimeout(ctx)
 	defer cancel()
 
-	resp, err := client.RenameUser(queryCtx, &v1.RenameUserRequest{
+	resp, grpcErr := client.RenameUser(queryCtx, &v1.RenameUserRequest{
 		OldId:   oldID,
 		NewName: trimmedNewName,
 	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to rename user: %w", err)
+	if grpcErr != nil {
+		return nil, unifyerror.GRPCError(grpcErr)
 	}
 	user := headscaleUserFromProto(resp.User)
 	if user == nil {
-		return nil, fmt.Errorf("failed to rename user: empty response")
-	}
-	if user.DisplayName == "" && strings.TrimSpace(displayName) != "" {
-		user.DisplayName = strings.TrimSpace(displayName)
-	}
-	if user.Email == "" && strings.TrimSpace(email) != "" {
-		user.Email = strings.TrimSpace(email)
-	}
-	if user.ProfilePicURL == "" && strings.TrimSpace(pictureURL) != "" {
-		user.ProfilePicURL = strings.TrimSpace(pictureURL)
+		return nil, unifyerror.GRPCError(fmt.Errorf("failed to rename user: empty response"))
 	}
 	return user, nil
 }
 
-func (s *headscaleService) RenameUserByNameWithContext(ctx context.Context, actorUserID uint, oldName, newName, displayName, email, pictureURL string) (*HeadscaleUser, error) {
+func (s *headscaleService) RenameUserByNameWithContext(ctx context.Context, actorUserID uint, oldName, newName string) (*HeadscaleUser, error) {
 	if err := RequirePermission(actorUserID, "headscale:user:update"); err != nil {
 		return nil, err
 	}
@@ -677,13 +630,14 @@ func (s *headscaleService) RenameUserByNameWithContext(ctx context.Context, acto
 		if _, err := s.findAccessibleUserByNameWithContext(ctx, actorUserID, trimmedNewName); err == nil {
 			return nil, unifyerror.Conflict("user already exists")
 		} else {
-			if uniErr, ok := err.(*unifyerror.UniErr); !ok || uniErr.Code != unifyerror.CodeNotFound {
+			var uniErr *unifyerror.UniErr
+			if !errors.As(err, &uniErr) || uniErr.Code != unifyerror.CodeNotFound {
 				return nil, err
 			}
 		}
 	}
 
-	return s.RenameUserWithContext(ctx, actorUserID, targetUser.Id, trimmedNewName, displayName, email, pictureURL)
+	return s.RenameUserWithContext(ctx, actorUserID, targetUser.Id, trimmedNewName)
 }
 
 // DeleteUser deletes a user in Headscale
@@ -703,11 +657,11 @@ func (s *headscaleService) DeleteUserWithContext(ctx context.Context, actorUserI
 	queryCtx, cancel := withServiceTimeout(ctx)
 	defer cancel()
 
-	_, err = client.DeleteUser(queryCtx, &v1.DeleteUserRequest{
+	_, grpcErr := client.DeleteUser(queryCtx, &v1.DeleteUserRequest{
 		Id: id,
 	})
-	if err != nil {
-		return fmt.Errorf("failed to delete user: %w", err)
+	if grpcErr != nil {
+		return unifyerror.GRPCError(grpcErr)
 	}
 	return nil
 }
@@ -734,9 +688,9 @@ func (s *headscaleService) CountUserMachinesWithContext(ctx context.Context, use
 	queryCtx, cancel := withServiceTimeout(ctx)
 	defer cancel()
 
-	resp, err := client.ListNodes(queryCtx, &v1.ListNodesRequest{})
-	if err != nil {
-		return 0, fmt.Errorf("failed to list nodes from Headscale: %w", err)
+	resp, grpcErr := client.ListNodes(queryCtx, &v1.ListNodesRequest{})
+	if grpcErr != nil {
+		return 0, unifyerror.GRPCError(grpcErr)
 	}
 
 	count := 0
@@ -761,9 +715,9 @@ func (s *headscaleService) ResolveUserIDByNameWithContext(ctx context.Context, u
 	queryCtx, cancel := withServiceTimeout(ctx)
 	defer cancel()
 
-	resp, err := client.ListUsers(queryCtx, &v1.ListUsersRequest{})
-	if err != nil {
-		return 0, fmt.Errorf("failed to list users from Headscale: %w", err)
+	resp, grpcErr := client.ListUsers(queryCtx, &v1.ListUsersRequest{})
+	if grpcErr != nil {
+		return 0, unifyerror.GRPCError(grpcErr)
 	}
 
 	for _, user := range resp.Users {
@@ -826,9 +780,9 @@ func (s *headscaleService) GetPreAuthKeysWithContext(ctx context.Context, actorU
 	queryCtx, cancel := withServiceTimeout(ctx)
 	defer cancel()
 
-	resp, err := client.ListPreAuthKeys(queryCtx, &v1.ListPreAuthKeysRequest{})
-	if err != nil {
-		return nil, fmt.Errorf("failed to list pre-auth keys: %w", err)
+	resp, grpcErr := client.ListPreAuthKeys(queryCtx, &v1.ListPreAuthKeysRequest{})
+	if grpcErr != nil {
+		return nil, unifyerror.GRPCError(grpcErr)
 	}
 
 	var result []HeadscaleAuthKey
@@ -871,9 +825,9 @@ func (s *headscaleService) CreatePreAuthKeyWithContext(ctx context.Context, acto
 			req.Expiration = timestamppb.New(t)
 		}
 	}
-	resp, err := client.CreatePreAuthKey(queryCtx, req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create pre-auth key: %w", err)
+	resp, grpcErr := client.CreatePreAuthKey(queryCtx, req)
+	if grpcErr != nil {
+		return nil, unifyerror.GRPCError(grpcErr)
 	}
 
 	return resp.PreAuthKey, nil
@@ -894,16 +848,18 @@ func (s *headscaleService) ExpirePreAuthKeyByIDWithContext(ctx context.Context, 
 
 	expireCtx, expireCancel := withServiceTimeout(ctx)
 	defer expireCancel()
-	_, err = client.ExpirePreAuthKey(expireCtx, &v1.ExpirePreAuthKeyRequest{
+	_, grpcErr := client.ExpirePreAuthKey(expireCtx, &v1.ExpirePreAuthKeyRequest{
 		Id: id,
 	})
-	if err != nil {
-		return fmt.Errorf("failed to expire pre-auth key: %w", err)
+	if grpcErr != nil {
+		return unifyerror.GRPCError(grpcErr)
 	}
 	return nil
 }
 
-// SyncACL fetches the ACL from Headscale and syncs groups to local DB
+// SyncACL fetches the ACL from Headscale and syncs groups and hosts to local DB.
+// This function only touches ACL-related data (groups, hosts/resources).
+// User sync is handled separately by SyncUsersFromHeadscale.
 func (s *headscaleService) SyncACL() error {
 	return s.SyncACLWithContext(context.Background())
 }
@@ -915,22 +871,22 @@ func (s *headscaleService) SyncACLWithContext(ctx context.Context) error {
 	}
 	queryCtx, cancel := withServiceTimeout(ctx)
 	defer cancel()
-	resp, err := client.GetPolicy(queryCtx, &v1.GetPolicyRequest{})
-	if err != nil {
-		return err
+	resp, grpcErr := client.GetPolicy(queryCtx, &v1.GetPolicyRequest{})
+	if grpcErr != nil {
+		return unifyerror.GRPCError(grpcErr)
 	}
 
 	// Parse HuJSON
-	ast, err := hujson.Parse([]byte(resp.Policy))
-	if err != nil {
-		return err
+	ast, parseErr := hujson.Parse([]byte(resp.Policy))
+	if parseErr != nil {
+		return unifyerror.ServerError(parseErr)
 	}
 	ast.Standardize()
 	data := ast.Pack()
 
 	var policy model.ACLPolicyStructure
 	if err := json.Unmarshal(data, &policy); err != nil {
-		return err
+		return unifyerror.ServerError(err)
 	}
 
 	// Sync Groups
@@ -968,52 +924,58 @@ func (s *headscaleService) SyncACLWithContext(ctx context.Context) error {
 		}
 	}
 
-	// Sync Users from Headscale
-	usersResp, err := client.ListUsers(queryCtx, &v1.ListUsersRequest{})
+	return nil
+}
+
+// SyncUsersFromHeadscale fetches all users from headscale gRPC and ensures
+// each has a panel user + binding. Only stores the ID mapping; headscale
+// user details are fetched on demand.
+func (s *headscaleService) SyncUsersFromHeadscale(ctx context.Context) {
+	client, err := headscaleServiceClient()
 	if err != nil {
-		return fmt.Errorf("failed to list users from Headscale: %w", err)
+		return
 	}
 
-	for _, hsUser := range usersResp.Users {
-		if hsUser.Name == "" {
+	queryCtx, cancel := withServiceTimeout(ctx)
+	defer cancel()
+
+	resp, grpcErr := client.ListUsers(queryCtx, &v1.ListUsersRequest{})
+	if grpcErr != nil {
+		return
+	}
+
+	for _, hsUser := range resp.Users {
+		if hsUser.Name == "" || hsUser.Id == 0 {
 			continue
 		}
-		var existingUser model.User
-		if err := model.DB.Where("headscale_name = ?", hsUser.Name).First(&existingUser).Error; err != nil {
-			// User doesn't exist in panel DB - create it (ungrouped by default)
-			newUser := model.User{
-				Username:      hsUser.Name,
-				HeadscaleName: hsUser.Name,
-				DisplayName:   hsUser.DisplayName,
-				Email:         hsUser.Email,
-				Provider:      "headscale",
+
+		// Check if binding already exists for this headscale ID
+		existingBinding := model.GetBindingByHeadscaleID(hsUser.Id)
+		if existingBinding != nil {
+			continue
+		}
+
+		// Find or create panel user by headscale name
+		var panelUser model.User
+		if err := model.DB.Where("username = ?", hsUser.Name).First(&panelUser).Error; err != nil {
+			panelUser = model.User{
+				Username: hsUser.Name,
+				Provider: "headscale",
 			}
-			if hsUser.ProfilePicUrl != "" {
-				newUser.ProfilePicURL = hsUser.ProfilePicUrl
-			}
-			if createErr := model.DB.Create(&newUser).Error; createErr != nil {
-				// Skip duplicate username errors silently
+			if createErr := model.DB.Create(&panelUser).Error; createErr != nil {
 				continue
 			}
-		} else {
-			// User exists - update display info
-			updates := map[string]interface{}{}
-			if hsUser.DisplayName != "" && existingUser.DisplayName != hsUser.DisplayName {
-				updates["display_name"] = hsUser.DisplayName
-			}
-			if hsUser.Email != "" && existingUser.Email != hsUser.Email {
-				updates["email"] = hsUser.Email
-			}
-			if hsUser.ProfilePicUrl != "" && existingUser.ProfilePicURL != hsUser.ProfilePicUrl {
-				updates["profile_pic_url"] = hsUser.ProfilePicUrl
-			}
-			if len(updates) > 0 {
-				model.DB.Model(&existingUser).Updates(updates)
-			}
+		} else if panelUser.Provider == "" {
+			// Existing user with empty provider — mark as headscale-synced
+			model.DB.Model(&panelUser).Update("provider", "headscale")
 		}
-	}
 
-	return nil
+		// Create binding (ID mapping only)
+		model.DB.Create(&model.UserIdentityBinding{
+			UserID:      panelUser.ID,
+			HeadscaleID: hsUser.Id,
+		})
+	}
 }
 
 // nodeToMachine converts a protobuf Node to our HeadscaleMachine struct
@@ -1124,15 +1086,15 @@ func (s *headscaleService) RegisterNodeWithContext(ctx context.Context, actorUse
 	queryCtx, cancel := withServiceTimeout(ctx)
 	defer cancel()
 
-	resp, err := client.RegisterNode(queryCtx, &v1.RegisterNodeRequest{
+	resp, grpcErr := client.RegisterNode(queryCtx, &v1.RegisterNodeRequest{
 		User: user,
 		Key:  key,
 	})
-	if err != nil {
-		return nil, unifyerror.New(http.StatusBadGateway, unifyerror.CodeGRPCErr, fmt.Sprintf(constants.MsgRegisterNodeFailed, err))
+	if grpcErr != nil {
+		return nil, unifyerror.New(http.StatusOK, unifyerror.CodeGRPCErr, fmt.Sprintf(constants.MsgRegisterNodeFailed, grpcErr))
 	}
 	if resp.Node == nil {
-		return nil, unifyerror.New(http.StatusBadGateway, unifyerror.CodeGRPCErr, constants.MsgHeadscaleReturnedNil)
+		return nil, unifyerror.New(http.StatusOK, unifyerror.CodeGRPCErr, constants.MsgHeadscaleReturnedNil)
 	}
 
 	node := resp.Node

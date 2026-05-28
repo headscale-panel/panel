@@ -23,8 +23,8 @@ import (
 	"fmt"
 	"headscale-panel/pkg/conf"
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
+	"headscale-panel/pkg/log"
 	paneljwt "headscale-panel/pkg/utils/jwt"
-	"log"
 	"net/http"
 	"net/url"
 	"strings"
@@ -33,6 +33,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
+	"go.uber.org/zap"
 )
 
 var upgrader = websocket.Upgrader{
@@ -140,11 +141,11 @@ func (h *Hub) Run() {
 			h.mu.Lock()
 			h.clients[client] = true
 			h.mu.Unlock()
-			log.Printf("WebSocket client connected: %s", client.ID)
+			log.L.Info("WebSocket client connected", zap.String("clientID", client.ID))
 
 		case client := <-h.unregister:
 			h.removeClient(client)
-			log.Printf("WebSocket client disconnected: %s", client.ID)
+			log.L.Info("WebSocket client disconnected", zap.String("clientID", client.ID))
 
 		case message := <-h.broadcast:
 			h.mu.RLock()
@@ -182,7 +183,7 @@ func (h *Hub) Broadcast(msgType string, data interface{}) {
 	}
 	jsonData, err := json.Marshal(msg)
 	if err != nil {
-		log.Printf("Failed to marshal WebSocket message: %v", err)
+		log.L.Error("Failed to marshal WebSocket message", zap.Error(err))
 		return
 	}
 	h.broadcast <- jsonData
@@ -196,7 +197,7 @@ func (h *Hub) BroadcastToUser(userID string, msgType string, data interface{}) {
 	}
 	jsonData, err := json.Marshal(msg)
 	if err != nil {
-		log.Printf("Failed to marshal WebSocket message: %v", err)
+		log.L.Error("Failed to marshal WebSocket message", zap.Error(err))
 		return
 	}
 
@@ -253,7 +254,7 @@ func HandleWebSocket(c *gin.Context) {
 
 	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
-		log.Printf("Failed to upgrade WebSocket connection: %v", err)
+		log.L.Error("Failed to upgrade WebSocket connection", zap.Error(err))
 		return
 	}
 
@@ -402,14 +403,14 @@ func (c *Client) readPump() {
 		_, message, err := c.Conn.ReadMessage()
 		if err != nil {
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-				log.Printf("WebSocket error: %v", err)
+				log.L.Error("WebSocket error", zap.Error(err))
 			}
 			break
 		}
 
 		var msg WSMessage
 		if err := json.Unmarshal(message, &msg); err != nil {
-			log.Printf("Failed to unmarshal WebSocket message: %v", err)
+			log.L.Error("Failed to unmarshal WebSocket message", zap.Error(err))
 			continue
 		}
 
@@ -418,7 +419,7 @@ func (c *Client) readPump() {
 		case "subscribe":
 		case "unsubscribe":
 		default:
-			log.Printf("Unknown message type: %s", msg.Type)
+			log.L.Warn("Unknown message type", zap.String("type", msg.Type))
 		}
 	}
 }
@@ -467,16 +468,16 @@ func collectDeviceCountMetrics(ctx context.Context) map[string]interface{} {
 
 	client, err := headscaleServiceClient()
 	if err != nil {
-		log.Printf("WebSocket metrics: headscale client unavailable: %v", err)
+		log.L.Warn("WebSocket metrics: headscale client unavailable", zap.Error(err))
 		return metrics
 	}
 
 	queryCtx, cancel := withServiceTimeout(ctx)
 	defer cancel()
 
-	nodesResp, err := client.ListNodes(queryCtx, &v1.ListNodesRequest{})
-	if err != nil {
-		log.Printf("WebSocket metrics: failed to list headscale nodes: %v", err)
+	nodesResp, grpcErr := client.ListNodes(queryCtx, &v1.ListNodesRequest{})
+	if grpcErr != nil {
+		log.L.Error("WebSocket metrics: failed to list headscale nodes", zap.Error(grpcErr))
 		return metrics
 	}
 

@@ -17,9 +17,9 @@ package services
 
 import (
 	"context"
-	"fmt"
 	"headscale-panel/pkg/constants"
 	"headscale-panel/pkg/headscale"
+	"headscale-panel/pkg/unifyerror"
 	"os"
 	"path/filepath"
 	"strings"
@@ -253,11 +253,11 @@ func (s *headscaleConfigService) GetConfig() (*HeadscaleConfigFile, error) {
 		if os.IsNotExist(err) {
 			return s.defaultConfig(), nil
 		}
-		return nil, fmt.Errorf("%s: %w", constants.MsgConfigReadFailed, err)
+		return nil, unifyerror.ServerError(err)
 	}
 	var cfg HeadscaleConfigFile
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
-		return nil, fmt.Errorf("%s: %w", constants.MsgYAMLParseFailed, err)
+		return nil, unifyerror.ServerError(err)
 	}
 	return &cfg, nil
 }
@@ -284,7 +284,7 @@ func (s *headscaleConfigService) tryRestartHeadscale() {
 func (s *headscaleConfigService) PreviewConfig(cfg *HeadscaleConfigFile) (string, error) {
 	data, err := yaml.Marshal(cfg)
 	if err != nil {
-		return "", fmt.Errorf("%s: %w", constants.MsgYAMLSerializeFailed, err)
+		return "", unifyerror.ServerError(err)
 	}
 	return string(data), nil
 }
@@ -403,14 +403,14 @@ func normalizeOIDCAllowlist(values []string) map[string]struct{} {
 func (s *headscaleConfigService) writeConfig(cfg *HeadscaleConfigFile) error {
 	data, err := yaml.Marshal(cfg)
 	if err != nil {
-		return fmt.Errorf("%s: %w", constants.MsgYAMLSerializeFailed, err)
+		return unifyerror.ServerError(err)
 	}
 	path := constants.HeadscaleConfigFilePath
 	if err := os.MkdirAll(filepath.Dir(path), 0750); err != nil {
-		return fmt.Errorf("%s: %w", constants.MsgConfigDirCreateFailed, err)
+		return unifyerror.ServerError(err)
 	}
 	if err := os.WriteFile(path, data, 0600); err != nil {
-		return fmt.Errorf("%s: %w", constants.MsgConfigWriteFailed, err)
+		return unifyerror.ServerError(err)
 	}
 	return nil
 }

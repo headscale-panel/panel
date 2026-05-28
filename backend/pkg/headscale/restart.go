@@ -19,10 +19,11 @@ import (
 	"context"
 	"fmt"
 	"headscale-panel/pkg/conf"
+	"headscale-panel/pkg/log"
 	"os/exec"
 	"regexp"
 
-	"github.com/sirupsen/logrus"
+	"go.uber.org/zap"
 )
 
 // containerNamePattern restricts container names to alphanumeric characters,
@@ -52,20 +53,20 @@ func RestartHeadscaleServer(ctx context.Context) error {
 		return fmt.Errorf("invalid headscale container name %q: must match %s", containerName, containerNamePattern.String())
 	}
 
-	logrus.WithField("container", containerName).Info("Restarting Headscale container via Docker")
+	log.L.Info("Restarting Headscale container via Docker", zap.String("container", containerName))
 
 	// #nosec G204 – containerName is validated against containerNamePattern above
 	cmd := exec.CommandContext(ctx, "docker", "restart", containerName)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		logrus.WithFields(logrus.Fields{
-			"container": containerName,
-			"output":    string(out),
-		}).WithError(err).Error("Failed to restart Headscale container")
+		log.L.Error("Failed to restart Headscale container",
+			zap.String("container", containerName),
+			zap.String("output", string(out)),
+			zap.Error(err))
 		return fmt.Errorf("docker restart %q: %w (output: %s)", containerName, err, string(out))
 	}
 
-	logrus.WithField("container", containerName).Info("Headscale container restarted successfully")
+	log.L.Info("Headscale container restarted successfully", zap.String("container", containerName))
 	return nil
 }
 
@@ -76,10 +77,10 @@ func TryRestartHeadscale(ctx context.Context, reason string) {
 		return
 	}
 	if err := RestartHeadscaleServer(ctx); err != nil {
-		entry := logrus.WithError(err)
+		fields := []zap.Field{zap.Error(err)}
 		if reason != "" {
-			entry = entry.WithField("reason", reason)
+			fields = append(fields, zap.String("reason", reason))
 		}
-		entry.Error("Failed to restart Headscale container")
+		log.L.Error("Failed to restart Headscale container", fields...)
 	}
 }

@@ -19,13 +19,14 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"fmt"
-	"log"
+	"headscale-panel/pkg/log"
 	"net"
 	"net/url"
 	"strings"
 
 	"github.com/joho/godotenv"
 	"github.com/spf13/viper"
+	"go.uber.org/zap"
 )
 
 type Config struct {
@@ -80,7 +81,7 @@ var Conf Config
 
 func Init(path string) {
 	if err := godotenv.Load(path); err != nil {
-		log.Printf("Warning: Error loading .env file: %v", err)
+		log.L.Warn("Error loading .env file", zap.Error(err))
 	}
 
 	viper.SetConfigFile(path)
@@ -91,7 +92,7 @@ func Init(path string) {
 	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 
 	if err := viper.ReadInConfig(); err != nil {
-		log.Printf("Warning: Config file not found: %v", err)
+		log.L.Warn("Config file not found", zap.Error(err))
 	}
 
 	// Set defaults
@@ -121,15 +122,15 @@ func Init(path string) {
 	viper.SetDefault("docker.headscale_container_name", "")
 
 	if err := viper.Unmarshal(&Conf); err != nil {
-		log.Fatalf("Unable to decode into struct, %v", err)
+		log.L.Fatal("Unable to decode into struct", zap.Error(err))
 	}
 
 	if err := validateSecurityConfig(Conf); err != nil {
-		log.Fatalf("Invalid security configuration: %v", err)
+		log.L.Fatal("Invalid security configuration", zap.Error(err))
 	}
 
 	if shouldWarnInsecureBaseURL(Conf.System.BaseURL) {
-		log.Printf("Warning: SYSTEM_BASE_URL=%q is not using https in a non-local environment; secure cookies, OIDC, and browser security headers may not behave safely behind a reverse proxy", strings.TrimSpace(Conf.System.BaseURL))
+		log.L.Warn("SYSTEM_BASE_URL is not using https in non-local env", zap.String("url", strings.TrimSpace(Conf.System.BaseURL)))
 	}
 }
 
@@ -141,7 +142,7 @@ func validateSecurityConfig(cfg Config) error {
 			return fmt.Errorf("failed to auto-generate JWT_SECRET: %w", err)
 		}
 		Conf.JWT.Secret = base64.RawURLEncoding.EncodeToString(buf)[:48]
-		log.Println("JWT_SECRET not set, auto-generated for this session (tokens will be invalidated on restart)")
+		log.L.Info("JWT_SECRET not set, auto-generated for this session (tokens will be invalidated on restart)")
 		return nil
 	}
 

@@ -27,8 +27,16 @@ import (
 )
 
 type actorScope struct {
-	isAdmin       bool
-	headscaleName string
+	isAdmin        bool
+	headscaleNames map[string]struct{} // all bound headscale identities (lowercase)
+}
+
+func (s *actorScope) matchesHeadscaleName(name string) bool {
+	if s.isAdmin {
+		return true
+	}
+	_, ok := s.headscaleNames[strings.ToLower(strings.TrimSpace(name))]
+	return ok
 }
 
 func headscaleServiceClient() (v1.HeadscaleServiceClient, error) {
@@ -37,7 +45,7 @@ func headscaleServiceClient() (v1.HeadscaleServiceClient, error) {
 		return nil, unifyerror.GRPCError(err)
 	}
 	if client == nil || client.Service == nil {
-		return nil, unifyerror.New(http.StatusBadGateway, unifyerror.CodeGRPCErr, "headscale service is unavailable")
+		return nil, unifyerror.New(http.StatusOK, unifyerror.CodeGRPCErr, "headscale service is unavailable")
 	}
 	return client.Service, nil
 }
@@ -58,20 +66,86 @@ func normalizePagination(page, pageSize int) (int, int) {
 	return page, pageSize
 }
 
+// listHeadscaleUsersByIDs queries headscale for users matching the given IDs.
+// Returns a map of headscale user ID → user object.
+func listHeadscaleUsersByIDs(ids []uint64) map[uint64]*v1.User {
+	result := make(map[uint64]*v1.User, len(ids))
+	if len(ids) == 0 {
+		return result
+	}
+	client, err := headscaleServiceClient()
+	if err != nil {
+		return result
+	}
+	ctx, cancel := withServiceTimeout(context.Background())
+	defer cancel()
+	resp, grpcErr := client.ListUsers(ctx, &v1.ListUsersRequest{})
+	if grpcErr != nil {
+		return result
+	}
+	idSet := make(map[uint64]struct{}, len(ids))
+	for _, id := range ids {
+		idSet[id] = struct{}{}
+	}
+	for _, u := range resp.Users {
+		if _, ok := idSet[u.Id]; ok {
+			result[u.Id] = u
+		}
+	}
+	return result
+}
+
+// resolveHeadscaleNamesForUser resolves all headscale names bound to a panel user.
+// Queries headscale gRPC by bound IDs, falls back to panel username if no bindings.
+func resolveHeadscaleNamesForUser(userID uint) map[string]struct{} {
+	names := make(map[string]struct{})
+	ids := model.GetHeadscaleIDs(userID)
+
+	if len(ids) > 0 {
+		client, err := headscaleServiceClient()
+		if err == nil {
+			ctx, cancel := withServiceTimeout(context.Background())
+			defer cancel()
+			resp, grpcErr := client.ListUsers(ctx, &v1.ListUsersRequest{})
+			if grpcErr == nil {
+				idSet := make(map[uint64]struct{}, len(ids))
+				for _, id := range ids {
+					idSet[id] = struct{}{}
+				}
+				for _, u := range resp.Users {
+					if _, ok := idSet[u.Id]; ok {
+						if name := strings.ToLower(strings.TrimSpace(u.Name)); name != "" {
+							names[name] = struct{}{}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// Fallback to panel username if no bindings resolved
+	if len(names) == 0 {
+		var user model.User
+		if err := model.DB.First(&user, userID).Error; err == nil {
+			if name := strings.ToLower(strings.TrimSpace(user.Username)); name != "" {
+				names[name] = struct{}{}
+			}
+		}
+	}
+	return names
+}
+
 func loadActorScope(actorUserID uint) (*actorScope, error) {
 	var user model.User
-	if err := model.DB.Preload("Group").First(&user, actorUserID).Error; err != nil {
+	if err := model.DB.First(&user, actorUserID).Error; err != nil {
 		return nil, unifyerror.Forbidden()
 	}
 
-	headscaleName := strings.TrimSpace(user.HeadscaleName)
-	if headscaleName == "" {
-		headscaleName = strings.TrimSpace(user.Username)
-	}
+	names := resolveHeadscaleNamesForUser(actorUserID)
 
 	return &actorScope{
-		isAdmin:       IsAdminGroupName(user.Group.Name),
-		headscaleName: headscaleName,
+		isAdmin:        user.IsAdmin,
+		headscaleNames: names,
 	}, nil
 }
 
@@ -85,10 +159,7 @@ func actorCanAccessNode(scope *actorScope, node *v1.Node) bool {
 	if node.User == nil {
 		return false
 	}
-	if scope.headscaleName == "" {
-		return false
-	}
-	return strings.EqualFold(strings.TrimSpace(node.User.Name), scope.headscaleName)
+	return scope.matchesHeadscaleName(node.User.Name)
 }
 
 func ensureActorCanAccessNode(actorUserID uint, node *v1.Node) error {
@@ -109,7 +180,7 @@ func actorCanAccessHeadscaleUser(scope *actorScope, headscaleName string) bool {
 	if scope.isAdmin {
 		return true
 	}
-	return strings.EqualFold(strings.TrimSpace(scope.headscaleName), strings.TrimSpace(headscaleName))
+	return scope.matchesHeadscaleName(headscaleName)
 }
 
 func ensureActorCanAccessHeadscaleUserName(actorUserID uint, headscaleName string) error {
@@ -132,9 +203,9 @@ func resolveHeadscaleUserNameByID(ctx context.Context, userID uint64) (string, e
 	queryCtx, cancel := withServiceTimeout(ctx)
 	defer cancel()
 
-	resp, err := client.ListUsers(queryCtx, &v1.ListUsersRequest{})
-	if err != nil {
-		return "", unifyerror.New(http.StatusBadGateway, unifyerror.CodeGRPCErr, "failed to list headscale users")
+	resp, grpcErr := client.ListUsers(queryCtx, &v1.ListUsersRequest{})
+	if grpcErr != nil {
+		return "", unifyerror.New(http.StatusOK, unifyerror.CodeGRPCErr, "failed to list headscale users")
 	}
 
 	for _, user := range resp.Users {
@@ -154,28 +225,27 @@ func ensureActorCanAccessHeadscaleUserID(ctx context.Context, actorUserID uint, 
 	return ensureActorCanAccessHeadscaleUserName(actorUserID, headscaleName)
 }
 
-func resolvePanelUserHeadscaleName(userID uint) (string, error) {
-	var user model.User
-	if err := model.DB.First(&user, userID).Error; err != nil {
-		return "", unifyerror.New(http.StatusNotFound, unifyerror.CodeNotFound, "user not found")
+// resolvePanelUserHeadscaleNames returns all headscale names bound to a panel user.
+func resolvePanelUserHeadscaleNames(userID uint) []string {
+	names := resolveHeadscaleNamesForUser(userID)
+	result := make([]string, 0, len(names))
+	for name := range names {
+		result = append(result, name)
 	}
-
-	headscaleName := strings.TrimSpace(user.HeadscaleName)
-	if headscaleName == "" {
-		headscaleName = strings.TrimSpace(user.Username)
-	}
-	if headscaleName == "" {
-		return "", unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "target user has no Headscale identity")
-	}
-	return headscaleName, nil
+	return result
 }
 
 func ensureActorCanAccessPanelUser(actorUserID uint, targetUserID uint) error {
-	headscaleName, err := resolvePanelUserHeadscaleName(targetUserID)
-	if err != nil {
-		return err
+	names := resolvePanelUserHeadscaleNames(targetUserID)
+	if len(names) == 0 {
+		return unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "target user has no Headscale identity")
 	}
-	return ensureActorCanAccessHeadscaleUserName(actorUserID, headscaleName)
+	for _, name := range names {
+		if err := ensureActorCanAccessHeadscaleUserName(actorUserID, name); err == nil {
+			return nil
+		}
+	}
+	return unifyerror.Forbidden()
 }
 
 func listAccessibleNodes(ctx context.Context, actorUserID uint) ([]*v1.Node, *actorScope, error) {
@@ -191,9 +261,9 @@ func listAccessibleNodes(ctx context.Context, actorUserID uint) ([]*v1.Node, *ac
 	queryCtx, cancel := withServiceTimeout(ctx)
 	defer cancel()
 
-	resp, err := client.ListNodes(queryCtx, &v1.ListNodesRequest{})
-	if err != nil {
-		return nil, nil, unifyerror.New(http.StatusBadGateway, unifyerror.CodeGRPCErr, "failed to list nodes from Headscale")
+	resp, grpcErr := client.ListNodes(queryCtx, &v1.ListNodesRequest{})
+	if grpcErr != nil {
+		return nil, nil, unifyerror.New(http.StatusOK, unifyerror.CodeGRPCErr, "failed to list nodes from Headscale")
 	}
 
 	nodes := make([]*v1.Node, 0, len(resp.Nodes))

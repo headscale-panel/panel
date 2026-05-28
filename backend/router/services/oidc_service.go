@@ -21,11 +21,11 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/pem"
-	"errors"
 	"fmt"
 	"headscale-panel/model"
 	"headscale-panel/pkg/conf"
 	"headscale-panel/pkg/constants"
+	"headscale-panel/pkg/unifyerror"
 	"math/big"
 	"net/url"
 	"os"
@@ -61,22 +61,22 @@ func (s *oidcService) Init() error {
 	// Load or generate persisted RSA signing key
 	key, err := s.loadOrCreatePrivateKey()
 	if err != nil {
-		return fmt.Errorf("failed to initialize OIDC signing key: %w", err)
+		return unifyerror.ServerError(err)
 	}
 	s.privateKey = key
 
 	// Validate existing clients to prevent insecure defaults and wildcard redirect.
 	var clients []model.OauthClient
 	if err := model.DB.Find(&clients).Error; err != nil {
-		return err
+		return unifyerror.DbError(err)
 	}
 	for i := range clients {
 		client := &clients[i]
 		if err := migrateLegacyOAuthClientSecret(client); err != nil {
-			return fmt.Errorf("oidc client %q secret migration failed: %w", client.ClientID, err)
+			return unifyerror.ServerError(err)
 		}
 		if !isSafeOIDCClient(*client) {
-			return fmt.Errorf("oidc client %q has insecure secret or invalid redirect_uris", client.ClientID)
+			return unifyerror.ServerError(fmt.Errorf("oidc client %q has insecure secret or invalid redirect_uris", client.ClientID))
 		}
 	}
 
@@ -86,7 +86,7 @@ func (s *oidcService) Init() error {
 func (s *oidcService) GenerateAuthCode(userID uint, clientID, redirectURI, nonce, scope string) (string, error) {
 	code := make([]byte, 32)
 	if _, err := rand.Read(code); err != nil {
-		return "", fmt.Errorf("failed to generate auth code: %w", err)
+		return "", unifyerror.ServerError(err)
 	}
 	codeStr := base64.URLEncoding.EncodeToString(code)
 
@@ -108,14 +108,14 @@ func (s *oidcService) GenerateAuthCode(userID uint, clientID, redirectURI, nonce
 func (s *oidcService) ExchangeCode(code, clientID, clientSecret string) (string, string, string, error) {
 	var client model.OauthClient
 	if err := model.DB.Where("client_id = ?", clientID).First(&client).Error; err != nil {
-		return "", "", "", errors.New("invalid client")
+		return "", "", "", unifyerror.UnAuth()
 	}
 	validSecret, err := verifyOAuthClientSecret(&client, clientSecret)
 	if err != nil || !validSecret {
-		return "", "", "", errors.New("invalid client")
+		return "", "", "", unifyerror.UnAuth()
 	}
 	if !isSafeOIDCClient(client) {
-		return "", "", "", errors.New("invalid client")
+		return "", "", "", unifyerror.UnAuth()
 	}
 
 	s.mu.Lock()
@@ -127,19 +127,19 @@ func (s *oidcService) ExchangeCode(code, clientID, clientSecret string) (string,
 	s.mu.Unlock()
 
 	if !ok {
-		return "", "", "", errors.New("invalid code")
+		return "", "", "", unifyerror.InvalidToken()
 	}
 	if time.Now().After(data.ExpiresAt) {
-		return "", "", "", errors.New("code expired")
+		return "", "", "", unifyerror.TokenExpired()
 	}
 	if data.ClientID != clientID {
-		return "", "", "", errors.New("client mismatch")
+		return "", "", "", unifyerror.UnAuth()
 	}
 
 	// Get user
 	var user model.User
 	if err := model.DB.Preload("Group").First(&user, data.UserID).Error; err != nil {
-		return "", "", "", errors.New("user not found")
+		return "", "", "", unifyerror.NotFound()
 	}
 
 	// Generate ID Token
@@ -167,36 +167,36 @@ func (s *oidcService) ExchangeCode(code, clientID, clientSecret string) (string,
 func (s *oidcService) RefreshTokens(refreshTokenStr, clientID, clientSecret string) (string, string, string, error) {
 	var client model.OauthClient
 	if err := model.DB.Where("client_id = ?", clientID).First(&client).Error; err != nil {
-		return "", "", "", errors.New("invalid client")
+		return "", "", "", unifyerror.UnAuth()
 	}
 	validSecret, err := verifyOAuthClientSecret(&client, clientSecret)
 	if err != nil || !validSecret {
-		return "", "", "", errors.New("invalid client")
+		return "", "", "", unifyerror.UnAuth()
 	}
 	if !isSafeOIDCClient(client) {
-		return "", "", "", errors.New("invalid client")
+		return "", "", "", unifyerror.UnAuth()
 	}
 
 	// Parse and validate the refresh token
 	claims, err := s.parseToken(refreshTokenStr)
 	if err != nil {
-		return "", "", "", errors.New("invalid refresh token")
+		return "", "", "", unifyerror.InvalidToken()
 	}
 
 	tokenType, _ := claims["type"].(string)
 	if tokenType != "refresh" {
-		return "", "", "", errors.New("not a refresh token")
+		return "", "", "", unifyerror.InvalidToken()
 	}
 
 	sub, _ := claims["sub"].(string)
 	if sub == "" {
-		return "", "", "", errors.New("invalid token subject")
+		return "", "", "", unifyerror.InvalidToken()
 	}
 
 	// Find user
 	var user model.User
 	if err := model.DB.Preload("Group").Where("id = ?", sub).First(&user).Error; err != nil {
-		return "", "", "", errors.New("user not found")
+		return "", "", "", unifyerror.NotFound()
 	}
 
 	// Generate new tokens
@@ -227,7 +227,7 @@ func (s *oidcService) ValidateAccessToken(tokenStr string) (jwt.MapClaims, error
 
 	tokenType, _ := claims["type"].(string)
 	if tokenType != "access" {
-		return nil, errors.New("not an access token")
+		return nil, unifyerror.InvalidToken()
 	}
 
 	return claims, nil
@@ -237,7 +237,7 @@ func (s *oidcService) ValidateAccessToken(tokenStr string) (jwt.MapClaims, error
 func (s *oidcService) GetUserInfoBySub(sub string) (map[string]interface{}, error) {
 	var user model.User
 	if err := model.DB.Preload("Group").Where("id = ?", sub).First(&user).Error; err != nil {
-		return nil, errors.New("user not found")
+		return nil, unifyerror.NotFound()
 	}
 
 	displayName := user.DisplayName
@@ -286,7 +286,11 @@ func (s *oidcService) generateIDToken(user model.User, clientID, nonce string) (
 
 	token := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
 	token.Header["kid"] = "1"
-	return token.SignedString(s.privateKey)
+	signed, err := token.SignedString(s.privateKey)
+	if err != nil {
+		return "", unifyerror.FromError(err)
+	}
+	return signed, nil
 }
 
 func (s *oidcService) generateAccessToken(user model.User, clientID, scope string) (string, error) {
@@ -303,7 +307,11 @@ func (s *oidcService) generateAccessToken(user model.User, clientID, scope strin
 
 	token := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
 	token.Header["kid"] = "1"
-	return token.SignedString(s.privateKey)
+	signed, err := token.SignedString(s.privateKey)
+	if err != nil {
+		return "", unifyerror.FromError(err)
+	}
+	return signed, nil
 }
 
 func (s *oidcService) generateRefreshToken(user model.User, clientID string) (string, error) {
@@ -319,7 +327,11 @@ func (s *oidcService) generateRefreshToken(user model.User, clientID string) (st
 
 	token := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
 	token.Header["kid"] = "1"
-	return token.SignedString(s.privateKey)
+	signed, err := token.SignedString(s.privateKey)
+	if err != nil {
+		return "", unifyerror.FromError(err)
+	}
+	return signed, nil
 }
 
 // parseToken parses and validates a JWT token signed by this service.
@@ -331,12 +343,12 @@ func (s *oidcService) parseToken(tokenStr string) (jwt.MapClaims, error) {
 		return &s.privateKey.PublicKey, nil
 	})
 	if err != nil {
-		return nil, err
+		return nil, unifyerror.FromError(err)
 	}
 	if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
 		return claims, nil
 	}
-	return nil, errors.New("invalid token")
+	return nil, unifyerror.InvalidToken()
 }
 
 func (s *oidcService) GetJWKS() (interface{}, error) {
@@ -411,7 +423,7 @@ func isSafeOIDCClient(client model.OauthClient) bool {
 
 func normalizeRedirectURIs(redirectURIs string) (string, error) {
 	if strings.TrimSpace(redirectURIs) == "" {
-		return "", errors.New("redirect URIs cannot be empty")
+		return "", unifyerror.WrongParam("redirect_uris")
 	}
 
 	parts := strings.Split(redirectURIs, ",")
@@ -431,7 +443,7 @@ func normalizeRedirectURIs(redirectURIs string) (string, error) {
 	}
 
 	if len(normalized) == 0 {
-		return "", errors.New("redirect URIs cannot be empty")
+		return "", unifyerror.WrongParam("redirect_uris")
 	}
 
 	sort.Strings(normalized)
@@ -441,21 +453,21 @@ func normalizeRedirectURIs(redirectURIs string) (string, error) {
 func validateRedirectURI(uri string) (string, error) {
 	normalized := strings.TrimSpace(uri)
 	if normalized == "" {
-		return "", errors.New("redirect URI cannot be empty")
+		return "", unifyerror.WrongParam("redirect_uri")
 	}
 	if strings.Contains(normalized, "*") {
-		return "", errors.New("wildcard redirect URI is not allowed")
+		return "", unifyerror.WrongParam("redirect_uri")
 	}
 	if strings.Contains(normalized, "#") {
-		return "", fmt.Errorf("redirect URI must not contain fragment: %s", normalized)
+		return "", unifyerror.WrongParam("redirect_uri")
 	}
 
 	parsed, err := url.ParseRequestURI(normalized)
 	if err != nil {
-		return "", fmt.Errorf("invalid redirect URI: %s", normalized)
+		return "", unifyerror.WrongParam("redirect_uri")
 	}
 	if parsed.Scheme == "" || parsed.Host == "" {
-		return "", fmt.Errorf("redirect URI must be absolute: %s", normalized)
+		return "", unifyerror.WrongParam("redirect_uri")
 	}
 	return normalized, nil
 }
@@ -471,28 +483,28 @@ func (s *oidcService) loadOrCreatePrivateKey() (*rsa.PrivateKey, error) {
 	if err == nil {
 		block, _ := pem.Decode(pemData)
 		if block == nil {
-			return nil, fmt.Errorf("invalid PEM data in %s", keyPath)
+			return nil, unifyerror.ServerError(fmt.Errorf("invalid PEM data in %s", keyPath))
 		}
 		key, err := x509.ParsePKCS1PrivateKey(block.Bytes)
 		if err != nil {
-			return nil, fmt.Errorf("failed to parse private key from %s: %w", keyPath, err)
+			return nil, unifyerror.ServerError(err)
 		}
 		return key, nil
 	}
 
 	if !os.IsNotExist(err) {
-		return nil, fmt.Errorf("failed to read signing key %s: %w", keyPath, err)
+		return nil, unifyerror.ServerError(err)
 	}
 
 	// Generate new key
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
-		return nil, fmt.Errorf("failed to generate RSA key: %w", err)
+		return nil, unifyerror.ServerError(err)
 	}
 
 	// Ensure directory exists
 	if err := os.MkdirAll(filepath.Dir(keyPath), 0700); err != nil {
-		return nil, fmt.Errorf("failed to create key directory: %w", err)
+		return nil, unifyerror.ServerError(err)
 	}
 
 	// Persist
@@ -501,7 +513,7 @@ func (s *oidcService) loadOrCreatePrivateKey() (*rsa.PrivateKey, error) {
 		Bytes: x509.MarshalPKCS1PrivateKey(key),
 	}
 	if err := os.WriteFile(keyPath, pem.EncodeToMemory(pemBlock), 0600); err != nil {
-		return nil, fmt.Errorf("failed to write signing key to %s: %w", keyPath, err)
+		return nil, unifyerror.ServerError(err)
 	}
 
 	return key, nil

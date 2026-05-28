@@ -17,6 +17,7 @@ package middleware
 
 import (
 	"headscale-panel/pkg/conf"
+	"headscale-panel/pkg/log"
 	"io/fs"
 	"net/http"
 	"os"
@@ -24,7 +25,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"github.com/sirupsen/logrus"
+	"go.uber.org/zap"
 )
 
 const frontendContentSecurityPolicy = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: https:; connect-src 'self' ws: wss:; worker-src 'self' blob:; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
@@ -46,7 +47,7 @@ func setFrontendSecurityHeaders(header http.Header) {
 func FrontendMiddleware(staticDir string) gin.HandlerFunc {
 	absDir, err := os.Stat(staticDir)
 	if err != nil || !absDir.IsDir() {
-		logrus.Warnf("frontend directory %q not found, static file serving disabled", staticDir)
+		log.L.Warn("frontend directory not found, static file serving disabled", zap.String("dir", staticDir))
 		return func(c *gin.Context) { c.Next() }
 	}
 

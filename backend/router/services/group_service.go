@@ -92,7 +92,7 @@ func (s *groupService) Update(actorUserID uint, id uint, name string, permission
 		}
 	}
 
-	return model.DB.Save(&group).Error
+	return unifyerror.DbError(model.DB.Save(&group).Error)
 }
 
 func (s *groupService) Delete(actorUserID uint, id uint) error {
@@ -107,7 +107,7 @@ func (s *groupService) Delete(actorUserID uint, id uint) error {
 	if count > 0 {
 		return unifyerror.Conflict(constants.MsgGroupHasUsers)
 	}
-	return model.DB.Delete(&model.Group{}, id).Error
+	return unifyerror.DbError(model.DB.Delete(&model.Group{}, id).Error)
 }
 
 // GetUserPermissions retrieves all permissions for a user based on their group

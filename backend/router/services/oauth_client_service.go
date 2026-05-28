@@ -181,7 +181,7 @@ func (s *oauthClientService) RegenerateSecret(actorUserID uint, id uint) (string
 func generateRandomString(length int) (string, error) {
 	bytes := make([]byte, length)
 	if _, err := rand.Read(bytes); err != nil {
-		return "", err
+		return "", unifyerror.ServerError(err)
 	}
 	return hex.EncodeToString(bytes), nil
 }

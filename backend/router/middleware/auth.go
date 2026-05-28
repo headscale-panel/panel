@@ -60,25 +60,21 @@ func AuthMiddleware() gin.HandlerFunc {
 	}
 }
 
-// AdminOnlyMiddleware checks if the user belongs to admin group
+// AdminOnlyMiddleware checks if the user is an admin
 func AdminOnlyMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		groupID, exists := c.Get("groupID")
+		userIDVal, exists := c.Get("userID")
 		if !exists {
 			unifyerror.Fail(c, unifyerror.Forbidden())
 			c.Abort()
 			return
 		}
 
-		var group model.Group
-		if err := model.DB.First(&group, groupID).Error; err != nil {
-			unifyerror.Fail(c, unifyerror.Forbidden())
-			c.Abort()
-			return
-		}
+		userID := userIDVal.(uint)
 
-		// Only allow admin group (case insensitive)
-		if !services.IsAdminGroupName(group.Name) {
+		// Only allow admin users
+		var userModel model.User
+		if err := model.DB.First(&userModel, userID).Error; err != nil || !userModel.IsAdmin {
 			unifyerror.Fail(c, unifyerror.Forbidden())
 			c.Abort()
 			return
@@ -88,11 +84,11 @@ func AdminOnlyMiddleware() gin.HandlerFunc {
 	}
 }
 
-// IsAdmin checks if user belongs to admin group
-func IsAdmin(groupID uint) bool {
-	var group model.Group
-	if err := model.DB.First(&group, groupID).Error; err != nil {
+// IsAdmin checks if user is an admin
+func IsAdmin(userID uint) bool {
+	var user model.User
+	if err := model.DB.First(&user, userID).Error; err != nil {
 		return false
 	}
-	return services.IsAdminGroupName(group.Name)
+	return user.IsAdmin
 }

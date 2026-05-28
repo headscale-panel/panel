@@ -1,4 +1,4 @@
-// Copyright (C) 2026 
+// Copyright (C) 2026
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as
@@ -26,19 +26,24 @@ import (
 
 type User struct {
 	gorm.Model
-	Username string `json:"username" gorm:"uniqueIndex;not null"`
-	Password string `json:"-"` // Password is not returned in JSON
-	Email    string `json:"email"`
-	IsActive bool   `json:"is_active" gorm:"default:true"`
-	GroupID  uint   `json:"group_id"`
-	Group    Group  `json:"group"`
+	Username    string `json:"username" gorm:"uniqueIndex;not null"`
+	Password    string `json:"-"` // Password is not returned in JSON
+	Email       string `json:"email"`
+	IsActive    bool   `json:"is_active" gorm:"default:true"`
+	IsAdmin     bool   `json:"is_admin" gorm:"default:false"`
+	GroupID     uint   `json:"group_id"`
+	Group       Group  `json:"group"`
+	DisplayName string `json:"display_name"`
 
-	// Headscale fields
-	HeadscaleName   string     `json:"headscale_name" gorm:"uniqueIndex"` // Maps to Headscale User Name
-	DisplayName     string     `json:"display_name"`
-	Provider        string     `json:"provider"` // "local", "github", etc.
+	// ProfilePicURL is the panel-side avatar URL (from panel OIDC provider or manually set).
+	ProfilePicURL string `json:"profile_pic_url"`
+
+	// Provider distinguishes panel account types: "local", "oidc", "headscale".
+	// This is a panel-side concept, not a headscale identity field.
+	Provider string `json:"account_type" gorm:"column:provider"`
+
+	// ProviderID stores the OIDC sub claim for matching OIDC identities to panel accounts.
 	ProviderID      string     `json:"provider_id"`
-	ProfilePicURL   string     `json:"profile_pic_url"`
 	GuideTourSeenAt *time.Time `json:"guide_tour_seen_at"`
 
 	// TOTP

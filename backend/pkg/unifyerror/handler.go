@@ -20,25 +20,20 @@ import (
 	"time"
 
 	"headscale-panel/pkg/constants"
+	"headscale-panel/pkg/log"
 
-	"github.com/sirupsen/logrus"
+	"go.uber.org/zap"
 )
 
 // newUniErr builds a UniErr and logs according to errorType.
 func newUniErr(errorType int, httpCode int, code int, msg string) *UniErr {
 	switch errorType {
 	case ErrTypeServer:
-		logrus.WithFields(logrus.Fields{
-			"code": code,
-		}).Error("[Server] " + msg)
+		log.L.Error("[Server] "+msg, zap.Int("code", code))
 	case ErrTypeDb:
-		logrus.WithFields(logrus.Fields{
-			"code": code,
-		}).Error("[Database] " + msg)
+		log.L.Error("[Database] "+msg, zap.Int("code", code))
 	case ErrTypeGRPC:
-		logrus.WithFields(logrus.Fields{
-			"code": code,
-		}).Warn("[gRPC] " + msg)
+		log.L.Warn("[gRPC] "+msg, zap.Int("code", code))
 	}
 	return &UniErr{
 		HttpCode: httpCode,
@@ -51,21 +46,20 @@ func newUniErr(errorType int, httpCode int, code int, msg string) *UniErr {
 // string is available for logging but should NOT be surfaced to the user.
 func newUniErrWithServer(errorType int, httpCode int, code int, userMsg string, serverMsg string) *UniErr {
 	errorTime := time.Now().Format("2006-01-02 15:04:05")
-	logEntry := logrus.WithFields(logrus.Fields{
-		"time": errorTime,
-		"code": code,
-	})
+	fields := []zap.Field{
+		zap.String("time", errorTime),
+		zap.Int("code", code),
+	}
 
 	switch errorType {
 	case ErrTypeServer:
-		logEntry.Errorf("[Server] %s | internal: %s", userMsg, serverMsg)
+		log.L.Error(fmt.Sprintf("[Server] %s | internal: %s", userMsg, serverMsg), fields...)
 	case ErrTypeDb:
-		logEntry.Errorf("[Database] %s | internal: %s", userMsg, serverMsg)
+		log.L.Error(fmt.Sprintf("[Database] %s | internal: %s", userMsg, serverMsg), fields...)
 	case ErrTypeGRPC:
-		logEntry.Warnf("[gRPC] %s | internal: %s", userMsg, serverMsg)
+		log.L.Warn(fmt.Sprintf("[gRPC] %s | internal: %s", userMsg, serverMsg), fields...)
 	case ErrTypeUser:
-		// User errors with server context: log at debug level only
-		logEntry.Debugf("[User] %s | context: %s", userMsg, serverMsg)
+		log.L.Debug(fmt.Sprintf("[User] %s | context: %s", userMsg, serverMsg), fields...)
 	}
 
 	return &UniErr{

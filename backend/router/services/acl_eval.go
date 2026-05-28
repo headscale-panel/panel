@@ -20,6 +20,7 @@ import (
 	"encoding/json"
 	"headscale-panel/model"
 	"headscale-panel/pkg/acl"
+	"headscale-panel/pkg/unifyerror"
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"strings"
 )
@@ -44,8 +45,10 @@ func CanActorAccessIP(ctx context.Context, actorUserID uint, targetIP string) (b
 		if rule.Action != "accept" {
 			continue
 		}
-		if acl.IsUserInRuleSources(policy, scope.headscaleName, rule) && acl.DoesRuleAllowIP(policy, rule, targetIP) {
-			return true, nil
+		for name := range scope.headscaleNames {
+			if acl.IsUserInRuleSources(policy, name, rule) && acl.DoesRuleAllowIP(policy, rule, targetIP) {
+				return true, nil
+			}
 		}
 	}
 	return false, nil
@@ -72,8 +75,11 @@ func FilterResourcesByACL(ctx context.Context, actorUserID uint, resources []mod
 		if rule.Action != "accept" {
 			continue
 		}
-		if acl.IsUserInRuleSources(policy, scope.headscaleName, rule) {
-			actorRules = append(actorRules, rule)
+		for name := range scope.headscaleNames {
+			if acl.IsUserInRuleSources(policy, name, rule) {
+				actorRules = append(actorRules, rule)
+				break
+			}
 		}
 	}
 
@@ -94,15 +100,15 @@ func FilterResourcesByACL(ctx context.Context, actorUserID uint, resources []mod
 func fetchACLPolicyRaw(ctx context.Context) (*model.ACLPolicyStructure, error) {
 	client, err := headscaleServiceClient()
 	if err != nil {
-		return nil, err
+		return nil, unifyerror.GRPCError(err)
 	}
 
 	queryCtx, cancel := withServiceTimeout(ctx)
 	defer cancel()
 
-	resp, err := client.GetPolicy(queryCtx, &v1.GetPolicyRequest{})
-	if err != nil {
-		return nil, err
+	resp, grpcErr := client.GetPolicy(queryCtx, &v1.GetPolicyRequest{})
+	if grpcErr != nil {
+		return nil, unifyerror.GRPCError(grpcErr)
 	}
 
 	raw := strings.TrimSpace(resp.Policy)
@@ -112,7 +118,7 @@ func fetchACLPolicyRaw(ctx context.Context) (*model.ACLPolicyStructure, error) {
 
 	var policy model.ACLPolicyStructure
 	if err := json.Unmarshal([]byte(raw), &policy); err != nil {
-		return nil, err
+		return nil, unifyerror.ServerError(err)
 	}
 	return &policy, nil
 }

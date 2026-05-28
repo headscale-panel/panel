@@ -17,8 +17,8 @@ package services
 
 import (
 	"errors"
-	"fmt"
 	"headscale-panel/model"
+	"headscale-panel/pkg/unifyerror"
 	"strings"
 
 	"golang.org/x/crypto/bcrypt"
@@ -27,12 +27,12 @@ import (
 func hashOAuthClientSecret(secret string) (string, error) {
 	normalized := strings.TrimSpace(secret)
 	if normalized == "" {
-		return "", errors.New("client secret cannot be empty")
+		return "", unifyerror.WrongParam("client_secret")
 	}
 
 	hashedSecret, err := bcrypt.GenerateFromPassword([]byte(normalized), bcrypt.DefaultCost)
 	if err != nil {
-		return "", fmt.Errorf("failed to hash client secret: %w", err)
+		return "", unifyerror.ServerError(err)
 	}
 
 	return string(hashedSecret), nil
@@ -40,7 +40,7 @@ func hashOAuthClientSecret(secret string) (string, error) {
 
 func migrateLegacyOAuthClientSecret(client *model.OauthClient) error {
 	if client == nil {
-		return errors.New("oauth client is nil")
+		return unifyerror.ServerError(errors.New("oauth client is nil"))
 	}
 
 	if strings.TrimSpace(client.ClientSecretHash) != "" {
@@ -53,7 +53,7 @@ func migrateLegacyOAuthClientSecret(client *model.OauthClient) error {
 	}
 
 	if isInsecureOIDCClientSecret(legacySecret) {
-		return errors.New("legacy oauth client secret is insecure")
+		return unifyerror.ServerError(errors.New("legacy oauth client secret is insecure"))
 	}
 
 	hashedSecret, err := hashOAuthClientSecret(legacySecret)
@@ -67,7 +67,7 @@ func migrateLegacyOAuthClientSecret(client *model.OauthClient) error {
 			"client_secret_hash": hashedSecret,
 			"client_secret":      "",
 		}).Error; err != nil {
-		return fmt.Errorf("failed to migrate legacy oauth client secret: %w", err)
+		return unifyerror.DbError(err)
 	}
 
 	client.ClientSecretHash = hashedSecret
@@ -77,7 +77,7 @@ func migrateLegacyOAuthClientSecret(client *model.OauthClient) error {
 
 func verifyOAuthClientSecret(client *model.OauthClient, providedSecret string) (bool, error) {
 	if client == nil {
-		return false, errors.New("oauth client is nil")
+		return false, unifyerror.ServerError(errors.New("oauth client is nil"))
 	}
 
 	if strings.TrimSpace(providedSecret) == "" {
@@ -98,7 +98,7 @@ func verifyOAuthClientSecret(client *model.OauthClient, providedSecret string) (
 		if errors.Is(err, bcrypt.ErrMismatchedHashAndPassword) {
 			return false, nil
 		}
-		return false, fmt.Errorf("failed to verify client secret hash: %w", err)
+		return false, unifyerror.ServerError(err)
 	}
 
 	return true, nil

@@ -17,13 +17,12 @@ package services
 
 import (
 	"headscale-panel/model"
-	"headscale-panel/pkg/constants"
 	"headscale-panel/pkg/unifyerror"
-	"strings"
 )
 
-func IsAdminGroupName(groupName string) bool {
-	return strings.EqualFold(strings.TrimSpace(groupName), strings.ToLower(constants.GROUP_ADMIN))
+// IsAdmin checks if a user is an admin by the IsAdmin field.
+func IsAdmin(user *model.User) bool {
+	return user != nil && user.IsAdmin
 }
 
 // RequirePermission enforces permission checks at service layer.
@@ -54,11 +53,11 @@ func RequireAdmin(userID uint) error {
 	}
 
 	var user model.User
-	if err := model.DB.Preload("Group").First(&user, userID).Error; err != nil {
+	if err := model.DB.First(&user, userID).Error; err != nil {
 		return unifyerror.Forbidden()
 	}
 
-	if IsAdminGroupName(user.Group.Name) {
+	if user.IsAdmin {
 		return nil
 	}
 

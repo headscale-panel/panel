@@ -347,7 +347,7 @@ func (s *SetupController) Initialize(ctx *gin.Context) {
 	}
 
 	if ok, detail := services.CheckHeadscaleConnectivityWithConfig(ctx.Request.Context(), grpcAddr, apiKey, allowInsecure, tlsSkipVerify, req.TLSCACert); !ok {
-		unifyerror.Fail(ctx, unifyerror.New(http.StatusBadGateway, unifyerror.CodeGRPCErr, detail))
+		unifyerror.Fail(ctx, unifyerror.New(http.StatusOK, unifyerror.CodeGRPCErr, detail))
 		return
 	}
 
@@ -358,7 +358,19 @@ func (s *SetupController) Initialize(ctx *gin.Context) {
 
 	username := strings.TrimSpace(req.Username)
 	if username == "" {
-		username = constants.USERNAME_DEFAULT_ADMIN
+		unifyerror.Fail(ctx, unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "username is required"))
+		return
+	}
+
+	// Check if admin already exists
+	var adminCount int64
+	if err := model.DB.Model(&model.User{}).Where("is_admin = ?", true).Count(&adminCount).Error; err != nil {
+		unifyerror.Fail(ctx, unifyerror.DbError(err))
+		return
+	}
+	if adminCount > 0 {
+		unifyerror.Fail(ctx, unifyerror.Conflict("admin user already exists"))
+		return
 	}
 
 	password := req.Password
@@ -380,17 +392,28 @@ func (s *SetupController) Initialize(ctx *gin.Context) {
 	}
 
 	user := model.User{
-		Username:      username,
-		Password:      password,
-		Email:         strings.TrimSpace(req.Email),
-		GroupID:       adminGroup.ID,
-		HeadscaleName: username,
-		Provider:      "local",
+		Username: username,
+		Password: password,
+		Email:    strings.TrimSpace(req.Email),
+		GroupID:  adminGroup.ID,
+		IsAdmin:  true,
+		Provider: "local",
 	}
 
 	if err := model.DB.Create(&user).Error; err != nil {
 		unifyerror.Fail(ctx, unifyerror.DbError(err))
 		return
+	}
+
+	// Best-effort: create matching headscale user and binding
+	if services.PanelSettingsService.IsThirdPartyOIDCEnabled() == false {
+		client, err := services.HeadscaleService.CreateUserWithContext(ctx, 1, username, username, strings.TrimSpace(req.Email), "")
+		if err == nil && client != nil {
+			model.DB.Create(&model.UserIdentityBinding{
+				UserID:      user.ID,
+				HeadscaleID: client.ID,
+			})
+		}
 	}
 
 	if err := services.SetupStateService.MarkInitialized(); err != nil {

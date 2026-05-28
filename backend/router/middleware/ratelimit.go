@@ -96,10 +96,7 @@ func (rl *RateLimiter) allow(ip string) bool {
 func RateLimitMiddleware(limiter *RateLimiter) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if !limiter.allow(c.ClientIP()) {
-			c.JSON(http.StatusTooManyRequests, unifyerror.Response{
-				Code: http.StatusTooManyRequests,
-				Msg:  "too many requests, please try again later",
-			})
+			unifyerror.Fail(c, unifyerror.New(http.StatusTooManyRequests, 0, "too many requests, please try again later"))
 			c.Abort()
 			return
 		}

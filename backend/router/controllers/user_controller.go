@@ -91,9 +91,9 @@ func (u *UserController) Login(c *gin.Context) {
 		return
 	}
 
-	// Determine role based on group name
+	// Determine role based on IsAdmin field
 	role := constants.ROLE_USER
-	if services.IsAdminGroupName(user.Group.Name) {
+	if user.IsAdmin {
 		role = constants.ROLE_ADMIN
 	}
 

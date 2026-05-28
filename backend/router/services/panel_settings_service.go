@@ -29,11 +29,12 @@ import (
 	"headscale-panel/pkg/conf"
 	"headscale-panel/pkg/constants"
 	"headscale-panel/pkg/headscale"
+	"headscale-panel/pkg/log"
 	"headscale-panel/pkg/unifyerror"
 	"net/http"
 	"strings"
 
-	"github.com/sirupsen/logrus"
+	"go.uber.org/zap"
 )
 
 type panelSettingsService struct{}
@@ -115,7 +116,7 @@ type headscaleConnectionPayload struct {
 func PersistHeadscaleConnection(grpcAddr, apiKey string, insecure, tlsSkipVerify bool, tlsCACert string) error {
 	encryptedAPIKey, err := encryptPanelSecret(apiKey)
 	if err != nil {
-		return err
+		return unifyerror.ServerError(err)
 	}
 
 	payload := headscaleConnectionPayload{
@@ -125,9 +126,9 @@ func PersistHeadscaleConnection(grpcAddr, apiKey string, insecure, tlsSkipVerify
 		TLSSkipVerify:   tlsSkipVerify,
 		TLSCACert:       tlsCACert,
 	}
-	data, err := json.Marshal(payload)
-	if err != nil {
-		return err
+	data, marshalErr := json.Marshal(payload)
+	if marshalErr != nil {
+		return unifyerror.ServerError(marshalErr)
 	}
 
 	var setting model.PanelSetting
@@ -135,10 +136,16 @@ func PersistHeadscaleConnection(grpcAddr, apiKey string, insecure, tlsSkipVerify
 	if result.Error != nil {
 		// Not found — create
 		setting = model.PanelSetting{Key: panelSettingKeyHeadscale, Value: string(data)}
-		return model.DB.Create(&setting).Error
+		if err := model.DB.Create(&setting).Error; err != nil {
+			return unifyerror.DbError(err)
+		}
+		return nil
 	}
 	setting.Value = string(data)
-	return model.DB.Save(&setting).Error
+	if err := model.DB.Save(&setting).Error; err != nil {
+		return unifyerror.DbError(err)
+	}
+	return nil
 }
 
 // LoadHeadscaleConnectionFromDB loads saved headscale connection settings from DB
@@ -146,21 +153,21 @@ func PersistHeadscaleConnection(grpcAddr, apiKey string, insecure, tlsSkipVerify
 func LoadHeadscaleConnectionFromDB() bool {
 	var setting model.PanelSetting
 	if err := model.DB.Where("key = ?", panelSettingKeyHeadscale).First(&setting).Error; err != nil {
-		logrus.WithError(err).Debug("No persisted Headscale connection settings found in panel_settings")
+		log.L.Debug("No persisted Headscale connection settings found in panel_settings", zap.Error(err))
 		return false
 	}
 	var payload headscaleConnectionPayload
 	if err := json.Unmarshal([]byte(setting.Value), &payload); err != nil {
-		logrus.WithError(err).Warn("Failed to parse persisted Headscale connection settings")
+		log.L.Warn("Failed to parse persisted Headscale connection settings", zap.Error(err))
 		return false
 	}
 	if strings.TrimSpace(payload.GRPCAddr) == "" {
-		logrus.Warn("Persisted Headscale connection settings are missing grpc_addr")
+		log.L.Warn("Persisted Headscale connection settings are missing grpc_addr")
 		return false
 	}
 	apiKey, err := decryptPanelSecret(payload.APIKeyEncrypted, payload.APIKey)
 	if err != nil {
-		logrus.WithError(err).Warn("Failed to decrypt persisted Headscale API key; check that JWT_SECRET is stable across restarts")
+		log.L.Warn("Failed to decrypt persisted Headscale API key; check that JWT_SECRET is stable across restarts", zap.Error(err))
 		return false
 	}
 	conf.Conf.Headscale.GRPCAddr = payload.GRPCAddr
@@ -171,13 +178,17 @@ func LoadHeadscaleConnectionFromDB() bool {
 	return true
 }
 
-// SyncDataFromHeadscale syncs resources/groups from Headscale ACL into local DB.
+// SyncDataFromHeadscale syncs ACL data (groups, hosts) and users from Headscale into local DB.
 func (s *panelSettingsService) SyncDataFromHeadscale(actorUserID uint) error {
 	if err := RequireAdmin(actorUserID); err != nil {
 		return err
 	}
 
-	return HeadscaleService.SyncACL()
+	if err := HeadscaleService.SyncACL(); err != nil {
+		return err
+	}
+	HeadscaleService.SyncUsersFromHeadscale(context.Background())
+	return nil
 }
 
 // BuiltinOIDCConfig is the response for the built-in OIDC endpoint.
@@ -281,13 +292,13 @@ func (s *panelSettingsService) SaveOIDCSettings(actorUserID uint, payload *OIDCS
 			Value: string(data),
 		}
 		if err := model.DB.Create(&setting).Error; err != nil {
-			return err
+			return unifyerror.DbError(err)
 		}
 	} else {
 		// Update existing
 		setting.Value = string(data)
 		if err := model.DB.Save(&setting).Error; err != nil {
-			return err
+			return unifyerror.DbError(err)
 		}
 	}
 
@@ -529,7 +540,11 @@ func (s *panelSettingsService) EnableBuiltinOIDC(actorUserID uint) (*BuiltinOIDC
 
 func marshalOIDCSettingsPayload(payload *OIDCSettingsPayload) ([]byte, error) {
 	if payload == nil {
-		return json.Marshal((*persistedOIDCSettingsPayload)(nil))
+		data, err := json.Marshal((*persistedOIDCSettingsPayload)(nil))
+		if err != nil {
+			return nil, unifyerror.FromError(err)
+		}
+		return data, nil
 	}
 
 	encryptedSecret, err := encryptPanelSecret(payload.ClientSecret)
@@ -556,7 +571,11 @@ func marshalOIDCSettingsPayload(payload *OIDCSettingsPayload) ([]byte, error) {
 		PKCEMethod:                 payload.PKCEMethod,
 	}
 
-	return json.Marshal(&persisted)
+	data, marshalErr := json.Marshal(&persisted)
+	if marshalErr != nil {
+		return nil, unifyerror.FromError(marshalErr)
+	}
+	return data, nil
 }
 
 func loadOIDCSettingsPayload(raw string) (*OIDCSettingsPayload, error) {
@@ -598,16 +617,16 @@ func encryptPanelSecret(plain string) (string, error) {
 
 	block, err := aes.NewCipher(panelSettingsKey())
 	if err != nil {
-		return "", err
+		return "", unifyerror.ServerError(err)
 	}
 	gcm, err := cipher.NewGCM(block)
 	if err != nil {
-		return "", err
+		return "", unifyerror.ServerError(err)
 	}
 
 	nonce := make([]byte, gcm.NonceSize())
 	if _, err := rand.Read(nonce); err != nil {
-		return "", err
+		return "", unifyerror.ServerError(err)
 	}
 
 	ciphertext := gcm.Seal(nonce, nonce, []byte(normalized), nil)
@@ -621,26 +640,26 @@ func decryptPanelSecret(encrypted string, legacyPlain string) (string, error) {
 
 	raw, err := base64.RawStdEncoding.DecodeString(encrypted)
 	if err != nil {
-		return "", err
+		return "", unifyerror.ServerError(err)
 	}
 
 	block, err := aes.NewCipher(panelSettingsKey())
 	if err != nil {
-		return "", err
+		return "", unifyerror.ServerError(err)
 	}
 	gcm, err := cipher.NewGCM(block)
 	if err != nil {
-		return "", err
+		return "", unifyerror.ServerError(err)
 	}
 	if len(raw) < gcm.NonceSize() {
-		return "", fmt.Errorf("encrypted payload too short")
+		return "", unifyerror.ServerError(fmt.Errorf("encrypted payload too short"))
 	}
 
 	nonce := raw[:gcm.NonceSize()]
 	ciphertext := raw[gcm.NonceSize():]
 	plain, err := gcm.Open(nil, nonce, ciphertext, nil)
 	if err != nil {
-		return "", err
+		return "", unifyerror.ServerError(err)
 	}
 	return string(plain), nil
 }

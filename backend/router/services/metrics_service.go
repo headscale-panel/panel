@@ -20,6 +20,7 @@ import (
 	"fmt"
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"headscale-panel/pkg/influxdb"
+	"headscale-panel/pkg/log"
 	"headscale-panel/pkg/unifyerror"
 	"math"
 	"net/http"
@@ -28,7 +29,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/sirupsen/logrus"
+	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -46,12 +47,12 @@ func (s *metricsService) CollectDeviceStatus(ctx context.Context) error {
 	defer cancel()
 	client, err := headscaleServiceClient()
 	if err != nil {
-		return err
+		return unifyerror.GRPCError(err)
 	}
 
-	nodes, err := client.ListNodes(ctx, &v1.ListNodesRequest{})
-	if err != nil {
-		return fmt.Errorf("failed to list nodes: %w", err)
+	nodes, grpcErr := client.ListNodes(ctx, &v1.ListNodesRequest{})
+	if grpcErr != nil {
+		return unifyerror.GRPCError(grpcErr)
 	}
 
 	for _, node := range nodes.Nodes {
@@ -108,16 +109,16 @@ func (s *metricsService) StartMetricsCollector(interval time.Duration) {
 			func() {
 				defer func() {
 					if r := recover(); r != nil {
-						logrus.WithField("panic", r).Error("panic recovered in metrics collector")
+						log.L.Error("panic recovered in metrics collector", zap.Any("panic", r))
 					}
 				}()
 				if err := s.CollectDeviceStatus(collectorCtx); err != nil {
-					logrus.WithError(err).Error("Failed to collect device status")
+					log.L.Error("Failed to collect device status", zap.Error(err))
 				}
 			}()
 		}
 	}()
-	logrus.Infof("Metrics collector started with interval: %v", interval)
+	log.L.Info("Metrics collector started", zap.Duration("interval", interval))
 }
 
 func (s *metricsService) StopMetricsCollector() {
@@ -148,7 +149,11 @@ func (s *metricsService) GetOnlineDuration(ctx context.Context, actorUserID uint
 		}
 		for _, node := range nodes {
 			if fmt.Sprintf("%d", node.Id) == strings.TrimSpace(machineID) {
-				return influxdb.QueryOnlineDuration(ctx, "", machineID, &start, end)
+				dur, err := influxdb.QueryOnlineDuration(ctx, "", machineID, &start, end)
+				if err != nil {
+					return 0, unifyerror.FromError(err)
+				}
+				return dur, nil
 			}
 		}
 		return 0, unifyerror.Forbidden()
@@ -162,7 +167,11 @@ func (s *metricsService) GetOnlineDuration(ctx context.Context, actorUserID uint
 			return 0, err
 		}
 	}
-	return influxdb.QueryOnlineDuration(ctx, userID, machineID, &start, end)
+	dur, err := influxdb.QueryOnlineDuration(ctx, userID, machineID, &start, end)
+	if err != nil {
+		return 0, unifyerror.FromError(err)
+	}
+	return dur, nil
 }
 
 // GetDeviceStatusHistory gets device status history
@@ -179,7 +188,11 @@ func (s *metricsService) GetDeviceStatusHistory(ctx context.Context, actorUserID
 	}
 	for _, node := range nodes {
 		if fmt.Sprintf("%d", node.Id) == strings.TrimSpace(machineID) {
-			return influxdb.GetDeviceStatusHistory(ctx, machineID, start, end)
+			data, err := influxdb.GetDeviceStatusHistory(ctx, machineID, start, end)
+			if err != nil {
+				return nil, unifyerror.FromError(err)
+			}
+			return data, nil
 		}
 	}
 	return nil, unifyerror.Forbidden()
@@ -225,7 +238,11 @@ func (s *metricsService) GetDeviceStatusHistories(ctx context.Context, actorUser
 		return nil, unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "machine_ids is required")
 	}
 
-	return influxdb.GetDeviceStatusHistories(ctx, filteredMachineIDs, start, end)
+	raw, influxErr := influxdb.GetDeviceStatusHistories(ctx, filteredMachineIDs, start, end)
+	if influxErr != nil {
+		return nil, unifyerror.FromError(influxErr)
+	}
+	return raw, nil
 }
 
 // GetOnlineDurationStats gets online duration statistics for all users
@@ -242,7 +259,7 @@ func (s *metricsService) GetOnlineDurationStats(ctx context.Context, actorUserID
 	for _, node := range nodes {
 		duration, err := influxdb.QueryOnlineDuration(ctx, "", fmt.Sprintf("%d", node.Id), start, end)
 		if err != nil {
-			logrus.WithError(err).Warnf("Failed to get online duration for node %d", node.Id)
+			log.L.Warn("Failed to get online duration for node", zap.Uint64("nodeID", node.Id), zap.Error(err))
 			continue
 		}
 
@@ -318,7 +335,7 @@ func (s *metricsService) GetOnlineDurationSummary(ctx context.Context, actorUser
 	})
 
 	if err := g.Wait(); err != nil {
-		return nil, err
+		return nil, unifyerror.FromError(err)
 	}
 
 	return map[string]interface{}{

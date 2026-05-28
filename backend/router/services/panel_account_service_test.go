@@ -1,4 +1,4 @@
-// Copyright (C) 2026 
+// Copyright (C) 2026
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as
@@ -23,7 +23,7 @@ import (
 
 func TestBuildValidatedBindingsRejectsUnavailableHeadscale(t *testing.T) {
 	entries := []BindingEntry{
-		{HeadscaleName: "ghost-user", IsPrimary: true},
+		{HeadscaleID: 99999},
 	}
 
 	bindings, err := buildValidatedBindings(1, entries)

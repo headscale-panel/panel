@@ -1,4 +1,4 @@
-// Copyright (C) 2026 
+// Copyright (C) 2026
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as
@@ -124,7 +124,7 @@ func (a *AuthController) OIDCLogin(c *gin.Context) {
 	// 32 random bytes → 64 hex chars
 	stateBytes := make([]byte, 32)
 	if _, err := rand.Read(stateBytes); err != nil {
-		unifyerror.Fail(c, fmt.Errorf("failed to generate random state: %w", err))
+		unifyerror.Fail(c, unifyerror.ServerError(err))
 		return
 	}
 	state := hex.EncodeToString(stateBytes)
@@ -191,7 +191,7 @@ func (a *AuthController) OIDCHeadscaleUserLogin(c *gin.Context) {
 
 	stateBytes := make([]byte, 32)
 	if _, err := rand.Read(stateBytes); err != nil {
-		unifyerror.Fail(c, fmt.Errorf("failed to generate random state: %w", err))
+		unifyerror.Fail(c, unifyerror.ServerError(err))
 		return
 	}
 	state := hex.EncodeToString(stateBytes)
@@ -442,7 +442,7 @@ func (a *AuthController) OIDCHeadscaleUserCallback(c *gin.Context) {
 
 	actorUserID := c.GetUint("userID")
 
-	users, err := services.HeadscaleService.ListHeadscaleUsersWithContext(c.Request.Context(), actorUserID)
+	users, err := services.HeadscaleService.ListMergedUsersWithContext(c.Request.Context(), actorUserID)
 	if err != nil {
 		unifyerror.Fail(c, err)
 		return
@@ -457,7 +457,7 @@ func (a *AuthController) OIDCHeadscaleUserCallback(c *gin.Context) {
 			return
 		}
 
-		if err := upsertOIDCHeadscaleShadowUser(existing.Name, claims.Sub, claims.Email, claims.Name, claims.Picture); err != nil {
+		if err := upsertOIDCHeadscaleShadowUser(existing.Name, existing.ID, claims.Sub, claims.Email, claims.Name, claims.Picture); err != nil {
 			unifyerror.Fail(c, unifyerror.ServerError(err))
 			return
 		}
@@ -486,7 +486,7 @@ func (a *AuthController) OIDCHeadscaleUserCallback(c *gin.Context) {
 		unifyerror.Fail(c, err)
 		return
 	}
-	if err := upsertOIDCHeadscaleShadowUser(createdUser.Name, claims.Sub, claims.Email, claims.Name, claims.Picture); err != nil {
+	if err := upsertOIDCHeadscaleShadowUser(createdUser.Name, createdUser.ID, claims.Sub, claims.Email, claims.Name, claims.Picture); err != nil {
 		unifyerror.Fail(c, unifyerror.ServerError(err))
 		return
 	}
@@ -635,16 +635,17 @@ func findOrCreateOIDCUser(oidcCfg *services.OIDCSettingsPayload, sub, email, nam
 		Username:      username,
 		Email:         email,
 		DisplayName:   name,
-		Provider:      "oidc",
-		ProviderID:    sub,
 		ProfilePicURL: picture,
+		Provider:      "oidc",
 		GroupID:       userGroup.ID,
-		HeadscaleName: username,
 	}
 
 	if err := model.DB.Create(&newUser).Error; err != nil {
 		return nil, fmt.Errorf("failed to create user: %w", err)
 	}
+
+	// Create OIDC binding — headscale user will be linked when created
+	// No binding here; it's created in upsertOIDCHeadscaleShadowUser or by sync
 
 	// Reload with group
 	if err := model.DB.Preload("Group").First(&newUser, newUser.ID).Error; err != nil {
@@ -657,46 +658,34 @@ func failOIDCAuth(c *gin.Context) {
 	unifyerror.Fail(c, unifyerror.New(http.StatusForbidden, unifyerror.CodeForbidden, "OIDC authentication failed"))
 }
 
-func upsertOIDCHeadscaleShadowUser(headscaleName, sub, email, displayName, picture string) error {
+func upsertOIDCHeadscaleShadowUser(headscaleName string, headscaleID uint64, sub, email, displayName, picture string) error {
 	headscaleName = strings.TrimSpace(headscaleName)
-	if headscaleName == "" {
+	if headscaleName == "" || headscaleID == 0 {
 		return nil
 	}
 
-	var user model.User
-	err := model.DB.Where("headscale_name = ? OR username = ?", headscaleName, headscaleName).First(&user).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		newUser := model.User{
-			Username:      headscaleName,
-			HeadscaleName: headscaleName,
-			DisplayName:   strings.TrimSpace(displayName),
-			Email:         strings.TrimSpace(email),
-			Provider:      "oidc",
-			ProviderID:    strings.TrimSpace(sub),
-			ProfilePicURL: strings.TrimSpace(picture),
+	// Check if binding already exists for this headscale ID
+	existing := model.GetBindingByHeadscaleID(headscaleID)
+	if existing != nil {
+		return nil
+	}
+
+	// Find or create panel user
+	var panelUser model.User
+	if err := model.DB.Where("username = ?", headscaleName).First(&panelUser).Error; err != nil {
+		panelUser = model.User{
+			Username: headscaleName,
 		}
-		return model.DB.Create(&newUser).Error
-	}
-	if err != nil {
-		return err
-	}
-
-	updates := map[string]interface{}{
-		"provider":       "oidc",
-		"provider_id":    strings.TrimSpace(sub),
-		"headscale_name": headscaleName,
-	}
-	if strings.TrimSpace(displayName) != "" {
-		updates["display_name"] = strings.TrimSpace(displayName)
-	}
-	if strings.TrimSpace(email) != "" {
-		updates["email"] = strings.TrimSpace(email)
-	}
-	if strings.TrimSpace(picture) != "" {
-		updates["profile_pic_url"] = strings.TrimSpace(picture)
+		if createErr := model.DB.Create(&panelUser).Error; createErr != nil {
+			return createErr
+		}
 	}
 
-	return model.DB.Model(&user).Updates(updates).Error
+	// Create binding (ID mapping only)
+	return model.DB.Create(&model.UserIdentityBinding{
+		UserID:      panelUser.ID,
+		HeadscaleID: headscaleID,
+	}).Error
 }
 
 func oidcClaimsMatchHeadscaleUser(user services.HeadscaleUser, oidcName, oidcEmail string) bool {

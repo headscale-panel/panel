@@ -18,7 +18,6 @@ package services
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"headscale-panel/model"
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
@@ -52,14 +51,17 @@ func (s *aclService) InitPolicyWithContext(ctx context.Context) error {
 	queryCtx, cancel := withServiceTimeout(ctx)
 	defer cancel()
 
-	_, err = client.GetPolicy(queryCtx, &v1.GetPolicyRequest{})
-	if err == nil {
+	_, grpcErr := client.GetPolicy(queryCtx, &v1.GetPolicyRequest{})
+	if grpcErr == nil {
 		return nil
 	}
 
 	// Policy doesn't exist yet — initialize with an empty policy.
-	_, err = client.SetPolicy(queryCtx, &v1.SetPolicyRequest{Policy: "{}"})
-	return err
+	_, grpcErr = client.SetPolicy(queryCtx, &v1.SetPolicyRequest{Policy: "{}"})
+	if grpcErr != nil {
+		return unifyerror.GRPCError(grpcErr)
+	}
+	return nil
 }
 
 // GetPolicy retrieves the current ACL policy from Headscale
@@ -80,9 +82,9 @@ func (s *aclService) GetPolicyWithContext(ctx context.Context, actorUserID uint)
 	queryCtx, cancel := withServiceTimeout(ctx)
 	defer cancel()
 
-	resp, err := client.GetPolicy(queryCtx, &v1.GetPolicyRequest{})
-	if err != nil {
-		return nil, err
+	resp, grpcErr := client.GetPolicy(queryCtx, &v1.GetPolicyRequest{})
+	if grpcErr != nil {
+		return nil, unifyerror.GRPCError(grpcErr)
 	}
 
 	rawPolicy := strings.TrimSpace(resp.Policy)
@@ -97,7 +99,7 @@ func (s *aclService) GetPolicyWithContext(ctx context.Context, actorUserID uint)
 
 	var policy model.ACLPolicyStructure
 	if err := json.Unmarshal(standardizedPolicy, &policy); err != nil {
-		return nil, err
+		return nil, unifyerror.ServerError(err)
 	}
 
 	return &policy, nil
@@ -122,18 +124,18 @@ func (s *aclService) UpdatePolicyWithContext(ctx context.Context, actorUserID ui
 		return err
 	}
 
-	policyBytes, err := json.MarshalIndent(policy, "", "  ")
-	if err != nil {
-		return err
+	policyBytes, marshalErr := json.MarshalIndent(policy, "", "  ")
+	if marshalErr != nil {
+		return unifyerror.ServerError(marshalErr)
 	}
 
 	queryCtx, cancel := withServiceTimeout(ctx)
 	defer cancel()
 
-	_, err = client.SetPolicy(queryCtx, &v1.SetPolicyRequest{
+	_, grpcErr := client.SetPolicy(queryCtx, &v1.SetPolicyRequest{
 		Policy: string(policyBytes),
 	})
-	return wrapACLPolicyApplyError(err)
+	return wrapACLPolicyApplyError(grpcErr)
 }
 
 // SetPolicyRaw sets the ACL policy from raw JSON string
@@ -159,10 +161,10 @@ func (s *aclService) SetPolicyRawWithContext(ctx context.Context, actorUserID ui
 	queryCtx, cancel := withServiceTimeout(ctx)
 	defer cancel()
 
-	_, err = client.SetPolicy(queryCtx, &v1.SetPolicyRequest{
+	_, grpcErr := client.SetPolicy(queryCtx, &v1.SetPolicyRequest{
 		Policy: normalizedPolicyJSON,
 	})
-	return wrapACLPolicyApplyError(err)
+	return wrapACLPolicyApplyError(grpcErr)
 }
 
 func normalizeACLPolicyStructure(policy *model.ACLPolicyStructure) error {
@@ -215,8 +217,8 @@ func normalizeRawACLPolicyJSON(policyJSON string) (string, error) {
 		return "", err
 	}
 
-	normalized, err := json.MarshalIndent(raw, "", "  ")
-	if err != nil {
+	normalized, marshalErr := json.MarshalIndent(raw, "", "  ")
+	if marshalErr != nil {
 		return "", unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, constants.MsgACLPolicySerializeFailed)
 	}
 
@@ -305,7 +307,7 @@ func normalizeRawACLRules(raw map[string]any) error {
 func normalizeACLDestination(destination string) (string, error) {
 	trimmed := strings.TrimSpace(destination)
 	if trimmed == "" {
-		return "", errors.New(constants.MsgACLDestinationEmpty)
+		return "", unifyerror.WrongParam("destination")
 	}
 
 	switch {
@@ -560,7 +562,7 @@ func (s *aclService) UpdateRuleByIndexWithContext(ctx context.Context, actorUser
 	}
 
 	if index < 0 || index >= len(policy.ACLs) {
-		return errors.New(constants.MsgACLRuleIndexOutOfRange)
+		return unifyerror.WrongParam("rule index")
 	}
 
 	policy.ACLs[index] = model.ACLRule{
@@ -595,7 +597,7 @@ func (s *aclService) DeleteRuleByIndexWithContext(ctx context.Context, actorUser
 	}
 
 	if index < 0 || index >= len(policy.ACLs) {
-		return errors.New(constants.MsgACLRuleIndexOutOfRange)
+		return unifyerror.WrongParam("rule index")
 	}
 
 	policy.ACLs = append(policy.ACLs[:index], policy.ACLs[index+1:]...)
@@ -639,12 +641,33 @@ func (s *aclService) GenerateWithContext(ctx context.Context, actorUserID uint) 
 		}
 		for _, g := range dbGroups {
 			var members []string
+			// Collect all headscale IDs for users in this group
+			allIDs := make(map[uint][]uint64) // panelUserID → headscaleIDs
 			for _, u := range g.Users {
-				name := u.HeadscaleName
-				if name == "" {
-					name = u.Username
+				allIDs[u.ID] = model.GetHeadscaleIDs(u.ID)
+			}
+			// Batch query headscale
+			flatIDs := make([]uint64, 0)
+			for _, ids := range allIDs {
+				flatIDs = append(flatIDs, ids...)
+			}
+			hsUsers := listHeadscaleUsersByIDs(flatIDs)
+			// Build member list
+			for _, u := range g.Users {
+				ids := allIDs[u.ID]
+				if len(ids) == 0 {
+					if name := strings.TrimSpace(u.Username); name != "" {
+						members = append(members, name+"@")
+					}
+					continue
 				}
-				members = append(members, name+"@")
+				for _, id := range ids {
+					if hsUser, ok := hsUsers[id]; ok {
+						if name := strings.TrimSpace(hsUser.Name); name != "" {
+							members = append(members, name+"@")
+						}
+					}
+				}
 			}
 			if len(members) > 0 {
 				policy.Groups["group:"+strings.ToLower(g.Name)] = members
@@ -652,9 +675,9 @@ func (s *aclService) GenerateWithContext(ctx context.Context, actorUserID uint) 
 		}
 	}
 
-	contentBytes, err := json.MarshalIndent(policy, "", "  ")
-	if err != nil {
-		return nil, err
+	contentBytes, marshalErr := json.MarshalIndent(policy, "", "  ")
+	if marshalErr != nil {
+		return nil, unifyerror.ServerError(marshalErr)
 	}
 
 	var lastVersion model.ACLPolicy

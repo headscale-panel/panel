@@ -1,4 +1,4 @@
-// Copyright (C) 2026 
+// Copyright (C) 2026
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as
@@ -18,11 +18,13 @@ package services
 import (
 	"context"
 	"errors"
+	"fmt"
 	"headscale-panel/model"
-	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"headscale-panel/pkg/unifyerror"
 	"net/http"
 	"strings"
+
+	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -106,7 +108,6 @@ type NetworkBinding struct {
 	DisplayName   string `json:"display_name"`
 	Email         string `json:"email"`
 	Provider      string `json:"provider"`
-	IsPrimary     bool   `json:"is_primary"`
 }
 
 type NetworkIdentityItem struct {
@@ -356,8 +357,8 @@ func (s *panelAccountService) GetNetworkBindings(actorUserID, accountID uint) ([
 }
 
 type BindingEntry struct {
-	HeadscaleName string `json:"headscale_name"`
-	IsPrimary     bool   `json:"is_primary"`
+	HeadscaleID   uint64 `json:"headscale_id"`
+	HeadscaleName string `json:"headscale_name"` // for display only, resolved from headscale
 }
 
 func (s *panelAccountService) UpdateNetworkBindings(actorUserID, accountID uint, entries []BindingEntry) error {
@@ -373,25 +374,13 @@ func (s *panelAccountService) UpdateNetworkBindings(actorUserID, accountID uint,
 		return unifyerror.DbError(err)
 	}
 
-	// Validate: at most one primary
-	primaryCount := 0
-	for _, e := range entries {
-		if e.IsPrimary {
-			primaryCount++
-		}
-	}
-	if primaryCount > 1 {
-		return unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "at most one primary binding is allowed")
-	}
-
 	validatedBindings, err := buildValidatedBindings(accountID, entries)
 	if err != nil {
 		return err
 	}
-	primaryName := pickPrimaryBindingName(entries)
 
 	// Replace all bindings in a transaction
-	return model.DB.Transaction(func(tx *gorm.DB) error {
+	if err := model.DB.Transaction(func(tx *gorm.DB) error {
 		// Delete existing bindings
 		if err := tx.Where("user_id = ?", accountID).Delete(&model.UserIdentityBinding{}).Error; err != nil {
 			return unifyerror.DbError(err)
@@ -403,46 +392,11 @@ func (s *panelAccountService) UpdateNetworkBindings(actorUserID, accountID uint,
 			}
 		}
 
-		if err := tx.Model(&model.User{}).Where("id = ?", accountID).Update("headscale_name", primaryName).Error; err != nil {
-			return unifyerror.DbError(err)
-		}
-
 		return nil
-	})
-}
-
-func (s *panelAccountService) SetPrimaryBinding(actorUserID, accountID uint, bindingID uint) error {
-	if err := RequirePermission(actorUserID, "panel:account:bindding"); err != nil {
-		return err
+	}); err != nil {
+		return unifyerror.FromError(err)
 	}
-
-	return model.DB.Transaction(func(tx *gorm.DB) error {
-		// Unset all primary for this account
-		if err := tx.Model(&model.UserIdentityBinding{}).
-			Where("user_id = ?", accountID).
-			Update("is_primary", false).Error; err != nil {
-			return unifyerror.DbError(err)
-		}
-
-		// Set the specified binding as primary
-		result := tx.Model(&model.UserIdentityBinding{}).
-			Where("id = ? AND user_id = ?", bindingID, accountID).
-			Update("is_primary", true)
-		if result.Error != nil {
-			return unifyerror.DbError(result.Error)
-		}
-		if result.RowsAffected == 0 {
-			return unifyerror.New(http.StatusNotFound, unifyerror.CodeNotFound, "binding not found")
-		}
-
-		// Update User.HeadscaleName for backward compatibility
-		var binding model.UserIdentityBinding
-		if err := tx.First(&binding, bindingID).Error; err == nil {
-			tx.Model(&model.User{}).Where("id = ?", accountID).Update("headscale_name", binding.HeadscaleName)
-		}
-
-		return nil
-	})
+	return nil
 }
 
 func (s *panelAccountService) ListAvailableNetworkIdentities(actorUserID uint, search string, excludeAccountID uint) ([]NetworkIdentityItem, error) {
@@ -458,29 +412,27 @@ func (s *panelAccountService) ListAvailableNetworkIdentities(actorUserID uint, s
 	ctx, cancel := withServiceTimeout(context.Background())
 	defer cancel()
 
-	resp, err := client.ListUsers(ctx, &v1.ListUsersRequest{})
-	if err != nil {
-		st, ok := status.FromError(err)
+	resp, grpcErr := client.ListUsers(ctx, &v1.ListUsersRequest{})
+	if grpcErr != nil {
+		st, ok := status.FromError(grpcErr)
 		if ok && st.Code() == codes.Unavailable {
-			return nil, unifyerror.New(http.StatusBadGateway, unifyerror.CodeGRPCErr, "headscale service unavailable")
+			return nil, unifyerror.New(http.StatusOK, unifyerror.CodeGRPCErr, "headscale service unavailable")
 		}
-		return nil, unifyerror.New(http.StatusBadGateway, unifyerror.CodeGRPCErr, "failed to list headscale users")
+		return nil, unifyerror.New(http.StatusOK, unifyerror.CodeGRPCErr, "failed to list headscale users")
 	}
 
-	// Get already-bound names for the specified account so we can exclude them
-	boundNames := map[string]bool{}
+	// Get already-bound headscale IDs for the specified account so we can exclude them
+	boundIDs := map[uint64]bool{}
 	if excludeAccountID > 0 {
-		var bindings []model.UserIdentityBinding
-		model.DB.Where("user_id = ?", excludeAccountID).Find(&bindings)
-		for _, b := range bindings {
-			boundNames[strings.ToLower(b.HeadscaleName)] = true
+		for _, id := range model.GetHeadscaleIDs(excludeAccountID) {
+			boundIDs[id] = true
 		}
 	}
 
 	items := make([]NetworkIdentityItem, 0)
 	searchLower := strings.ToLower(search)
 	for _, u := range resp.Users {
-		if boundNames[strings.ToLower(u.Name)] {
+		if boundIDs[u.Id] {
 			continue
 		}
 		if search != "" {
@@ -564,10 +516,8 @@ func buildLoginIdentities(u *model.User) *LoginIdentities {
 	var oidc *OIDCLoginIdentity
 	if provider == "oidc" {
 		oidc = &OIDCLoginIdentity{
-			Bound:      true,
-			Provider:   u.Provider,
-			ProviderID: u.ProviderID,
-			Email:      u.Email,
+			Bound: true,
+			Email: u.Email,
 		}
 	} else {
 		oidc = &OIDCLoginIdentity{Bound: false}
@@ -580,17 +530,28 @@ func buildLoginIdentities(u *model.User) *LoginIdentities {
 }
 
 func buildNetworkBindings(bindings []model.UserIdentityBinding) []NetworkBinding {
+	if len(bindings) == 0 {
+		return nil
+	}
+	ids := make([]uint64, 0, len(bindings))
+	for _, b := range bindings {
+		ids = append(ids, b.HeadscaleID)
+	}
+	hsUsers := listHeadscaleUsersByIDs(ids)
+
 	result := make([]NetworkBinding, 0, len(bindings))
 	for _, b := range bindings {
-		result = append(result, NetworkBinding{
-			ID:            b.ID,
-			HeadscaleID:   b.HeadscaleID,
-			HeadscaleName: b.HeadscaleName,
-			DisplayName:   b.DisplayName,
-			Email:         b.Email,
-			Provider:      b.Provider,
-			IsPrimary:     b.IsPrimary,
-		})
+		nb := NetworkBinding{
+			ID:          b.ID,
+			HeadscaleID: b.HeadscaleID,
+		}
+		if u, ok := hsUsers[b.HeadscaleID]; ok {
+			nb.HeadscaleName = u.Name
+			nb.DisplayName = u.DisplayName
+			nb.Email = u.Email
+			nb.Provider = normalizeHeadscaleProvider(u.Provider)
+		}
+		result = append(result, nb)
 	}
 	return result
 }
@@ -614,7 +575,7 @@ func (s *panelAccountService) Delete(actorUserID, accountID uint) error {
 		return unifyerror.New(http.StatusNotFound, unifyerror.CodeNotFound, "panel account not found")
 	}
 
-	return model.DB.Transaction(func(tx *gorm.DB) error {
+	if err := model.DB.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Where("user_id = ?", accountID).Delete(&model.UserIdentityBinding{}).Error; err != nil {
 			return unifyerror.DbError(err)
 		}
@@ -622,7 +583,10 @@ func (s *panelAccountService) Delete(actorUserID, accountID uint) error {
 			return unifyerror.DbError(err)
 		}
 		return nil
-	})
+	}); err != nil {
+		return unifyerror.FromError(err)
+	}
+	return nil
 }
 
 func buildValidatedBindings(accountID uint, entries []BindingEntry) ([]model.UserIdentityBinding, error) {
@@ -638,66 +602,46 @@ func buildValidatedBindings(accountID uint, entries []BindingEntry) ([]model.Use
 	ctx, cancel := withServiceTimeout(context.Background())
 	defer cancel()
 
-	resp, err := client.ListUsers(ctx, &v1.ListUsersRequest{})
-	if err != nil {
-		return nil, unifyerror.New(http.StatusBadGateway, unifyerror.CodeGRPCErr, "failed to validate headscale users")
+	resp, grpcErr := client.ListUsers(ctx, &v1.ListUsersRequest{})
+	if grpcErr != nil {
+		return nil, unifyerror.New(http.StatusOK, unifyerror.CodeGRPCErr, "failed to validate headscale users")
 	}
 
-	hsUserMap := make(map[string]*HeadscaleUser, len(resp.Users))
+	hsUserMap := make(map[uint64]*HeadscaleUser, len(resp.Users))
 	for _, u := range resp.Users {
-		name := strings.TrimSpace(u.Name)
-		if name == "" {
+		if u.Id == 0 {
 			continue
 		}
-		hsUserMap[strings.ToLower(name)] = &HeadscaleUser{
+		hsUserMap[u.Id] = &HeadscaleUser{
 			ID:          u.Id,
-			Name:        name,
+			Name:        strings.TrimSpace(u.Name),
 			DisplayName: u.DisplayName,
 			Email:       u.Email,
 			Provider:    u.Provider,
 		}
 	}
 
-	seen := make(map[string]struct{}, len(entries))
+	seen := make(map[uint64]struct{}, len(entries))
 	bindings := make([]model.UserIdentityBinding, 0, len(entries))
 	for _, entry := range entries {
-		headscaleName := strings.TrimSpace(entry.HeadscaleName)
-		if headscaleName == "" {
-			return nil, unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "headscale_name is required")
+		if entry.HeadscaleID == 0 {
+			return nil, unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "headscale_id is required")
 		}
-		key := strings.ToLower(headscaleName)
-		if _, exists := seen[key]; exists {
+		if _, exists := seen[entry.HeadscaleID]; exists {
 			return nil, unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "duplicate network binding is not allowed")
 		}
-		seen[key] = struct{}{}
+		seen[entry.HeadscaleID] = struct{}{}
 
-		hsUser, ok := hsUserMap[key]
-		if !ok {
-			return nil, unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "headscale user not found: "+headscaleName)
+		// Validate the headscale user exists
+		if _, ok := hsUserMap[entry.HeadscaleID]; !ok {
+			return nil, unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, fmt.Sprintf("headscale user %d not found", entry.HeadscaleID))
 		}
 
 		bindings = append(bindings, model.UserIdentityBinding{
-			UserID:        accountID,
-			HeadscaleID:   hsUser.ID,
-			HeadscaleName: hsUser.Name,
-			DisplayName:   hsUser.DisplayName,
-			Email:         hsUser.Email,
-			Provider:      hsUser.Provider,
-			IsPrimary:     entry.IsPrimary,
+			UserID:      accountID,
+			HeadscaleID: entry.HeadscaleID,
 		})
 	}
 
 	return bindings, nil
-}
-
-func pickPrimaryBindingName(entries []BindingEntry) string {
-	for _, entry := range entries {
-		if entry.IsPrimary {
-			return strings.TrimSpace(entry.HeadscaleName)
-		}
-	}
-	if len(entries) == 0 {
-		return ""
-	}
-	return strings.TrimSpace(entries[0].HeadscaleName)
 }

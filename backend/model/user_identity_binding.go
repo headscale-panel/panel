@@ -18,16 +18,43 @@ package model
 import "gorm.io/gorm"
 
 // UserIdentityBinding represents the binding between a Panel Account and a
-// Headscale / Tailscale network identity. A single Panel Account may be bound
-// to multiple network identities, but exactly one should be marked as primary.
+// Headscale network identity. Only stores the mapping; headscale user details
+// (name, email, etc.) are fetched from headscale on demand.
 type UserIdentityBinding struct {
 	gorm.Model
-	UserID        uint   `json:"user_id" gorm:"index;not null"`
-	User          User   `json:"-" gorm:"foreignKey:UserID"`
-	HeadscaleID   uint64 `json:"headscale_id"`
-	HeadscaleName string `json:"headscale_name" gorm:"index;not null"`
-	DisplayName   string `json:"display_name"`
-	Email         string `json:"email"`
-	Provider      string `json:"provider"`
-	IsPrimary     bool   `json:"is_primary" gorm:"default:false"`
+	UserID      uint   `json:"user_id" gorm:"index;not null"`
+	User        User   `json:"-" gorm:"foreignKey:UserID"`
+	HeadscaleID uint64 `json:"headscale_id" gorm:"uniqueIndex;not null"`
+}
+
+// GetBindings returns all identity bindings for a user.
+func GetBindings(userID uint) []UserIdentityBinding {
+	var bindings []UserIdentityBinding
+	DB.Where("user_id = ?", userID).Order("id").Find(&bindings)
+	return bindings
+}
+
+// GetHeadscaleIDs returns all bound headscale user IDs for a panel user.
+func GetHeadscaleIDs(userID uint) []uint64 {
+	var ids []uint64
+	DB.Model(&UserIdentityBinding{}).Where("user_id = ?", userID).Pluck("headscale_id", &ids)
+	return ids
+}
+
+// GetBindingByHeadscaleID returns the binding for a specific headscale user ID, or nil.
+func GetBindingByHeadscaleID(headscaleID uint64) *UserIdentityBinding {
+	var binding UserIdentityBinding
+	if err := DB.Where("headscale_id = ?", headscaleID).First(&binding).Error; err != nil {
+		return nil
+	}
+	return &binding
+}
+
+// GetBindingByPanelAndHeadscaleID returns the binding for a specific panel user + headscale user pair.
+func GetBindingByPanelAndHeadscaleID(userID uint, headscaleID uint64) *UserIdentityBinding {
+	var binding UserIdentityBinding
+	if err := DB.Where("user_id = ? AND headscale_id = ?", userID, headscaleID).First(&binding).Error; err != nil {
+		return nil
+	}
+	return &binding
 }

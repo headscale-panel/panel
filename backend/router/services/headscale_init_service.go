@@ -101,7 +101,7 @@ func (s *headscaleInitService) CheckCurrentConfigConnectivity(ctx context.Contex
 		conf.Conf.Headscale.TLSCACert,
 	)
 	if !ok {
-		return unifyerror.New(http.StatusBadGateway, unifyerror.CodeGRPCErr, detail)
+		return unifyerror.New(http.StatusOK, unifyerror.CodeGRPCErr, detail)
 	}
 
 	return nil
@@ -118,11 +118,11 @@ func (s *headscaleInitService) InitializeFromCurrentConfig(ctx context.Context) 
 
 	headscale.Close()
 	if err := headscale.Init(); err != nil {
-		return unifyerror.New(http.StatusBadGateway, unifyerror.CodeGRPCErr, "failed to initialize headscale client")
+		return unifyerror.New(http.StatusOK, unifyerror.CodeGRPCErr, "failed to initialize headscale client")
 	}
 
 	if err := ACLService.InitPolicyWithContext(ctx); err != nil {
-		return unifyerror.New(http.StatusBadGateway, unifyerror.CodeGRPCErr, "failed to initialize ACL policy")
+		return unifyerror.New(http.StatusOK, unifyerror.CodeGRPCErr, "failed to initialize ACL policy")
 	}
 
 	return nil

@@ -1,4 +1,4 @@
-// Copyright (C) 2026 
+// Copyright (C) 2026
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as
@@ -20,23 +20,30 @@ import (
 	"fmt"
 	"headscale-panel/pkg/conf"
 	"headscale-panel/pkg/constants"
-	"log"
+	"headscale-panel/pkg/log"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/glebarez/sqlite"
+	"go.uber.org/zap"
 	"golang.org/x/crypto/bcrypt"
+	"golang.org/x/mod/semver"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )
 
 var DB *gorm.DB
 
-func Init() {
+// CurrentVersion is the version of the running backend, set during Init().
+var CurrentVersion string
+
+func Init(versionCode string) {
+	CurrentVersion = versionCode
+	log.L.Info("Starting headscale-panel", zap.String("version", CurrentVersion))
 	dbPath := filepath.Join(constants.DataDir, "data.db")
 	if err := os.MkdirAll(constants.DataDir, 0700); err != nil {
-		log.Fatalf("models.Setup: failed to create data directory: %v", err)
+		log.L.Fatal("models.Setup: failed to create data directory", zap.Error(err))
 	}
 
 	gormLogger := logger.Default.LogMode(logger.Silent)
@@ -49,7 +56,7 @@ func Init() {
 		Logger: gormLogger,
 	})
 	if err != nil {
-		log.Fatalf("models.Setup err: %v", err)
+		log.L.Fatal("models.Setup failed", zap.Error(err))
 	}
 
 	// Auto-migrate
@@ -66,11 +73,7 @@ func Init() {
 		&UserIdentityBinding{},
 	)
 	if err != nil {
-		log.Fatalf("models.AutoMigrate err: %v", err)
-	}
-
-	if err := migrateLegacyOauthClientSecrets(); err != nil {
-		log.Fatalf("failed to migrate oauth client secrets: %v", err)
+		log.L.Fatal("models.AutoMigrate failed", zap.Error(err))
 	}
 
 	initDefaultData()
@@ -92,93 +95,10 @@ func Close() error {
 
 func initDefaultData() {
 	// Default permissions
-	permissions := []Permission{
-		{Name: "View Dashboard", Code: "dashboard:view", Type: "menu"},
-
-		{Name: "View Users", Code: "system:user:list", Type: "button"},
-		{Name: "Create User", Code: "system:user:create", Type: "button"},
-		{Name: "Edit User", Code: "system:user:update", Type: "button"},
-		{Name: "Delete User", Code: "system:user:delete", Type: "button"},
-
-		{Name: "View Groups", Code: "system:group:list", Type: "button"},
-		{Name: "Create Group", Code: "system:group:create", Type: "button"},
-		{Name: "Edit Group", Code: "system:group:update", Type: "button"},
-		{Name: "Delete Group", Code: "system:group:delete", Type: "button"},
-		{Name: "View Permissions", Code: "system:permission:list", Type: "button"},
-		{Name: "Create Permission", Code: "system:permission:create", Type: "button"},
-		{Name: "Edit Permission", Code: "system:permission:update", Type: "button"},
-		{Name: "Delete Permission", Code: "system:permission:delete", Type: "button"},
-		{Name: "View OAuth Clients", Code: "system:oauth_client:list", Type: "button"},
-		{Name: "Create OAuth Client", Code: "system:oauth_client:create", Type: "button"},
-		{Name: "Edit OAuth Client", Code: "system:oauth_client:update", Type: "button"},
-		{Name: "Delete OAuth Client", Code: "system:oauth_client:delete", Type: "button"},
-		{Name: "Reset OAuth Secret", Code: "system:oauth_client:secret", Type: "button"},
-
-		{Name: "View Resources", Code: "resource:list", Type: "button"},
-		{Name: "Publish Resource", Code: "resource:create", Type: "button"},
-		{Name: "Edit Resource", Code: "resource:update", Type: "button"},
-		{Name: "Delete Resource", Code: "resource:delete", Type: "button"},
-
-		{Name: "View Headscale Users", Code: "headscale:user:list", Type: "button"},
-		{Name: "Create Headscale User", Code: "headscale:user:create", Type: "button"},
-		{Name: "Edit Headscale User", Code: "headscale:user:update", Type: "button"},
-		{Name: "Delete Headscale User", Code: "headscale:user:delete", Type: "button"},
-		{Name: "View Headscale Devices", Code: "headscale:machine:list", Type: "button"},
-		{Name: "View Device Details", Code: "headscale:machine:get", Type: "button"},
-		{Name: "Register Device", Code: "headscale:machine:create", Type: "button"},
-		{Name: "Edit Device Name", Code: "headscale:machine:update", Type: "button"},
-		{Name: "Delete Device", Code: "headscale:machine:delete", Type: "button"},
-		{Name: "Expire Device", Code: "headscale:machine:expire", Type: "button"},
-		{Name: "Set Device Tags", Code: "headscale:machine:tags", Type: "button"},
-		{Name: "View Routes", Code: "headscale:route:list", Type: "button"},
-		{Name: "Enable Route", Code: "headscale:route:enable", Type: "button"},
-		{Name: "Disable Route", Code: "headscale:route:disable", Type: "button"},
-		{Name: "View PreAuthKeys", Code: "headscale:preauthkey:list", Type: "button"},
-		{Name: "Create PreAuthKey", Code: "headscale:preauthkey:create", Type: "button"},
-		{Name: "Expire PreAuthKey", Code: "headscale:preauthkey:expire", Type: "button"},
-
-		{Name: "View ACL", Code: "headscale:acl:view", Type: "button"},
-		{Name: "Edit ACL", Code: "headscale:acl:update", Type: "button"},
-		{Name: "Sync ACL Resources", Code: "headscale:acl:sync", Type: "button"},
-		{Name: "Generate ACL Policy", Code: "headscale:acl:generate", Type: "button"},
-		{Name: "View ACL History", Code: "headscale:acl:history:list", Type: "button"},
-		{Name: "Apply ACL Policy", Code: "headscale:acl:apply", Type: "button"},
-		{Name: "View ACL Accessible Devices", Code: "headscale:acl:access", Type: "button"},
-
-		{Name: "View DNS Records", Code: "dns:record:list", Type: "button"},
-		{Name: "View DNS Record Details", Code: "dns:record:get", Type: "button"},
-		{Name: "Create DNS Record", Code: "dns:record:create", Type: "button"},
-		{Name: "Update DNS Record", Code: "dns:record:update", Type: "button"},
-		{Name: "Delete DNS Record", Code: "dns:record:delete", Type: "button"},
-		{Name: "Sync DNS File", Code: "dns:sync", Type: "button"},
-		{Name: "Import DNS File", Code: "dns:import", Type: "button"},
-		{Name: "View DNS File", Code: "dns:file:get", Type: "button"},
-		{Name: "View Headscale Config", Code: "headscale:config:view", Type: "button"},
-		{Name: "Update Headscale Config", Code: "headscale:config:update", Type: "button"},
-		{Name: "View DERP Config", Code: "headscale:derp:view", Type: "button"},
-		{Name: "Update DERP Config", Code: "headscale:derp:update", Type: "button"},
-		{Name: "View Online Duration", Code: "metrics:online_duration:view", Type: "button"},
-		{Name: "View Online Duration Stats", Code: "metrics:online_duration_stats:view", Type: "button"},
-		{Name: "View Device Status", Code: "metrics:device_status:view", Type: "button"},
-		{Name: "View Device Status History", Code: "metrics:device_status_history:view", Type: "button"},
-		{Name: "View Traffic Stats", Code: "metrics:traffic:view", Type: "button"},
-		{Name: "View InfluxDB Status", Code: "metrics:influxdb:view", Type: "button"},
-
-		{Name: "View Topology", Code: "topology:view", Type: "button"},
-		{Name: "View Topology ACL", Code: "topology:with_acl:view", Type: "button"},
-		{Name: "View Topology ACL Matrix", Code: "topology:acl_matrix:view", Type: "button"},
-
-		{Name: "View Panel Accounts", Code: "panel:account:list", Type: "button"},
-		{Name: "Create Panel Account", Code: "panel:account:create", Type: "button"},
-		{Name: "Edit Panel Account", Code: "panel:account:update", Type: "button"},
-		{Name: "Delete Panel Account", Code: "panel:account:delete", Type: "button"},
-		{Name: "Manage Panel Account Bindings", Code: "panel:account:bindding", Type: "button"},
-	}
-
-	for _, p := range permissions {
-		perm := p
+	for _, def := range constants.DefaultPermissions {
+		perm := Permission{Name: def.Name, Code: def.Code, Type: def.Type}
 		if err := DB.Where(Permission{Code: perm.Code}).FirstOrCreate(&perm).Error; err != nil {
-			log.Fatalf("failed to bootstrap permission %s: %v", perm.Code, err)
+			log.L.Fatal("failed to bootstrap permission", zap.String("code", perm.Code), zap.Error(err))
 		}
 	}
 
@@ -188,10 +108,10 @@ func initDefaultData() {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			adminGroup = Group{Name: constants.GROUP_ADMIN}
 			if err := DB.Create(&adminGroup).Error; err != nil {
-				log.Fatalf("failed to bootstrap Admin group: %v", err)
+				log.L.Fatal("failed to bootstrap Admin group", zap.Error(err))
 			}
 		} else {
-			log.Fatalf("failed to load Admin group: %v", err)
+			log.L.Fatal("failed to load Admin group", zap.Error(err))
 		}
 	}
 
@@ -201,36 +121,30 @@ func initDefaultData() {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			userGroup = Group{Name: constants.GROUP_USER}
 			if err := DB.Create(&userGroup).Error; err != nil {
-				log.Fatalf("failed to bootstrap User group: %v", err)
+				log.L.Fatal("failed to bootstrap User group", zap.Error(err))
 			}
 		} else {
-			log.Fatalf("failed to load User group: %v", err)
+			log.L.Fatal("failed to load User group", zap.Error(err))
 		}
 	}
 
 	// Assign all permissions to admin group
 	var allPermissions []Permission
 	if err := DB.Find(&allPermissions).Error; err != nil {
-		log.Fatalf("failed to load permissions for Admin group: %v", err)
+		log.L.Fatal("failed to load permissions for Admin group", zap.Error(err))
 	}
 	if err := DB.Model(&adminGroup).Association("Permissions").Replace(allPermissions); err != nil {
-		log.Fatalf("failed to assign Admin group permissions: %v", err)
-	}
-
-	var adminUser User
-	err := DB.Where("username = ?", constants.USERNAME_DEFAULT_ADMIN).First(&adminUser).Error
-	if err != nil && err != gorm.ErrRecordNotFound {
-		log.Fatalf("failed to check admin user: %v", err)
+		log.L.Fatal("failed to assign Admin group permissions", zap.Error(err))
 	}
 
 	var userCount int64
 	if err := DB.Model(&User{}).Count(&userCount).Error; err == nil && userCount == 0 {
-		log.Println("No users found. Create the first admin via /api/v1/setup/init")
+		log.L.Info("No users found. Create the first admin via /api/v1/setup/init")
 	}
 
-	migrateHeadscaleNameToBindings()
-
+	runLegacyMigrations()
 	initSetupStateRecord()
+	initVersionCode()
 }
 
 func initSetupStateRecord() {
@@ -242,54 +156,99 @@ func initSetupStateRecord() {
 			State: SetupStateUninitialized,
 		}
 		if err := DB.Create(&state).Error; err != nil {
-			log.Fatalf("failed to initialize setup state: %v", err)
+			log.L.Fatal("failed to initialize setup state", zap.Error(err))
 		}
 		return
 	}
 	if err != nil {
-		log.Fatalf("failed to load setup state: %v", err)
+		log.L.Fatal("failed to load setup state", zap.Error(err))
 	}
 }
 
-// migrateHeadscaleNameToBindings migrates existing User.HeadscaleName into
-// UserIdentityBinding records. Runs once; skips users that already have at
-// least one binding row.
-func migrateHeadscaleNameToBindings() {
-	// Ensure existing users have is_active = true (new column default may not
-	// retroactively apply to existing SQLite rows).
-	DB.Model(&User{}).Where("is_active = ? OR is_active IS NULL", false).Update("is_active", true)
-
-	var users []User
-	if err := DB.Where("headscale_name IS NOT NULL AND headscale_name <> ''").Find(&users).Error; err != nil {
-		log.Printf("migrateHeadscaleNameToBindings: query failed: %v", err)
+// runLegacyMigrations runs data migrations for upgrading from older versions.
+func runLegacyMigrations() {
+	if !semver.IsValid(CurrentVersion) {
+		log.L.Warn("Invalid VersionCode format, skipping legacy migrations", zap.String("version", CurrentVersion))
 		return
 	}
-	for _, u := range users {
-		var count int64
-		DB.Model(&UserIdentityBinding{}).Where("user_id = ?", u.ID).Count(&count)
-		if count > 0 {
-			continue
+
+	migrateAdminFlag(CurrentVersion)
+	migrateLegacyOauthClientSecrets(CurrentVersion)
+}
+
+// initVersionCode writes the current version to PanelSetting if set.
+func initVersionCode() {
+	if CurrentVersion == "" {
+		return
+	}
+
+	key := "version_code"
+	var setting PanelSetting
+	err := DB.Where("key = ?", key).First(&setting).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		setting = PanelSetting{Key: key, Value: CurrentVersion}
+		if err := DB.Create(&setting).Error; err != nil {
+			log.L.Error("failed to create version_code panel setting", zap.Error(err))
 		}
-		binding := UserIdentityBinding{
-			UserID:        u.ID,
-			HeadscaleName: u.HeadscaleName,
-			DisplayName:   u.DisplayName,
-			Email:         u.Email,
-			Provider:      u.Provider,
-			IsPrimary:     true,
-		}
-		if err := DB.Create(&binding).Error; err != nil {
-			log.Printf("migrateHeadscaleNameToBindings: create binding for user %d failed: %v", u.ID, err)
-		}
+		return
+	}
+	if err != nil {
+		log.L.Error("failed to query version_code panel setting", zap.Error(err))
+		return
+	}
+
+	if err := DB.Model(&setting).Update("value", CurrentVersion).Error; err != nil {
+		log.L.Error("failed to update version_code panel setting", zap.Error(err))
 	}
 }
 
-func migrateLegacyOauthClientSecrets() error {
+// migrateAdminFlag ensures at least one user has is_admin = true.
+// If no admin exists, promotes the earliest created user.
+// Only runs for versions <= 1.23.2.
+func migrateAdminFlag(v string) {
+	if semver.Compare(v, "v1.23.2") > 0 {
+		return
+	}
+
+	var userCount int64
+	if err := DB.Model(&User{}).Count(&userCount).Error; err != nil || userCount == 0 {
+		return
+	}
+
+	var adminCount int64
+	if err := DB.Model(&User{}).Where("is_admin = ?", true).Count(&adminCount).Error; err != nil {
+		log.L.Error("migrateAdminFlag: failed to count admins", zap.Error(err))
+		return
+	}
+	if adminCount > 0 {
+		return
+	}
+
+	var earliest User
+	if err := DB.Order("id").First(&earliest).Error; err != nil {
+		return
+	}
+
+	if err := DB.Model(&earliest).Update("is_admin", true).Error; err != nil {
+		log.L.Error("migrateAdminFlag: failed to promote user to admin", zap.Uint("userID", earliest.ID), zap.Error(err))
+		return
+	}
+	log.L.Info("migrateAdminFlag: promoted earliest user to admin", zap.Uint("userID", earliest.ID), zap.String("username", earliest.Username))
+}
+
+// migrateLegacyOauthClientSecrets hashes legacy plaintext OAuth client secrets.
+// Only runs for versions <= 1.23.2.
+func migrateLegacyOauthClientSecrets(v string) {
+	if semver.Compare(v, "v1.23.2") > 0 {
+		return
+	}
+
 	var clients []OauthClient
 	if err := DB.
 		Where("(client_secret_hash IS NULL OR client_secret_hash = '') AND client_secret IS NOT NULL AND client_secret <> ''").
 		Find(&clients).Error; err != nil {
-		return fmt.Errorf("query legacy oauth clients failed: %w", err)
+		log.L.Error("migrateLegacyOauthClientSecrets: query legacy oauth clients failed", zap.Error(err))
+		return
 	}
 
 	for _, client := range clients {
@@ -300,12 +259,14 @@ func migrateLegacyOauthClientSecrets() error {
 
 		normalizedSecret := strings.ToLower(legacySecret)
 		if normalizedSecret == "headscale-secret" {
-			return fmt.Errorf("oidc client %q uses insecure default secret; rotate before startup", client.ClientID)
+			log.L.Error("migrateLegacyOauthClientSecrets: oidc client uses insecure default secret; rotate before startup", zap.String("clientID", client.ClientID))
+			continue
 		}
 
 		hashedSecret, err := bcrypt.GenerateFromPassword([]byte(legacySecret), bcrypt.DefaultCost)
 		if err != nil {
-			return fmt.Errorf("hash oauth secret for client %q failed: %w", client.ClientID, err)
+			log.L.Error("migrateLegacyOauthClientSecrets: hash oauth secret failed", zap.String("clientID", client.ClientID), zap.Error(err))
+			continue
 		}
 
 		if err := DB.Model(&OauthClient{}).
@@ -314,9 +275,7 @@ func migrateLegacyOauthClientSecrets() error {
 				"client_secret_hash": string(hashedSecret),
 				"client_secret":      "",
 			}).Error; err != nil {
-			return fmt.Errorf("persist oauth secret hash for client %q failed: %w", client.ClientID, err)
+			log.L.Error("migrateLegacyOauthClientSecrets: persist oauth secret hash failed", zap.String("clientID", client.ClientID), zap.Error(err))
 		}
 	}
-
-	return nil
 }

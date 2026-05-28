@@ -258,11 +258,11 @@ func canManageResource(userID uint, resource *model.Resource) (bool, error) {
 	}
 
 	var user model.User
-	if err := model.DB.Preload("Group").First(&user, userID).Error; err != nil {
+	if err := model.DB.First(&user, userID).Error; err != nil {
 		return false, unifyerror.New(http.StatusNotFound, unifyerror.CodeNotFound, "user not found")
 	}
 
-	if IsAdminGroupName(user.Group.Name) {
+	if user.IsAdmin {
 		return true, nil
 	}
 	return false, nil

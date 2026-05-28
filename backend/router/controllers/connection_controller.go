@@ -26,22 +26,37 @@ type ConnectionController struct{}
 
 // GenerateConnectionCommandsRequest is the request body for GenerateConnectionCommands.
 type GenerateConnectionCommandsRequest struct {
-	MachineIDs []string `json:"machine_ids" binding:"required"`
-	Platform   string   `json:"platform" binding:"required"`
+	MachineIDs    []string `json:"machine_ids" binding:"required"`
+	Platform      string   `json:"platform" binding:"required"`
+	HeadscaleName string   `json:"headscale_name"` // optional, selects which bound headscale identity to use
 }
 
 // GenerateConnectionPreAuthKeyRequest is the request body for GeneratePreAuthKey.
 type GenerateConnectionPreAuthKeyRequest struct {
-	UserID     uint   `json:"user_id" binding:"required"`
-	Reusable   bool   `json:"reusable"`
-	Ephemeral  bool   `json:"ephemeral"`
-	Expiration string `json:"expiration"`
+	UserID        uint   `json:"user_id" binding:"required"`
+	Reusable      bool   `json:"reusable"`
+	Ephemeral     bool   `json:"ephemeral"`
+	Expiration    string `json:"expiration"`
+	HeadscaleName string `json:"headscale_name"` // optional, selects which bound headscale identity to use
 }
 
 // GenerateSSHCommandRequest is the request body for GenerateSSHCommand.
 type GenerateSSHCommandRequest struct {
 	MachineID uint64 `json:"machine_id" binding:"required"`
 	User      string `json:"user"`
+}
+
+// ListHeadscaleIdentities godoc
+// @Summary List available headscale identities for the current user
+// @Tags connection
+// @Produce json
+// @Success 200 {object} unifyerror.Response{data=[]services.HeadscaleIdentity}
+// @Security BearerAuth
+// @Router /connection/identities [get]
+func (c *ConnectionController) ListHeadscaleIdentities(ctx *gin.Context) {
+	userID := ctx.GetUint("userID")
+	identities := services.ConnectionService.ListHeadscaleIdentities(userID)
+	unifyerror.Success(ctx, identities)
 }
 
 // GenerateConnectionCommands godoc
@@ -63,7 +78,7 @@ func (c *ConnectionController) GenerateConnectionCommands(ctx *gin.Context) {
 	}
 
 	userID := ctx.GetUint("userID")
-	commands, err := services.ConnectionService.GenerateConnectionCommandsWithContext(ctx.Request.Context(), userID, req.MachineIDs, req.Platform)
+	commands, err := services.ConnectionService.GenerateConnectionCommandsWithContext(ctx.Request.Context(), userID, req.MachineIDs, req.Platform, req.HeadscaleName)
 	if err != nil {
 		unifyerror.Fail(ctx, err)
 		return
@@ -91,7 +106,7 @@ func (c *ConnectionController) GeneratePreAuthKey(ctx *gin.Context) {
 	}
 
 	userID := ctx.GetUint("userID")
-	key, err := services.ConnectionService.GeneratePreAuthKeyWithContext(ctx.Request.Context(), userID, req.UserID, req.Reusable, req.Ephemeral, req.Expiration)
+	key, err := services.ConnectionService.GeneratePreAuthKeyWithContext(ctx.Request.Context(), userID, req.UserID, req.Reusable, req.Ephemeral, req.Expiration, req.HeadscaleName)
 	if err != nil {
 		unifyerror.Fail(ctx, err)
 		return

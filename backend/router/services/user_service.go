@@ -1,4 +1,4 @@
-// Copyright (C) 2026 
+// Copyright (C) 2026
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as
@@ -18,18 +18,16 @@ package services
 import (
 	"context"
 	"errors"
-	"fmt"
 	"headscale-panel/model"
 	"headscale-panel/pkg/constants"
-	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"headscale-panel/pkg/unifyerror"
 	"headscale-panel/pkg/utils/jwt"
 	"net/http"
 	"time"
 
+	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
+
 	"github.com/pquerna/otp/totp"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 	"gorm.io/gorm"
 )
 
@@ -72,12 +70,12 @@ func (s *userService) RegisterWithContext(ctx context.Context, req *RegisterRequ
 	if userCount == 0 {
 		// First user is admin
 		if err := model.DB.Where("name = ?", constants.GROUP_ADMIN).First(&group).Error; err != nil {
-			return errors.New("admin group not found")
+			return unifyerror.DbError(err)
 		}
 	} else {
 		// Other users join the default user group
 		if err := model.DB.Where("name = ?", constants.GROUP_USER).First(&group).Error; err != nil {
-			return errors.New("default user group not found")
+			return unifyerror.DbError(err)
 		}
 	}
 
@@ -89,38 +87,37 @@ func (s *userService) RegisterWithContext(ctx context.Context, req *RegisterRequ
 		return unifyerror.UserExists()
 	}
 
-	queryCtx, cancel := withServiceTimeout(ctx)
-	defer cancel()
-
-	headscaleClient, err := headscaleServiceClient()
-	if err != nil {
-		return err
-	}
-
-	_, err = headscaleClient.CreateUser(queryCtx, &v1.CreateUserRequest{
-		Name:        req.Username,
-		DisplayName: req.DisplayName,
-		Email:       req.Email,
-	})
-	if err != nil {
-		if st, ok := status.FromError(err); !ok || st.Code() != codes.AlreadyExists {
-			return unifyerror.New(http.StatusBadGateway, unifyerror.CodeGRPCErr,
-				fmt.Sprintf("failed to initialize headscale user %q", req.Username))
-		}
-	}
-
+	// Create panel user first (panel-only operation)
 	user := model.User{
-		Username:      req.Username,
-		Password:      req.Password,
-		Email:         req.Email,
-		DisplayName:   req.DisplayName,
-		GroupID:       group.ID,
-		HeadscaleName: req.Username, // Map username to Headscale Name
-		Provider:      "local",
+		Username:    req.Username,
+		Password:    req.Password,
+		Email:       req.Email,
+		DisplayName: req.DisplayName,
+		GroupID:     group.ID,
+		Provider:    "local",
 	}
 
 	if err := model.DB.Create(&user).Error; err != nil {
 		return unifyerror.DbError(err)
+	}
+
+	// Best-effort: create matching headscale user and binding
+	queryCtx, cancel := withServiceTimeout(ctx)
+	defer cancel()
+
+	headscaleClient, err := headscaleServiceClient()
+	if err == nil {
+		resp, err := headscaleClient.CreateUser(queryCtx, &v1.CreateUserRequest{
+			Name:        req.Username,
+			DisplayName: req.DisplayName,
+			Email:       req.Email,
+		})
+		if err == nil && resp.User != nil {
+			model.DB.Create(&model.UserIdentityBinding{
+				UserID:      user.ID,
+				HeadscaleID: resp.User.Id,
+			})
+		}
 	}
 
 	return nil
@@ -236,7 +233,7 @@ func (s *userService) GenerateTOTP(userID uint) (string, string, error) {
 		AccountName: user.Username,
 	})
 	if err != nil {
-		return "", "", err
+		return "", "", unifyerror.ServerError(err)
 	}
 
 	// Persist the secret in pending state; TOTPEnabled stays false until

@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"headscale-panel/model"
 	"headscale-panel/pkg/acl"
+	"headscale-panel/pkg/unifyerror"
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"strings"
 	"time"
@@ -85,7 +86,7 @@ func (s *topologyService) GetTopologyWithContext(ctx context.Context, actorUserI
 
 	client, err := headscaleServiceClient()
 	if err != nil {
-		return nil, err
+		return nil, unifyerror.GRPCError(err)
 	}
 	scope, err := loadActorScope(actorUserID)
 	if err != nil {
@@ -93,15 +94,15 @@ func (s *topologyService) GetTopologyWithContext(ctx context.Context, actorUserI
 	}
 
 	// Get all users from Headscale
-	usersResp, err := client.ListUsers(queryCtx, &v1.ListUsersRequest{})
-	if err != nil {
-		return nil, fmt.Errorf("failed to list users: %w", err)
+	usersResp, grpcErr := client.ListUsers(queryCtx, &v1.ListUsersRequest{})
+	if grpcErr != nil {
+		return nil, unifyerror.GRPCError(grpcErr)
 	}
 
 	// Get all nodes from Headscale
-	nodesResp, err := client.ListNodes(queryCtx, &v1.ListNodesRequest{})
-	if err != nil {
-		return nil, fmt.Errorf("failed to list nodes: %w", err)
+	nodesResp, grpcErr := client.ListNodes(queryCtx, &v1.ListNodesRequest{})
+	if grpcErr != nil {
+		return nil, unifyerror.GRPCError(grpcErr)
 	}
 
 	accessibleNodes := make([]*v1.Node, 0, len(nodesResp.Nodes))
@@ -240,8 +241,8 @@ func (s *topologyService) GetTopologyWithACLContext(ctx context.Context, actorUs
 	if err != nil {
 		return topology, nil
 	}
-	policyResp, err := aclClient.GetPolicy(queryCtx, &v1.GetPolicyRequest{})
-	if err != nil {
+	policyResp, grpcErr := aclClient.GetPolicy(queryCtx, &v1.GetPolicyRequest{})
+	if grpcErr != nil {
 		// If ACL fails, return topology without ACL
 		return topology, nil
 	}

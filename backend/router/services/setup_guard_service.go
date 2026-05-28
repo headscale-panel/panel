@@ -152,7 +152,7 @@ func (s *setupGuardService) cleanupExpiredLocked(now time.Time) {
 func generateSetupToken() (string, error) {
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
-		return "", err
+		return "", unifyerror.FromError(err)
 	}
 	return base64.RawURLEncoding.EncodeToString(b), nil
 }

@@ -1,4 +1,4 @@
-// Copyright (C) 2026 
+// Copyright (C) 2026
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as
@@ -20,17 +20,14 @@ import (
 	"errors"
 	"fmt"
 	"headscale-panel/model"
-	"headscale-panel/pkg/constants"
-	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"headscale-panel/pkg/unifyerror"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/sirupsen/logrus"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
+	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
+
 	"gorm.io/gorm"
 )
 
@@ -49,105 +46,21 @@ func isOIDCManagedPanelUser(provider string) bool {
 	return strings.EqualFold(strings.TrimSpace(provider), "oidc")
 }
 
-// syncHeadscaleUsers fetches users from Headscale gRPC and upserts them into the panel DB.
-// This is best-effort: errors are logged but do not block the caller.
-// Throttled to at most once per 30 seconds to avoid excessive gRPC calls.
-func (s *systemService) syncHeadscaleUsers() {
-	s.syncMu.Lock()
-	if time.Since(s.lastSyncTime) < 30*time.Second {
-		s.syncMu.Unlock()
-		return
-	}
-	s.lastSyncTime = time.Now()
-	s.syncMu.Unlock()
-
-	client, err := headscaleServiceClient()
-	if err != nil {
-		logrus.WithError(err).Debug("syncHeadscaleUsers: cannot connect to Headscale, skipping sync")
-		return
-	}
-
-	ctx, cancel := withServiceTimeout(context.Background())
-	defer cancel()
-
-	resp, err := client.ListUsers(ctx, &v1.ListUsersRequest{})
-	if err != nil {
-		logrus.WithError(err).Warn("syncHeadscaleUsers: failed to list users from Headscale")
-		return
-	}
-
-	for _, hsUser := range resp.Users {
-		if hsUser.Name == "" {
-			continue
-		}
-		var existing model.User
-		if err := model.DB.Where("headscale_name = ?", hsUser.Name).First(&existing).Error; err != nil {
-			// User doesn't exist in panel DB — create it (ungrouped by default)
-			provider := normalizeHeadscaleProvider(hsUser.Provider)
-			newUser := model.User{
-				Username:      hsUser.Name,
-				HeadscaleName: hsUser.Name,
-				DisplayName:   hsUser.DisplayName,
-				Email:         hsUser.Email,
-				Provider:      provider,
-				ProviderID:    hsUser.ProviderId,
-			}
-			if hsUser.ProfilePicUrl != "" {
-				newUser.ProfilePicURL = hsUser.ProfilePicUrl
-			}
-			if createErr := model.DB.Create(&newUser).Error; createErr != nil {
-				// Skip duplicate username errors silently
-				continue
-			}
-		} else {
-			// Update display info if changed
-			updates := map[string]interface{}{}
-			if hsUser.DisplayName != "" && existing.DisplayName != hsUser.DisplayName {
-				updates["display_name"] = hsUser.DisplayName
-			}
-			if hsUser.Email != "" && existing.Email != hsUser.Email {
-				updates["email"] = hsUser.Email
-			}
-			if hsUser.ProfilePicUrl != "" && existing.ProfilePicURL != hsUser.ProfilePicUrl {
-				updates["profile_pic_url"] = hsUser.ProfilePicUrl
-			}
-			normalizedProvider := normalizeHeadscaleProvider(hsUser.Provider)
-			if normalizedProvider != "" && existing.Provider != normalizedProvider {
-				// Preserve panel-side OIDC tagging for users created via the OIDC add-user flow.
-				if strings.EqualFold(strings.TrimSpace(existing.Provider), "oidc") && normalizedProvider != "oidc" {
-					// keep existing provider
-				} else {
-					updates["provider"] = normalizedProvider
-				}
-			}
-			if hsUser.ProviderId != "" && existing.ProviderID != hsUser.ProviderId {
-				updates["provider_id"] = hsUser.ProviderId
-			}
-			// Fix: headscale-synced users should not be in Admin group by default.
-			// Reset group_id to 0 for headscale users that were auto-assigned to Admin.
-			if normalizedProvider == "headscale" && existing.GroupID != 0 {
-				var adminGroup model.Group
-				if err := model.DB.Where("name = ?", constants.GROUP_ADMIN).First(&adminGroup).Error; err == nil {
-					if existing.GroupID == adminGroup.ID {
-						updates["group_id"] = 0
-					}
-				}
-			}
-			if len(updates) > 0 {
-				model.DB.Model(&existing).Updates(updates)
-			}
-		}
-	}
-}
-
 // User Management
 func (s *systemService) ListUsers(actorUserID uint, page, pageSize int) ([]model.User, int64, error) {
 	if err := RequirePermission(actorUserID, "system:user:list"); err != nil {
 		return nil, 0, err
 	}
 
-	// Auto-sync users from Headscale gRPC (best-effort)
-	s.syncHeadscaleUsers()
+	// Auto-sync users from Headscale (best-effort, throttled)
+	s.syncMu.Lock()
+	if time.Since(s.lastSyncTime) >= 30*time.Second {
+		s.lastSyncTime = time.Now()
+		s.syncMu.Unlock()
+		HeadscaleService.SyncUsersFromHeadscale(context.Background())
+	} else {
+		s.syncMu.Unlock()
+	}
 
 	var users []model.User
 	var total int64
@@ -183,41 +96,41 @@ func (s *systemService) CreateUser(actorUserID uint, username, password, email s
 	if PanelSettingsService.IsThirdPartyOIDCEnabled() {
 		provider = "oidc"
 	}
-	if shouldCreateHeadscaleUserForPanelUser() {
-		// Built-in OIDC still keeps local panel users and Headscale local users side by side.
-		client, err := headscaleServiceClient()
-		if err != nil {
-			return fmt.Errorf("failed to connect to Headscale: %w", err)
-		}
-		ctx, cancel := withServiceTimeout(context.Background())
-		defer cancel()
-		_, err = client.CreateUser(ctx, &v1.CreateUserRequest{
-			Name:        username,
-			DisplayName: displayName,
-			Email:       email,
-		})
-		if err != nil {
-			// Ignore AlreadyExists errors
-			if st, ok := status.FromError(err); !ok || st.Code() != codes.AlreadyExists {
-				return unifyerror.New(http.StatusBadGateway, unifyerror.CodeGRPCErr,
-					fmt.Sprintf("failed to create headscale user %q", username))
-			}
-		}
-	}
 
+	// Create panel user first (panel-only operation)
 	user := model.User{
-		Username:      username,
-		Password:      password,
-		Email:         email,
-		GroupID:       groupID, // 0 means ungrouped
-		DisplayName:   displayName,
-		HeadscaleName: username,
-		Provider:      provider,
+		Username:    username,
+		Password:    password,
+		Email:       email,
+		GroupID:     groupID, // 0 means ungrouped
+		DisplayName: displayName,
+		Provider:    provider,
 	}
 
 	if err := model.DB.Create(&user).Error; err != nil {
 		return unifyerror.DbError(err)
 	}
+
+	// Best-effort: create matching headscale user and binding
+	if shouldCreateHeadscaleUserForPanelUser() {
+		client, err := headscaleServiceClient()
+		if err == nil {
+			ctx, cancel := withServiceTimeout(context.Background())
+			defer cancel()
+			resp, err := client.CreateUser(ctx, &v1.CreateUserRequest{
+				Name:        username,
+				DisplayName: displayName,
+				Email:       email,
+			})
+			if err == nil && resp.User != nil {
+				model.DB.Create(&model.UserIdentityBinding{
+					UserID:      user.ID,
+					HeadscaleID: resp.User.Id,
+				})
+			}
+		}
+	}
+
 	return nil
 }
 
@@ -275,31 +188,14 @@ func (s *systemService) DeleteUser(actorUserID uint, id uint) error {
 		return unifyerror.Conflict("OIDC users are managed by the identity provider and cannot be deleted from the panel")
 	}
 
-	headscaleName := strings.TrimSpace(user.HeadscaleName)
-	if headscaleName == "" {
-		headscaleName = strings.TrimSpace(user.Username)
-	}
-
-	if headscaleName != "" {
-		deviceCount, err := HeadscaleService.CountUserMachinesWithContext(context.Background(), headscaleName)
-		if err != nil {
-			return unifyerror.New(http.StatusBadGateway, unifyerror.CodeGRPCErr, "failed to validate headscale devices before deletion")
+	// Best-effort: check and clean up headscale users (does not block panel deletion)
+	ids := model.GetHeadscaleIDs(id)
+	for _, hsID := range ids {
+		deviceCount, err := HeadscaleService.CountUserMachinesWithContext(context.Background(), fmt.Sprintf("%d", hsID))
+		if err == nil && deviceCount > 0 {
+			return unifyerror.Conflict(fmt.Sprintf("cannot delete user because %d device(s) are still attached to headscale user %d", deviceCount, hsID))
 		}
-		if deviceCount > 0 {
-			return unifyerror.Conflict(fmt.Sprintf("cannot delete user %q because %d device(s) are still attached", headscaleName, deviceCount))
-		}
-
-		headscaleUserID, err := HeadscaleService.ResolveUserIDByNameWithContext(context.Background(), headscaleName)
-		if err == nil {
-			if err := HeadscaleService.DeleteUserWithContext(context.Background(), actorUserID, headscaleUserID); err != nil {
-				return unifyerror.New(http.StatusBadGateway, unifyerror.CodeGRPCErr, "failed to delete headscale user")
-			}
-		} else {
-			var uniErr *unifyerror.UniErr
-			if !errors.As(err, &uniErr) || uniErr.Code != unifyerror.CodeNotFound {
-				return unifyerror.New(http.StatusBadGateway, unifyerror.CodeGRPCErr, "failed to resolve headscale user before deletion")
-			}
-		}
+		_ = HeadscaleService.DeleteUserWithContext(context.Background(), actorUserID, hsID)
 	}
 
 	if err := model.DB.Where("user_id = ?", id).Delete(&model.UserIdentityBinding{}).Error; err != nil {

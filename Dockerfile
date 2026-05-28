@@ -16,6 +16,7 @@ RUN pnpm build && \
 FROM golang:1.25-alpine AS backend-builder
 
 ARG ALPINE_MIRROR
+ARG VERSION_CODE
 
 RUN if [ -n "$ALPINE_MIRROR" ]; then \
     sed -i "s/dl-cdn.alpinelinux.org/$ALPINE_MIRROR/g" /etc/apk/repositories; \
@@ -28,7 +29,7 @@ RUN go mod download
 
 COPY backend/ .
 RUN CGO_ENABLED=1 GOOS=linux go build \
-    -ldflags="-s -w" \
+    -ldflags="-s -w -X main.VersionCode=${VERSION_CODE}" \
     -trimpath \
     -o headscale-panel .
 

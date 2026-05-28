@@ -16,9 +16,12 @@
 package unifyerror
 
 import (
+	"errors"
 	"net/http"
 
 	"headscale-panel/pkg/constants"
+
+	"gorm.io/gorm"
 )
 
 // Application error codes.
@@ -114,7 +117,7 @@ func ServerError(err error) *UniErr {
 // DbError wraps a database error. If the error is a "record not found" it is
 // converted to a ResNotExist instead.
 func DbError(err error) *UniErr {
-	if err != nil && err.Error() == "record not found" {
+	if err != nil && errors.Is(err, gorm.ErrRecordNotFound) {
 		return ResNotExist()
 	}
 	return newUniErrWithServer(ErrTypeDb, http.StatusInternalServerError, CodeDBErr, constants.MsgDBErr, err.Error())
@@ -122,7 +125,7 @@ func DbError(err error) *UniErr {
 
 // GRPCError wraps a gRPC call error.
 func GRPCError(err error) *UniErr {
-	return newUniErrWithServer(ErrTypeGRPC, http.StatusBadGateway, CodeGRPCErr, constants.MsgGRPCErr, err.Error())
+	return newUniErrWithServer(ErrTypeGRPC, http.StatusOK, CodeGRPCErr, constants.MsgGRPCErr, err.Error())
 }
 
 // ---- 14xx auth ----

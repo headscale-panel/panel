@@ -13,10 +13,11 @@ require (
 	github.com/joho/godotenv v1.5.1
 	github.com/juanfont/headscale v0.28.0
 	github.com/pquerna/otp v1.5.0
-	github.com/sirupsen/logrus v1.9.4
 	github.com/spf13/viper v1.21.0
 	github.com/tailscale/hujson v0.0.0-20260302212456-ecc657c15afd
+	go.uber.org/zap v1.28.0
 	golang.org/x/crypto v0.50.0
+	golang.org/x/mod v0.36.0
 	golang.org/x/oauth2 v0.36.0
 	golang.org/x/sync v0.20.0
 	google.golang.org/grpc v1.80.0
@@ -32,6 +33,7 @@ require (
 	github.com/rogpeppe/go-internal v1.14.1 // indirect
 	go.mongodb.org/mongo-driver/v2 v2.6.0 // indirect
 	go.opentelemetry.io/otel/sdk/metric v1.41.0 // indirect
+	go.uber.org/multierr v1.10.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260203192932-546029d2fa20 // indirect
 )
 

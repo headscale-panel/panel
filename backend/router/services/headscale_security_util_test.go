@@ -80,11 +80,11 @@ func TestActorCanAccessNode(t *testing.T) {
 		t.Fatal("admin actor should be able to access node")
 	}
 
-	if !actorCanAccessNode(&actorScope{headscaleName: "Alice"}, node) {
+	if !actorCanAccessNode(&actorScope{headscaleNames: map[string]struct{}{"alice": {}}}, node) {
 		t.Fatal("owner match should be case-insensitive")
 	}
 
-	if actorCanAccessNode(&actorScope{headscaleName: "bob"}, node) {
+	if actorCanAccessNode(&actorScope{headscaleNames: map[string]struct{}{"bob": {}}}, node) {
 		t.Fatal("non-owner should not be able to access node")
 	}
 }
@@ -93,10 +93,10 @@ func TestActorCanAccessHeadscaleUser(t *testing.T) {
 	if !actorCanAccessHeadscaleUser(&actorScope{isAdmin: true}, "alice") {
 		t.Fatal("admin actor should access any headscale user")
 	}
-	if !actorCanAccessHeadscaleUser(&actorScope{headscaleName: "Alice"}, "alice") {
+	if !actorCanAccessHeadscaleUser(&actorScope{headscaleNames: map[string]struct{}{"alice": {}}}, "alice") {
 		t.Fatal("owner match should be case-insensitive")
 	}
-	if actorCanAccessHeadscaleUser(&actorScope{headscaleName: "bob"}, "alice") {
+	if actorCanAccessHeadscaleUser(&actorScope{headscaleNames: map[string]struct{}{"bob": {}}}, "alice") {
 		t.Fatal("non-owner should not access other headscale users")
 	}
 }

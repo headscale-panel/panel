@@ -18,6 +18,7 @@ package services
 import (
 	"context"
 	"fmt"
+	"headscale-panel/pkg/unifyerror"
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 )
 
@@ -49,7 +50,7 @@ func (s *routeService) ListRoutesWithContext(ctx context.Context, actorUserID ui
 	page, pageSize = normalizePagination(page, pageSize)
 	client, err := headscaleServiceClient()
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, unifyerror.GRPCError(err)
 	}
 	scope, err := loadActorScope(actorUserID)
 	if err != nil {
@@ -59,9 +60,9 @@ func (s *routeService) ListRoutesWithContext(ctx context.Context, actorUserID ui
 	queryCtx, cancel := withServiceTimeout(ctx)
 	defer cancel()
 
-	resp, err := client.ListNodes(queryCtx, &v1.ListNodesRequest{})
-	if err != nil {
-		return nil, 0, fmt.Errorf("failed to list nodes from Headscale: %w", err)
+	resp, grpcErr := client.ListNodes(queryCtx, &v1.ListNodesRequest{})
+	if grpcErr != nil {
+		return nil, 0, unifyerror.GRPCError(grpcErr)
 	}
 
 	allRoutes := make([]HeadscaleRoute, 0)
@@ -157,11 +158,11 @@ func (s *routeService) EnableRouteWithContext(ctx context.Context, actorUserID u
 	defer cancel()
 
 	// Get current node state
-	node, err := client.GetNode(queryCtx, &v1.GetNodeRequest{
+	node, grpcErr := client.GetNode(queryCtx, &v1.GetNodeRequest{
 		NodeId: machineID,
 	})
-	if err != nil {
-		return fmt.Errorf("failed to get node: %w", err)
+	if grpcErr != nil {
+		return unifyerror.GRPCError(grpcErr)
 	}
 	if err := ensureActorCanAccessNode(actorUserID, node.Node); err != nil {
 		return err
@@ -188,12 +189,12 @@ func (s *routeService) EnableRouteWithContext(ctx context.Context, actorUserID u
 		}
 	}
 
-	_, err = client.SetApprovedRoutes(queryCtx, &v1.SetApprovedRoutesRequest{
+	_, grpcErr = client.SetApprovedRoutes(queryCtx, &v1.SetApprovedRoutesRequest{
 		NodeId: machineID,
 		Routes: approvedRoutes,
 	})
-	if err != nil {
-		return fmt.Errorf("failed to set approved routes: %w", err)
+	if grpcErr != nil {
+		return unifyerror.GRPCError(grpcErr)
 	}
 
 	return nil
@@ -217,11 +218,11 @@ func (s *routeService) DisableRouteWithContext(ctx context.Context, actorUserID 
 	defer cancel()
 
 	// Get current node state
-	node, err := client.GetNode(queryCtx, &v1.GetNodeRequest{
+	node, grpcErr := client.GetNode(queryCtx, &v1.GetNodeRequest{
 		NodeId: machineID,
 	})
-	if err != nil {
-		return fmt.Errorf("failed to get node: %w", err)
+	if grpcErr != nil {
+		return unifyerror.GRPCError(grpcErr)
 	}
 	if err := ensureActorCanAccessNode(actorUserID, node.Node); err != nil {
 		return err
@@ -241,12 +242,12 @@ func (s *routeService) DisableRouteWithContext(ctx context.Context, actorUserID 
 		}
 	}
 
-	_, err = client.SetApprovedRoutes(queryCtx, &v1.SetApprovedRoutesRequest{
+	_, grpcErr = client.SetApprovedRoutes(queryCtx, &v1.SetApprovedRoutesRequest{
 		NodeId: machineID,
 		Routes: approvedRoutes,
 	})
-	if err != nil {
-		return fmt.Errorf("failed to set approved routes: %w", err)
+	if grpcErr != nil {
+		return unifyerror.GRPCError(grpcErr)
 	}
 
 	return nil

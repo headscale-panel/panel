@@ -18,6 +18,8 @@ package services
 import (
 	"context"
 	"headscale-panel/model"
+	"headscale-panel/pkg/unifyerror"
+
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 )
 
@@ -71,26 +73,26 @@ func (s *dashboardService) GetOverviewWithContext(ctx context.Context, actorUser
 	var userCount, groupCount, resourceCount, dnsRecordCount int64
 	if scope.isAdmin {
 		if err := model.DB.Model(&model.User{}).Count(&userCount).Error; err != nil {
-			return nil, err
+			return nil, unifyerror.DbError(err)
 		}
 		if err := model.DB.Model(&model.Group{}).Count(&groupCount).Error; err != nil {
-			return nil, err
+			return nil, unifyerror.DbError(err)
 		}
 		if err := model.DB.Model(&model.Resource{}).Count(&resourceCount).Error; err != nil {
-			return nil, err
+			return nil, unifyerror.DbError(err)
 		}
 		_ = model.DB.Model(&model.DNSRecord{}).Count(&dnsRecordCount).Error
 	} else {
 		var actor model.User
 		if err := model.DB.Preload("Group").First(&actor, actorUserID).Error; err != nil {
-			return nil, err
+			return nil, unifyerror.DbError(err)
 		}
 		userCount = 1
 		if actor.GroupID != 0 {
 			groupCount = 1
 		}
 		if err := model.DB.Model(&model.Resource{}).Where("creator_id = ?", actorUserID).Count(&resourceCount).Error; err != nil {
-			return nil, err
+			return nil, unifyerror.DbError(err)
 		}
 	}
 
@@ -136,7 +138,7 @@ func (s *dashboardService) GetTopologyWithContext(ctx context.Context, actorUser
 	if !scope.isAdmin {
 		var actor model.User
 		if err := model.DB.Preload("Group").First(&actor, actorUserID).Error; err != nil {
-			return nil, err
+			return nil, unifyerror.DbError(err)
 		}
 
 		groupName := "Ungrouped"
@@ -154,16 +156,20 @@ func (s *dashboardService) GetTopologyWithContext(ctx context.Context, actorUser
 			Type:     "user",
 			Children: []*DashboardTopologyNode{},
 		}
-		for _, node := range nodesByUser[scope.headscaleName] {
-			userNode.Children = append(userNode.Children, &DashboardTopologyNode{
-				Name: node.Name,
-				Type: "device",
-				Info: map[string]interface{}{
-					"ip":     node.IpAddresses,
-					"id":     node.Id,
-					"online": node.Online,
-				},
-			})
+		for name := range scope.headscaleNames {
+			if nodes, ok := nodesByUser[name]; ok {
+				for _, node := range nodes {
+					userNode.Children = append(userNode.Children, &DashboardTopologyNode{
+						Name: node.Name,
+						Type: "device",
+						Info: map[string]interface{}{
+							"ip":     node.IpAddresses,
+							"id":     node.Id,
+							"online": node.Online,
+						},
+					})
+				}
+			}
 		}
 		groupNode.Children = append(groupNode.Children, userNode)
 		root.Children = append(root.Children, groupNode)
@@ -173,7 +179,7 @@ func (s *dashboardService) GetTopologyWithContext(ctx context.Context, actorUser
 	// Level 2: Groups
 	var groups []model.Group
 	if err := model.DB.Preload("Users").Find(&groups).Error; err != nil {
-		return nil, err
+		return nil, unifyerror.DbError(err)
 	}
 
 	for _, g := range groups {
@@ -191,19 +197,22 @@ func (s *dashboardService) GetTopologyWithContext(ctx context.Context, actorUser
 				Children: []*DashboardTopologyNode{},
 			}
 
-			// Level 4: Devices (Real Data)
-			if nodes, ok := nodesByUser[u.Username]; ok {
-				for _, node := range nodes {
-					deviceNode := &DashboardTopologyNode{
-						Name: node.Name,
-						Type: "device",
-						Info: map[string]interface{}{
-							"ip":     node.IpAddresses,
-							"id":     node.Id,
-							"online": node.Online,
-						},
+			// Level 4: Devices (matched by all bound headscale identities)
+			matchedNames := resolveHeadscaleNamesForUser(u.ID)
+			for name := range matchedNames {
+				if nodes, ok := nodesByUser[name]; ok {
+					for _, node := range nodes {
+						deviceNode := &DashboardTopologyNode{
+							Name: node.Name,
+							Type: "device",
+							Info: map[string]interface{}{
+								"ip":     node.IpAddresses,
+								"id":     node.Id,
+								"online": node.Online,
+							},
+						}
+						userNode.Children = append(userNode.Children, deviceNode)
 					}
-					userNode.Children = append(userNode.Children, deviceNode)
 				}
 			}
 

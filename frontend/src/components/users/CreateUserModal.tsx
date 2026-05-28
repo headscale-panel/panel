@@ -16,7 +16,7 @@
  */
 
 import { UserAddOutlined } from '@ant-design/icons';
-import { Input, message, Modal, Select, Space, Typography } from 'antd';
+import { Alert, Input, message, Modal, Select, Space, Typography } from 'antd';
 import { useState } from 'react';
 import { useTranslation } from '@/i18n/index';
 
@@ -99,6 +99,12 @@ export default function CreateUserModal({ open, groups, onCancel, onSuccess, onC
       <Text type="secondary" className="modal-desc">
         {t.users.createUserDesc}
       </Text>
+      <Alert
+        type="warning"
+        showIcon
+        message={t.users.createUserOidcMergeWarning}
+        className="mt-3 mb-1"
+      />
       <Space direction="vertical" className="w-full" size={12}>
         <div className="form-grid-row">
           <Text className="text-right text-13px">{t.users.usernameLabel}</Text>

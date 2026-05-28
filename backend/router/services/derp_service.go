@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"headscale-panel/pkg/constants"
 	"headscale-panel/pkg/headscale"
+	"headscale-panel/pkg/unifyerror"
 	"os"
 	"path/filepath"
 
@@ -72,12 +73,12 @@ func (s *derpService) getDERPMap() (*DERPMapFile, error) {
 				Regions: make(map[int]*DERPRegion),
 			}, nil
 		}
-		return nil, fmt.Errorf("failed to read DERP map file: %w", err)
+		return nil, unifyerror.ServerError(err)
 	}
 
 	var derpMap DERPMapFile
 	if err := yaml.Unmarshal(data, &derpMap); err != nil {
-		return nil, fmt.Errorf("failed to parse DERP map YAML: %w", err)
+		return nil, unifyerror.ServerError(err)
 	}
 
 	if derpMap.Regions == nil {
@@ -106,16 +107,16 @@ func (s *derpService) SaveDERPMap(actorUserID uint, derpMap *DERPMapFile, restar
 func (s *derpService) saveDERPMap(derpMap *DERPMapFile) error {
 	dir := filepath.Dir(constants.DERPMapFilePath)
 	if err := os.MkdirAll(dir, 0755); err != nil {
-		return fmt.Errorf("failed to create directory: %w", err)
+		return unifyerror.ServerError(err)
 	}
 
 	data, err := yaml.Marshal(derpMap)
 	if err != nil {
-		return fmt.Errorf("failed to marshal DERP map YAML: %w", err)
+		return unifyerror.ServerError(err)
 	}
 
 	if err := os.WriteFile(constants.DERPMapFilePath, data, 0600); err != nil {
-		return fmt.Errorf("failed to write DERP map file: %w", err)
+		return unifyerror.ServerError(err)
 	}
 
 	return nil
@@ -129,17 +130,17 @@ func (s *derpService) AddRegion(actorUserID uint, region *DERPRegion) error {
 
 	derpMap, err := s.getDERPMap()
 	if err != nil {
-		return fmt.Errorf("failed to read DERP map: %w", err)
+		return err
 	}
 
 	if _, exists := derpMap.Regions[region.RegionID]; exists {
-		return fmt.Errorf("region ID %d already exists", region.RegionID)
+		return unifyerror.Conflict(fmt.Sprintf("region ID %d already exists", region.RegionID))
 	}
 
 	derpMap.Regions[region.RegionID] = region
 
 	if err := s.saveDERPMap(derpMap); err != nil {
-		return fmt.Errorf("failed to save DERP map: %w", err)
+		return unifyerror.ServerError(err)
 	}
 
 	return nil
@@ -153,11 +154,11 @@ func (s *derpService) UpdateRegion(actorUserID uint, regionID int, region *DERPR
 
 	derpMap, err := s.getDERPMap()
 	if err != nil {
-		return fmt.Errorf("failed to read DERP map: %w", err)
+		return err
 	}
 
 	if _, exists := derpMap.Regions[regionID]; !exists {
-		return fmt.Errorf("region ID %d does not exist", regionID)
+		return unifyerror.NotFound()
 	}
 
 	// If the region ID changed, remove the old entry
@@ -168,7 +169,7 @@ func (s *derpService) UpdateRegion(actorUserID uint, regionID int, region *DERPR
 	derpMap.Regions[region.RegionID] = region
 
 	if err := s.saveDERPMap(derpMap); err != nil {
-		return fmt.Errorf("failed to save DERP map: %w", err)
+		return unifyerror.ServerError(err)
 	}
 
 	return nil
@@ -182,17 +183,17 @@ func (s *derpService) DeleteRegion(actorUserID uint, regionID int) error {
 
 	derpMap, err := s.getDERPMap()
 	if err != nil {
-		return fmt.Errorf("failed to read DERP map: %w", err)
+		return err
 	}
 
 	if _, exists := derpMap.Regions[regionID]; !exists {
-		return fmt.Errorf("region ID %d does not exist", regionID)
+		return unifyerror.NotFound()
 	}
 
 	delete(derpMap.Regions, regionID)
 
 	if err := s.saveDERPMap(derpMap); err != nil {
-		return fmt.Errorf("failed to save DERP map: %w", err)
+		return unifyerror.ServerError(err)
 	}
 
 	return nil
@@ -206,19 +207,19 @@ func (s *derpService) AddNode(actorUserID uint, regionID int, node DERPNode) err
 
 	derpMap, err := s.getDERPMap()
 	if err != nil {
-		return fmt.Errorf("failed to read DERP map: %w", err)
+		return err
 	}
 
 	region, exists := derpMap.Regions[regionID]
 	if !exists {
-		return fmt.Errorf("region ID %d does not exist", regionID)
+		return unifyerror.NotFound()
 	}
 
 	node.RegionID = regionID
 	region.Nodes = append(region.Nodes, node)
 
 	if err := s.saveDERPMap(derpMap); err != nil {
-		return fmt.Errorf("failed to save DERP map: %w", err)
+		return unifyerror.ServerError(err)
 	}
 
 	return nil
@@ -232,23 +233,23 @@ func (s *derpService) UpdateNode(actorUserID uint, regionID int, nodeIndex int, 
 
 	derpMap, err := s.getDERPMap()
 	if err != nil {
-		return fmt.Errorf("failed to read DERP map: %w", err)
+		return err
 	}
 
 	region, exists := derpMap.Regions[regionID]
 	if !exists {
-		return fmt.Errorf("region ID %d does not exist", regionID)
+		return unifyerror.NotFound()
 	}
 
 	if nodeIndex < 0 || nodeIndex >= len(region.Nodes) {
-		return fmt.Errorf("node index %d out of range (total %d nodes)", nodeIndex, len(region.Nodes))
+		return unifyerror.WrongParam("node_index")
 	}
 
 	node.RegionID = regionID
 	region.Nodes[nodeIndex] = node
 
 	if err := s.saveDERPMap(derpMap); err != nil {
-		return fmt.Errorf("failed to save DERP map: %w", err)
+		return unifyerror.ServerError(err)
 	}
 
 	return nil
@@ -262,22 +263,22 @@ func (s *derpService) DeleteNode(actorUserID uint, regionID int, nodeIndex int) 
 
 	derpMap, err := s.getDERPMap()
 	if err != nil {
-		return fmt.Errorf("failed to read DERP map: %w", err)
+		return err
 	}
 
 	region, exists := derpMap.Regions[regionID]
 	if !exists {
-		return fmt.Errorf("region ID %d does not exist", regionID)
+		return unifyerror.NotFound()
 	}
 
 	if nodeIndex < 0 || nodeIndex >= len(region.Nodes) {
-		return fmt.Errorf("node index %d out of range (total %d nodes)", nodeIndex, len(region.Nodes))
+		return unifyerror.WrongParam("node_index")
 	}
 
 	region.Nodes = append(region.Nodes[:nodeIndex], region.Nodes[nodeIndex+1:]...)
 
 	if err := s.saveDERPMap(derpMap); err != nil {
-		return fmt.Errorf("failed to save DERP map: %w", err)
+		return unifyerror.ServerError(err)
 	}
 
 	return nil

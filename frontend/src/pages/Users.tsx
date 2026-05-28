@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2026 
+ * Copyright (C) 2026
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -28,7 +28,6 @@ import {
   DesktopOutlined,
   DownOutlined,
   EditOutlined,
-  TagOutlined,
   LaptopOutlined,
   LoadingOutlined,
   NodeIndexOutlined,
@@ -36,6 +35,7 @@ import {
   ReloadOutlined,
   RightOutlined,
   SearchOutlined,
+  TagOutlined,
   TeamOutlined,
   UnorderedListOutlined,
   UserAddOutlined,
@@ -417,7 +417,8 @@ export default function UsersPage() {
       const tagT: string[] = [];
       const textT: string[] = [];
       for (const token of tokens) {
-        if (token.startsWith('tag:') && token.length > 4) tagT.push(token.slice(4));
+        if (token.startsWith('tag:') && token.length > 4)
+          tagT.push(token.slice(4));
         else textT.push(token);
       }
       return { tagTokens: tagT, textTokens: textT };
@@ -427,21 +428,26 @@ export default function UsersPage() {
       .filter(([key]) => key !== '__tagged__')
       .flatMap(([, list]) => list)
       .filter((device) => {
-        if (seen.has(device.id)) return false;
+        if (seen.has(device.id))
+          return false;
         seen.add(device.id);
 
         const hasOwner = Boolean(device.user?.name?.trim());
         const hasTags = (device.tags || []).length > 0;
         const kind = hasOwner ? 'owner' : hasTags ? 'tagged' : 'unassigned';
-        if (listIdentityFilter !== 'all' && kind !== listIdentityFilter) return false;
-        if (listHasTagOnly && !hasTags) return false;
+        if (listIdentityFilter !== 'all' && kind !== listIdentityFilter)
+          return false;
+        if (listHasTagOnly && !hasTags)
+          return false;
 
         const deviceTags = device.tags || [];
         if (tagTokens.length > 0) {
           const normalized = deviceTags.map((t) => t.toLowerCase());
-          if (!tagTokens.every((tt) => normalized.some((t) => t.includes(tt)))) return false;
+          if (!tagTokens.every((tt) => normalized.some((t) => t.includes(tt))))
+            return false;
         }
-        if (textTokens.length === 0) return true;
+        if (textTokens.length === 0)
+          return true;
         const searchable = [device.name, device.given_name, ...device.ip_addresses, device.user?.name || '', ...deviceTags].join(' ').toLowerCase();
         return textTokens.every((tt) => searchable.includes(tt));
       });
@@ -978,9 +984,10 @@ export default function UsersPage() {
               menu={{
                 items: [
                   { key: 'user', icon: <UserAddOutlined />, label: t.users.newUser, onClick: () => setCreateUserDialogOpen(true) },
-                  ...(oidcEnabled
-                    ? [{ key: 'user-oidc', icon: <UserOutlined />, label: t.users.newUserByOidc, onClick: () => void handleCreateHeadscaleUserViaOIDC() }]
-                    : []),
+                  // TODO: headscale currently does not support setting User Provider via gRPC, so this feature is temporarily disabled
+                  // ...(oidcEnabled
+                  //   ? [{ key: 'user-oidc', icon: <UserOutlined />, label: t.users.newUserByOidc, onClick: () => void handleCreateHeadscaleUserViaOIDC() }]
+                  //   : []),
                   { key: 'group', icon: <UsergroupAddOutlined />, label: t.users.newGroup, onClick: () => setCreateGroupDialogOpen(true) },
                 ],
               }}
@@ -1004,72 +1011,15 @@ export default function UsersPage() {
 
         {/* Two-panel layout (group mode) */}
         {viewMode === 'group' && (
-        <div className="grid gap-4" style={{ gridTemplateColumns: '280px 1fr' }}>
-          {/* Left: Tree sidebar */}
-          <Card data-tour-id="users-tree" styles={{ body: { padding: 0 } }}>
-            <div className="flex items-center px-5 py-3.5" style={{ borderBottom: `1px solid ${token.colorBorderSecondary}` }}>
-              <Text strong className="text-15px">{t.users.treeTitle}</Text>
-            </div>
-            <div className="p-2 overflow-auto" style={{ height: 'calc(100vh - 320px)' }}>
-              <Space direction="vertical" className="w-full" size={12}>
-                {/* All Users */}
-                <div
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 10,
-                    padding: '8px 12px',
-                    borderRadius: token.borderRadius,
-                    cursor: 'pointer',
-                    fontSize: 13,
-                    background: selectedNode.type === 'all' ? token.colorPrimaryBg : 'transparent',
-                    color: selectedNode.type === 'all' ? token.colorPrimaryText : token.colorText,
-                    fontWeight: selectedNode.type === 'all' ? 500 : 400,
-                  }}
-                  onClick={() => selectNode({ type: 'all' })}
-                >
-                  <TeamOutlined className="opacity-60" />
-                  <span className="flex-1">{t.users.allUsers}</span>
-                  <Text type="secondary" className="text-12px">{hsUsers.length}</Text>
-                </div>
-
-                {/* Groups Section */}
-                <div>
-                  <div className="px-3 py-1">
-                    <Text type="secondary" className="text-11px uppercase tracking-wide">{t.users.groups}</Text>
-                  </div>
-                  <Space direction="vertical" className="w-full" size={4}>
-                    {groups.map(renderGroupBranch)}
-                  </Space>
-                </div>
-
-                {/* Tagged Devices */}
-                {taggedDevices.length > 0 && (
-                  <div style={{ border: `1px dashed ${token.colorWarning}`, borderRadius: token.borderRadius }}>
-                    <div
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 10,
-                        padding: '8px 12px',
-                        borderRadius: token.borderRadius,
-                        cursor: 'pointer',
-                        fontSize: 13,
-                        background: selectedNode.type === 'tagged' ? token.colorPrimaryBg : 'transparent',
-                        color: selectedNode.type === 'tagged' ? token.colorPrimaryText : token.colorText,
-                        fontWeight: selectedNode.type === 'tagged' ? 500 : 400,
-                      }}
-                      onClick={() => selectNode({ type: 'tagged' })}
-                    >
-                      <TagOutlined className="opacity-60" />
-                      <span className="flex-1">{t.users.taggedDevices}</span>
-                      <Text type="secondary" className="text-12px">{taggedDevices.length}</Text>
-                    </div>
-                  </div>
-                )}
-
-                {/* Ungrouped */}
-                <div style={{ border: `1px dashed ${token.colorBorderSecondary}`, borderRadius: token.borderRadius }}>
+          <div className="grid gap-4" style={{ gridTemplateColumns: '280px 1fr' }}>
+            {/* Left: Tree sidebar */}
+            <Card data-tour-id="users-tree" styles={{ body: { padding: 0 } }}>
+              <div className="flex items-center px-5 py-3.5" style={{ borderBottom: `1px solid ${token.colorBorderSecondary}` }}>
+                <Text strong className="text-15px">{t.users.treeTitle}</Text>
+              </div>
+              <div className="p-2 overflow-auto" style={{ height: 'calc(100vh - 320px)' }}>
+                <Space direction="vertical" className="w-full" size={12}>
+                  {/* All Users */}
                   <div
                     style={{
                       display: 'flex',
@@ -1079,122 +1029,179 @@ export default function UsersPage() {
                       borderRadius: token.borderRadius,
                       cursor: 'pointer',
                       fontSize: 13,
-                      background: selectedNode.type === 'ungrouped' ? token.colorPrimaryBg : 'transparent',
-                      color: selectedNode.type === 'ungrouped' ? token.colorPrimaryText : token.colorText,
-                      fontWeight: selectedNode.type === 'ungrouped' ? 500 : 400,
+                      background: selectedNode.type === 'all' ? token.colorPrimaryBg : 'transparent',
+                      color: selectedNode.type === 'all' ? token.colorPrimaryText : token.colorText,
+                      fontWeight: selectedNode.type === 'all' ? 500 : 400,
                     }}
-                    onClick={() => selectNode({ type: 'ungrouped' })}
+                    onClick={() => selectNode({ type: 'all' })}
                   >
-                    <span
-                      className="w-5 h-5 flex items-center justify-center"
-                      onClick={(e) => { e.stopPropagation(); setUngroupedExpanded((v) => !v); }}
-                    >
-                      {ungroupedExpanded ? <DownOutlined /> : <RightOutlined className="text-10px text-10px" />}
-                    </span>
-                    <UserOutlined className="opacity-60" />
-                    <span className="flex-1">{t.users.ungroupedUsers}</span>
-                    <Text type="secondary" className="text-12px">{ungroupedUsers.length}</Text>
+                    <TeamOutlined className="opacity-60" />
+                    <span className="flex-1">{t.users.allUsers}</span>
+                    <Text type="secondary" className="text-12px">{hsUsers.length}</Text>
                   </div>
 
-                  {ungroupedExpanded && (
-                    <div className="pb-2 pr-2 pl-10">
-                      <Space direction="vertical" className="w-full" size={4}>
-                        {ungroupedUsers.map((user) => {
-                          const isSelected = selectedNode.type === 'user' && selectedNode.userId === user.ID && !selectedNode.groupName;
-                          return (
-                            <div
-                              key={user.ID}
-                              style={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: 8,
-                                padding: '8px 12px',
-                                borderRadius: token.borderRadius,
-                                cursor: 'pointer',
-                                fontSize: 13,
-                                background: isSelected ? token.colorPrimaryBg : 'transparent',
-                                color: isSelected ? token.colorPrimaryText : token.colorTextSecondary,
-                              }}
-                              onClick={() => selectNode({ type: 'user', userId: user.ID })}
-                            >
-                              <span style={{
-                                width: 10,
-                                height: 10,
-                                borderRadius: '50%',
-                                background: onlineUsers.has(user.headscale_name || user.username) ? '#52c41a' : token.colorBorderSecondary,
-                              }}
-                              />
-                              <span className="truncate">{user.display_name || user.username}</span>
-                            </div>
-                          );
-                        })}
-                        {ungroupedUsers.length === 0 && (
-                          <Text type="secondary" className="px-3 py-2 text-12px">{t.users.noUsers}</Text>
-                        )}
-                      </Space>
+                  {/* Groups Section */}
+                  <div>
+                    <div className="px-3 py-1">
+                      <Text type="secondary" className="text-11px uppercase tracking-wide">{t.users.groups}</Text>
+                    </div>
+                    <Space direction="vertical" className="w-full" size={4}>
+                      {groups.map(renderGroupBranch)}
+                    </Space>
+                  </div>
+
+                  {/* Tagged Devices */}
+                  {taggedDevices.length > 0 && (
+                    <div style={{ border: `1px dashed ${token.colorWarning}`, borderRadius: token.borderRadius }}>
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 10,
+                          padding: '8px 12px',
+                          borderRadius: token.borderRadius,
+                          cursor: 'pointer',
+                          fontSize: 13,
+                          background: selectedNode.type === 'tagged' ? token.colorPrimaryBg : 'transparent',
+                          color: selectedNode.type === 'tagged' ? token.colorPrimaryText : token.colorText,
+                          fontWeight: selectedNode.type === 'tagged' ? 500 : 400,
+                        }}
+                        onClick={() => selectNode({ type: 'tagged' })}
+                      >
+                        <TagOutlined className="opacity-60" />
+                        <span className="flex-1">{t.users.taggedDevices}</span>
+                        <Text type="secondary" className="text-12px">{taggedDevices.length}</Text>
+                      </div>
                     </div>
                   )}
-                </div>
-              </Space>
-            </div>
-          </Card>
 
-          {/* Right: User list */}
-          <Card styles={{ body: { padding: 0 } }}>
-            <div className="flex items-center justify-between px-5 py-3.5" style={{ borderBottom: `1px solid ${token.colorBorderSecondary}` }}>
-              <Space>
-                <Text strong className="text-15px">{rightPaneTitle}</Text>
-                <Text type="secondary">{rightPaneCount}</Text>
-              </Space>
-              <Input
-                prefix={<SearchOutlined style={{ color: token.colorTextSecondary }} />}
-                placeholder={selectedNode.type === 'user' ? t.devices.searchPlaceholder : t.users.searchPlaceholder}
-                className="w-64"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                allowClear
-              />
-            </div>
-
-            <div className="overflow-auto" style={{ height: 'calc(100vh - 360px)' }}>
-              {selectedNode.type === 'tagged'
-                ? (
-                    <div className="p-4">
-                      <Space direction="vertical" className="w-full" size={6}>
-                        {filteredDevices.length === 0
-                          ? (
-                              <Empty
-                                className="empty-state-box"
-                                image={Empty.PRESENTED_IMAGE_SIMPLE}
-                                description={t.users.noTaggedDevices}
-                              />
-                            )
-                          : filteredDevices.map((device) => renderDeviceCard(device, device as any))}
-                      </Space>
+                  {/* Ungrouped */}
+                  <div style={{ border: `1px dashed ${token.colorBorderSecondary}`, borderRadius: token.borderRadius }}>
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 10,
+                        padding: '8px 12px',
+                        borderRadius: token.borderRadius,
+                        cursor: 'pointer',
+                        fontSize: 13,
+                        background: selectedNode.type === 'ungrouped' ? token.colorPrimaryBg : 'transparent',
+                        color: selectedNode.type === 'ungrouped' ? token.colorPrimaryText : token.colorText,
+                        fontWeight: selectedNode.type === 'ungrouped' ? 500 : 400,
+                      }}
+                      onClick={() => selectNode({ type: 'ungrouped' })}
+                    >
+                      <span
+                        className="w-5 h-5 flex items-center justify-center"
+                        onClick={(e) => { e.stopPropagation(); setUngroupedExpanded((v) => !v); }}
+                      >
+                        {ungroupedExpanded ? <DownOutlined /> : <RightOutlined className="text-10px text-10px" />}
+                      </span>
+                      <UserOutlined className="opacity-60" />
+                      <span className="flex-1">{t.users.ungroupedUsers}</span>
+                      <Text type="secondary" className="text-12px">{ungroupedUsers.length}</Text>
                     </div>
-                  )
-                : selectedNode.type === 'user' && selectedTreeUser
-                  ? (
-                      <div>{renderUserRow(selectedTreeUser, 0)}</div>
-                    )
-                  : (
-                      <div>
-                        {filteredUsers.length === 0
-                          ? (
-                              <Empty
-                                className="empty-state-box"
-                                image={Empty.PRESENTED_IMAGE_SIMPLE}
-                                description={searchQuery ? t.users.noSearchResult : t.users.noUsers}
-                              />
-                            )
-                          : (
-                              filteredUsers.map(renderUserRow)
-                            )}
+
+                    {ungroupedExpanded && (
+                      <div className="pb-2 pr-2 pl-10">
+                        <Space direction="vertical" className="w-full" size={4}>
+                          {ungroupedUsers.map((user) => {
+                            const isSelected = selectedNode.type === 'user' && selectedNode.userId === user.ID && !selectedNode.groupName;
+                            return (
+                              <div
+                                key={user.ID}
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: 8,
+                                  padding: '8px 12px',
+                                  borderRadius: token.borderRadius,
+                                  cursor: 'pointer',
+                                  fontSize: 13,
+                                  background: isSelected ? token.colorPrimaryBg : 'transparent',
+                                  color: isSelected ? token.colorPrimaryText : token.colorTextSecondary,
+                                }}
+                                onClick={() => selectNode({ type: 'user', userId: user.ID })}
+                              >
+                                <span style={{
+                                  width: 10,
+                                  height: 10,
+                                  borderRadius: '50%',
+                                  background: onlineUsers.has(user.headscale_name || user.username) ? '#52c41a' : token.colorBorderSecondary,
+                                }}
+                                />
+                                <span className="truncate">{user.display_name || user.username}</span>
+                              </div>
+                            );
+                          })}
+                          {ungroupedUsers.length === 0 && (
+                            <Text type="secondary" className="px-3 py-2 text-12px">{t.users.noUsers}</Text>
+                          )}
+                        </Space>
                       </div>
                     )}
-            </div>
-          </Card>
-        </div>
+                  </div>
+                </Space>
+              </div>
+            </Card>
+
+            {/* Right: User list */}
+            <Card styles={{ body: { padding: 0 } }}>
+              <div className="flex items-center justify-between px-5 py-3.5" style={{ borderBottom: `1px solid ${token.colorBorderSecondary}` }}>
+                <Space>
+                  <Text strong className="text-15px">{rightPaneTitle}</Text>
+                  <Text type="secondary">{rightPaneCount}</Text>
+                </Space>
+                <Input
+                  prefix={<SearchOutlined style={{ color: token.colorTextSecondary }} />}
+                  placeholder={selectedNode.type === 'user' ? t.devices.searchPlaceholder : t.users.searchPlaceholder}
+                  className="w-64"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  allowClear
+                />
+              </div>
+
+              <div className="overflow-auto" style={{ height: 'calc(100vh - 360px)' }}>
+                {selectedNode.type === 'tagged'
+                  ? (
+                      <div className="p-4">
+                        <Space direction="vertical" className="w-full" size={6}>
+                          {filteredDevices.length === 0
+                            ? (
+                                <Empty
+                                  className="empty-state-box"
+                                  image={Empty.PRESENTED_IMAGE_SIMPLE}
+                                  description={t.users.noTaggedDevices}
+                                />
+                              )
+                            : filteredDevices.map((device) => renderDeviceCard(device, device as any))}
+                        </Space>
+                      </div>
+                    )
+                  : selectedNode.type === 'user' && selectedTreeUser
+                    ? (
+                        <div>{renderUserRow(selectedTreeUser, 0)}</div>
+                      )
+                    : (
+                        <div>
+                          {filteredUsers.length === 0
+                            ? (
+                                <Empty
+                                  className="empty-state-box"
+                                  image={Empty.PRESENTED_IMAGE_SIMPLE}
+                                  description={searchQuery ? t.users.noSearchResult : t.users.noUsers}
+                                />
+                              )
+                            : (
+                                filteredUsers.map(renderUserRow)
+                              )}
+                        </div>
+                      )}
+              </div>
+            </Card>
+          </div>
         )}
 
         {/* List mode: flat device list */}

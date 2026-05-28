@@ -54,6 +54,7 @@ jobs:
           cache-to: type=gha,mode=max
           build-args: |
             ALPINE_MIRROR=${{ vars.ALPINE_MIRROR }}
+            VERSION_CODE=${{ steps.meta.outputs.version_tag }}
           tags: |
             ${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.version_tag }}
             ${{ steps.meta.outputs.image }}:latest

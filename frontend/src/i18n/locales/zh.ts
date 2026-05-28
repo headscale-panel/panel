@@ -266,6 +266,7 @@ const zh = {
     deleteUser: '删除 Headscale 用户',
     createUserTitle: '创建 Headscale 用户',
     createUserDesc: '创建一个新的 Headscale 用户，并可选加入一个 ACL 用户组。',
+    createUserOidcMergeWarning: '通过面板创建的用户不会自动关联 OIDC 认证。当同名用户通过 OIDC 登录时，Headscale 会创建一个独立的 OIDC 账号，导致同一用户名下存在两个独立账号。',
     usernameLabel: '用户名 *',
     usernamePlaceholder: '输入 Headscale 用户名',
     passwordLabel: '密码 *',

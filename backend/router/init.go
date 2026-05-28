@@ -183,6 +183,7 @@ func InitRouter() *gin.Engine {
 			auth.GET("/topology/acl-matrix", middleware.PermissionMiddleware("topology:acl_matrix:view"), topologyController.GetACLMatrix)
 
 			connectionController := &controllers.ConnectionController{}
+			auth.GET("/connection/identities", middleware.PermissionMiddleware("headscale:machine:list"), connectionController.ListHeadscaleIdentities)
 			auth.POST("/connection/generate", middleware.PermissionMiddleware("headscale:machine:list"), connectionController.GenerateConnectionCommands)
 			auth.POST("/connection/pre-auth-key", middleware.PermissionMiddleware("headscale:preauthkey:create"), connectionController.GeneratePreAuthKey)
 			auth.POST("/connection/ssh-command", middleware.PermissionMiddleware("headscale:machine:list"), connectionController.GenerateSSHCommand)
@@ -234,7 +235,6 @@ func InitRouter() *gin.Engine {
 			auth.GET("/panel-accounts/:id/login-identities", middleware.PermissionMiddleware("panel:account:list"), panelAccountCtrl.GetLoginIdentities)
 			auth.GET("/panel-accounts/:id/network-bindings", middleware.PermissionMiddleware("panel:account:list"), panelAccountCtrl.GetNetworkBindings)
 			auth.PUT("/panel-accounts/:id/network-bindings", middleware.PermissionMiddleware("panel:account:bindding"), panelAccountCtrl.UpdateNetworkBindings)
-			auth.PUT("/panel-accounts/:id/primary-binding", middleware.PermissionMiddleware("panel:account:bindding"), panelAccountCtrl.SetPrimaryBinding)
 			auth.GET("/network-identities/available", middleware.PermissionMiddleware("panel:account:list"), panelAccountCtrl.ListAvailableNetworkIdentities)
 		}
 	}

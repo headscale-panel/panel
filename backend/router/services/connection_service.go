@@ -21,7 +21,9 @@ import (
 	"headscale-panel/model"
 	"headscale-panel/pkg/conf"
 	"headscale-panel/pkg/headscale"
+	"headscale-panel/pkg/unifyerror"
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
+	"net/http"
 	"strconv"
 	"strings"
 )
@@ -36,21 +38,53 @@ type ConnectionCommand struct {
 	Commands    []string `json:"commands"`
 }
 
-// GenerateConnectionCommands generates connection commands for selected machines
-func (s *connectionService) GenerateConnectionCommands(actorUserID uint, machineIDs []string, platform string) ([]ConnectionCommand, error) {
-	return s.GenerateConnectionCommandsWithContext(context.Background(), actorUserID, machineIDs, platform)
+type HeadscaleIdentity struct {
+	HeadscaleName string `json:"headscale_name"`
+	Provider      string `json:"provider"`
+	DisplayName   string `json:"display_name"`
 }
 
-func (s *connectionService) GenerateConnectionCommandsWithContext(ctx context.Context, actorUserID uint, machineIDs []string, platform string) ([]ConnectionCommand, error) {
+// ListHeadscaleIdentities returns all headscale identities bound to a panel user.
+func (s *connectionService) ListHeadscaleIdentities(userID uint) []HeadscaleIdentity {
+	ids := model.GetHeadscaleIDs(userID)
+	if len(ids) == 0 {
+		return nil
+	}
+	hsUsers := listHeadscaleUsersByIDs(ids)
+
+	identities := make([]HeadscaleIdentity, 0, len(ids))
+	for _, id := range ids {
+		if u, ok := hsUsers[id]; ok {
+			identities = append(identities, HeadscaleIdentity{
+				HeadscaleName: u.Name,
+				Provider:      normalizeHeadscaleProvider(u.Provider),
+				DisplayName:   u.DisplayName,
+			})
+		}
+	}
+	return identities
+}
+
+// GenerateConnectionCommands generates connection commands for selected machines.
+// headscaleName selects which bound headscale identity to use. If empty, the first binding is used.
+func (s *connectionService) GenerateConnectionCommands(actorUserID uint, machineIDs []string, platform string, headscaleName string) ([]ConnectionCommand, error) {
+	return s.GenerateConnectionCommandsWithContext(context.Background(), actorUserID, machineIDs, platform, headscaleName)
+}
+
+func (s *connectionService) GenerateConnectionCommandsWithContext(ctx context.Context, actorUserID uint, machineIDs []string, platform string, headscaleName string) ([]ConnectionCommand, error) {
 	if err := RequirePermission(actorUserID, "headscale:machine:list"); err != nil {
 		return nil, err
 	}
 
 	if len(machineIDs) == 0 {
-		return nil, fmt.Errorf("no machines selected")
+		return nil, unifyerror.WrongParam("machine_ids")
 	}
 
-	var commands []ConnectionCommand
+	// Resolve headscale identity
+	resolvedName, err := s.resolveHeadscaleName(actorUserID, headscaleName)
+	if err != nil {
+		return nil, err
+	}
 
 	// Get Headscale server URL
 	serverURL := conf.Conf.System.BaseURL
@@ -58,15 +92,7 @@ func (s *connectionService) GenerateConnectionCommandsWithContext(ctx context.Co
 		serverURL = "https://headscale.example.com"
 	}
 
-	scope, err := loadActorScope(actorUserID)
-	if err != nil {
-		return nil, err
-	}
-	if scope.headscaleName == "" {
-		return nil, fmt.Errorf("actor has no headscale identity")
-	}
-
-	headscaleUserID, err := HeadscaleService.ResolveUserIDByNameWithContext(ctx, scope.headscaleName)
+	headscaleUserID, err := HeadscaleService.ResolveUserIDByNameWithContext(ctx, resolvedName)
 	if err != nil {
 		return nil, err
 	}
@@ -75,23 +101,24 @@ func (s *connectionService) GenerateConnectionCommandsWithContext(ctx context.Co
 
 	client, err := headscaleServiceClient()
 	if err != nil {
-		return nil, err
+		return nil, unifyerror.GRPCError(err)
 	}
 
-	authKeyResp, err := client.CreatePreAuthKey(queryCtx, &v1.CreatePreAuthKeyRequest{
+	authKeyResp, grpcErr := client.CreatePreAuthKey(queryCtx, &v1.CreatePreAuthKeyRequest{
 		User:       headscaleUserID,
 		Reusable:   true,
 		Ephemeral:  false,
 		Expiration: nil,
 	})
-	if err != nil {
-		return nil, err
+	if grpcErr != nil {
+		return nil, unifyerror.GRPCError(grpcErr)
 	}
 	authKey, ok := extractPreAuthKeyString(authKeyResp)
 	if !ok || strings.TrimSpace(authKey) == "" {
-		return nil, fmt.Errorf("failed to extract generated auth key")
+		return nil, unifyerror.ServerError(fmt.Errorf("failed to extract generated auth key"))
 	}
 
+	var commands []ConnectionCommand
 	switch strings.ToLower(platform) {
 	case "linux":
 		commands = append(commands, s.generateLinuxCommands(serverURL, authKey))
@@ -104,7 +131,7 @@ func (s *connectionService) GenerateConnectionCommandsWithContext(ctx context.Co
 	case "android":
 		commands = append(commands, s.generateAndroidCommands(serverURL))
 	default:
-		return nil, fmt.Errorf("unsupported platform: %s", platform)
+		return nil, unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, fmt.Sprintf("unsupported platform: %s", platform))
 	}
 
 	// Add SSH connection commands for selected machines
@@ -232,7 +259,7 @@ func (s *connectionService) generateSSHCommands(ctx context.Context, actorUserID
 	}
 
 	if len(commands) <= 2 {
-		return ConnectionCommand{}, fmt.Errorf("no SSH commands generated")
+		return ConnectionCommand{}, unifyerror.NotFound()
 	}
 
 	return ConnectionCommand{
@@ -253,15 +280,16 @@ func (s *connectionService) GenerateSSHCommandWithContext(ctx context.Context, a
 			return trimmed, nil
 		}
 	}
-	return "", fmt.Errorf("no SSH command generated")
+	return "", unifyerror.NotFound()
 }
 
-// GeneratePreAuthKey generates a pre-auth key for device registration
-func (s *connectionService) GeneratePreAuthKey(actorUserID uint, userID uint, reusable bool, ephemeral bool, expiration string) (string, error) {
-	return s.GeneratePreAuthKeyWithContext(context.Background(), actorUserID, userID, reusable, ephemeral, expiration)
+// GeneratePreAuthKey generates a pre-auth key for device registration.
+// headscaleName selects which bound headscale identity to use. If empty, the first binding is used.
+func (s *connectionService) GeneratePreAuthKey(actorUserID uint, userID uint, reusable bool, ephemeral bool, expiration string, headscaleName string) (string, error) {
+	return s.GeneratePreAuthKeyWithContext(context.Background(), actorUserID, userID, reusable, ephemeral, expiration, headscaleName)
 }
 
-func (s *connectionService) GeneratePreAuthKeyWithContext(ctx context.Context, actorUserID uint, userID uint, reusable bool, ephemeral bool, expiration string) (string, error) {
+func (s *connectionService) GeneratePreAuthKeyWithContext(ctx context.Context, actorUserID uint, userID uint, reusable bool, ephemeral bool, expiration string, headscaleName string) (string, error) {
 	if err := RequirePermission(actorUserID, "headscale:preauthkey:create"); err != nil {
 		return "", err
 	}
@@ -269,40 +297,18 @@ func (s *connectionService) GeneratePreAuthKeyWithContext(ctx context.Context, a
 		return "", err
 	}
 
+	// Resolve headscale identity
+	resolvedName, err := s.resolveHeadscaleName(userID, headscaleName)
+	if err != nil {
+		return "", err
+	}
+
 	queryCtx, cancel := withServiceTimeout(ctx)
 	defer cancel()
 
-	var panelUser model.User
-	if err := model.DB.First(&panelUser, userID).Error; err != nil {
-		return "", fmt.Errorf("panel user not found: %w", err)
-	}
-
-	targetName := strings.TrimSpace(panelUser.HeadscaleName)
-	if targetName == "" {
-		targetName = strings.TrimSpace(panelUser.Username)
-	}
-	if targetName == "" {
-		return "", fmt.Errorf("panel user %d has no headscale identifier", userID)
-	}
-
-	// List users to find the ID
-	users, err := headscale.GlobalClient.Service.ListUsers(queryCtx, &v1.ListUsersRequest{})
+	headscaleUserID, err := HeadscaleService.ResolveUserIDByNameWithContext(queryCtx, resolvedName)
 	if err != nil {
-		return "", fmt.Errorf("failed to list users: %w", err)
-	}
-
-	var headscaleUserID uint64
-	found := false
-	for _, u := range users.Users {
-		if u.Name == targetName {
-			headscaleUserID = u.Id
-			found = true
-			break
-		}
-	}
-
-	if !found {
-		return "", fmt.Errorf("user not found in headscale: %s", targetName)
+		return "", unifyerror.NotFound()
 	}
 
 	resp, err := HeadscaleService.CreatePreAuthKeyWithContext(queryCtx, actorUserID, headscaleUserID, reusable, ephemeral, expiration)
@@ -312,9 +318,45 @@ func (s *connectionService) GeneratePreAuthKeyWithContext(ctx context.Context, a
 
 	key, ok := extractPreAuthKeyString(resp)
 	if !ok {
-		return "", fmt.Errorf("failed to extract generated pre-auth key")
+		return "", unifyerror.ServerError(fmt.Errorf("failed to extract generated pre-auth key"))
 	}
 	return key, nil
+}
+
+// resolveHeadscaleName resolves which headscale identity to use.
+// If headscaleName is provided, validates it exists in the user's bindings.
+// If empty, returns the first binding's name, or falls back to the panel username.
+func (s *connectionService) resolveHeadscaleName(userID uint, headscaleName string) (string, error) {
+	ids := model.GetHeadscaleIDs(userID)
+	if len(ids) == 0 {
+		// Fallback to panel username
+		var user model.User
+		if err := model.DB.First(&user, userID).Error; err == nil {
+			if name := strings.TrimSpace(user.Username); name != "" {
+				return name, nil
+			}
+		}
+		return "", unifyerror.NotFound()
+	}
+
+	hsUsers := listHeadscaleUsersByIDs(ids)
+
+	if headscaleName != "" {
+		for _, u := range hsUsers {
+			if strings.EqualFold(strings.TrimSpace(u.Name), strings.TrimSpace(headscaleName)) {
+				return strings.TrimSpace(u.Name), nil
+			}
+		}
+		return "", unifyerror.NotFound()
+	}
+
+	// Return the first one
+	for _, id := range ids {
+		if u, ok := hsUsers[id]; ok {
+			return strings.TrimSpace(u.Name), nil
+		}
+	}
+	return "", unifyerror.ServerError(fmt.Errorf("failed to resolve headscale identity"))
 }
 
 func extractPreAuthKeyString(value interface{}) (string, bool) {

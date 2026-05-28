@@ -72,7 +72,7 @@ func (s *permissionService) Update(actorUserID uint, id uint, name, code, pType 
 	perm.Name = name
 	perm.Code = code
 	perm.Type = pType
-	return model.DB.Save(&perm).Error
+	return unifyerror.DbError(model.DB.Save(&perm).Error)
 }
 
 func (s *permissionService) Delete(actorUserID uint, id uint) error {
@@ -80,7 +80,7 @@ func (s *permissionService) Delete(actorUserID uint, id uint) error {
 		return err
 	}
 
-	return model.DB.Delete(&model.Permission{}, id).Error
+	return unifyerror.DbError(model.DB.Delete(&model.Permission{}, id).Error)
 }
 
 func (s *permissionService) GetAllPermissions(actorUserID uint) ([]model.Permission, error) {

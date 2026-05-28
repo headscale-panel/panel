@@ -1,4 +1,4 @@
-// Copyright (C) 2026 
+// Copyright (C) 2026
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as
@@ -22,6 +22,7 @@ import (
 	"headscale-panel/pkg/constants"
 	"headscale-panel/pkg/headscale"
 	"headscale-panel/pkg/influxdb"
+	"headscale-panel/pkg/log"
 	"headscale-panel/router"
 	"headscale-panel/router/services"
 	"net/http"
@@ -32,7 +33,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/sirupsen/logrus"
+	"go.uber.org/zap"
 )
 
 type Server struct {
@@ -40,12 +41,12 @@ type Server struct {
 	server *http.Server
 }
 
-func NewServer() (*Server, error) {
+func NewServer(versionCode string) (*Server, error) {
 	time.Local = time.UTC
 
 	confPath, err := filepath.Abs(".env")
 	if err != nil {
-		logrus.WithError(err).Warn(constants.LogConfigPathFailed)
+		log.L.Warn(constants.LogConfigPathFailed, zap.Error(err))
 	}
 	conf.Init(confPath)
 
@@ -55,15 +56,15 @@ func NewServer() (*Server, error) {
 		gin.SetMode(gin.ReleaseMode)
 	}
 
-	model.Init()
+	model.Init(versionCode)
 
 	// Restore headscale connection settings from DB (survives container restart)
 	if services.LoadHeadscaleConnectionFromDB() {
 		if err := services.HeadscaleInitService.InitializeFromCurrentConfig(context.Background()); err != nil {
-			logrus.WithError(err).Warn("Headscale init flow failed; complete setup via WebUI")
+			log.L.Warn("Headscale init flow failed; complete setup via WebUI", zap.Error(err))
 		}
 	} else {
-		logrus.Warn("No Headscale connection configured; complete setup via WebUI")
+		log.L.Warn("No Headscale connection configured; complete setup via WebUI")
 	}
 
 	if conf.Conf.InfluxDB.URL != "" {
@@ -73,7 +74,7 @@ func NewServer() (*Server, error) {
 			Org:    conf.Conf.InfluxDB.Org,
 			Bucket: conf.Conf.InfluxDB.Bucket,
 		}); err != nil {
-			logrus.WithError(err).Error("Failed to init InfluxDB client")
+			log.L.Error("Failed to init InfluxDB client", zap.Error(err))
 		} else {
 			services.MetricsService.StartMetricsCollector(1 * time.Minute)
 		}
@@ -96,24 +97,31 @@ func (s *Server) Run() {
 		Handler: s.router,
 	}
 
+	listenErr := make(chan error, 1)
 	go func() {
-		logrus.Infof("Server starting on %s", conf.Conf.System.Port)
+		log.L.Info("Server starting", zap.String("addr", conf.Conf.System.Port))
 		if err := s.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			logrus.Fatalf("listen: %s\n", err)
+			listenErr <- err
 		}
+		close(listenErr)
 	}()
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	<-quit
-	logrus.Info("Shutting down server...")
+
+	select {
+	case err := <-listenErr:
+		log.L.Fatal("listen failed", zap.Error(err))
+	case <-quit:
+		log.L.Info("Shutting down server...")
+	}
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
 	if s.server != nil {
 		if err := s.server.Shutdown(shutdownCtx); err != nil {
-			logrus.WithError(err).Error("Failed to gracefully shutdown HTTP server")
+			log.L.Error("Failed to gracefully shutdown HTTP server", zap.Error(err))
 		}
 	}
 
@@ -123,6 +131,6 @@ func (s *Server) Run() {
 	headscale.Close()
 	influxdb.Close()
 	if err := model.Close(); err != nil {
-		logrus.WithError(err).Warn("Failed to close database connection")
+		log.L.Warn("Failed to close database connection", zap.Error(err))
 	}
 }

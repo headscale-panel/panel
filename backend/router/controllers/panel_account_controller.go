@@ -321,41 +321,7 @@ func (ctrl *PanelAccountController) UpdateNetworkBindings(c *gin.Context) {
 	unifyerror.Success(c, nil)
 }
 
-type setPrimaryBindingRequest struct {
-	BindingID uint `json:"binding_id" binding:"required"`
-}
 
-// SetPrimaryBinding godoc
-// @Summary Set a primary network identity binding for a panel account
-// @Tags panel-accounts
-// @Accept json
-// @Produce json
-// @Param id path int true "Account ID"
-// @Param body body setPrimaryBindingRequest true "Primary binding"
-// @Success 200 {object} unifyerror.Response
-// @Security BearerAuth
-// @Router /panel-accounts/{id}/primary-binding [put]
-func (ctrl *PanelAccountController) SetPrimaryBinding(c *gin.Context) {
-	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
-	if err != nil {
-		unifyerror.Fail(c, unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "invalid account id"))
-		return
-	}
-
-	var req setPrimaryBindingRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		unifyerror.Fail(c, unifyerror.ErrBind)
-		return
-	}
-
-	actorUserID := c.GetUint("userID")
-	if svcErr := services.PanelAccountService.SetPrimaryBinding(actorUserID, uint(id), req.BindingID); svcErr != nil {
-		unifyerror.Fail(c, svcErr)
-		return
-	}
-
-	unifyerror.Success(c, nil)
-}
 
 // ListAvailableNetworkIdentities godoc
 // @Summary List available network identities for binding

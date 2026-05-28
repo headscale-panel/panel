@@ -24,7 +24,8 @@ import (
 
 	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
 	"github.com/influxdata/influxdb-client-go/v2/api"
-	"github.com/sirupsen/logrus"
+	"headscale-panel/pkg/log"
+	"go.uber.org/zap"
 )
 
 var (
@@ -44,7 +45,7 @@ type Config struct {
 
 func Init(cfg Config) error {
 	if cfg.URL == "" {
-		logrus.Warn("InfluxDB URL not configured, metrics collection disabled")
+		log.L.Warn("InfluxDB URL not configured, metrics collection disabled")
 		return nil
 	}
 	if strings.TrimSpace(cfg.Org) == "" {
@@ -77,7 +78,7 @@ func Init(cfg Config) error {
 	QueryAPI = Client.QueryAPI(cfg.Org)
 	bucket = cfg.Bucket
 
-	logrus.Info("InfluxDB client initialized successfully")
+	log.L.Info("InfluxDB client initialized successfully")
 	return nil
 }
 
@@ -107,12 +108,12 @@ func WriteDeviceStatus(userID, machineID, machineName, ipAddress string, online 
 
 	normalizedUserID, err := normalizeNumericID("user_id", userID, true)
 	if err != nil {
-		logrus.WithError(err).Warn("Skip writing device status due to invalid user_id")
+		log.L.Warn("Skip writing device status due to invalid user_id", zap.Error(err))
 		return
 	}
 	normalizedMachineID, err := normalizeNumericID("machine_id", machineID, true)
 	if err != nil {
-		logrus.WithError(err).Warn("Skip writing device status due to invalid machine_id")
+		log.L.Warn("Skip writing device status due to invalid machine_id", zap.Error(err))
 		return
 	}
 
@@ -147,7 +148,7 @@ func WriteDeviceTraffic(machineID string, rxBytes, txBytes uint64) {
 
 	normalizedMachineID, err := normalizeNumericID("machine_id", machineID, true)
 	if err != nil {
-		logrus.WithError(err).Warn("Skip writing device traffic due to invalid machine_id")
+		log.L.Warn("Skip writing device traffic due to invalid machine_id", zap.Error(err))
 		return
 	}
 

@@ -25,14 +25,19 @@ package main
 
 import (
 	"headscale-panel/application"
+	"headscale-panel/pkg/log"
 
-	"github.com/sirupsen/logrus"
+	"go.uber.org/zap"
 )
 
+// VersionCode is the current version of the backend, injected at build time via -ldflags.
+var VersionCode string
+
 func main() {
-	server, err := application.NewServer()
+	defer log.Sync()
+	server, err := application.NewServer(VersionCode)
 	if err != nil {
-		logrus.WithError(err).Fatal("failed to start server")
+		log.L.Fatal("failed to start server", zap.Error(err))
 	}
 	server.Run()
 }

@@ -40,11 +40,8 @@ type HeadscaleCreateUserRequest struct {
 
 // HeadscaleRenameUserRequest is the request body for RenameUser.
 type HeadscaleRenameUserRequest struct {
-	OldName     string `json:"old_name" binding:"required"`
-	NewName     string `json:"new_name" binding:"required"`
-	DisplayName string `json:"display_name"`
-	Email       string `json:"email"`
-	PictureURL  string `json:"picture_url"`
+	OldName string `json:"old_name" binding:"required"`
+	NewName string `json:"new_name" binding:"required"`
 }
 
 // HeadscaleRenameMachineRequest is the request body for RenameMachine.
@@ -154,7 +151,7 @@ func (h *HeadscaleController) RenameUser(c *gin.Context) {
 	}
 
 	actorUserID := c.GetUint("userID")
-	user, err := services.HeadscaleService.RenameUserByNameWithContext(c.Request.Context(), actorUserID, req.OldName, req.NewName, req.DisplayName, req.Email, req.PictureURL)
+	user, err := services.HeadscaleService.RenameUserByNameWithContext(c.Request.Context(), actorUserID, req.OldName, req.NewName)
 	if err != nil {
 		unifyerror.Fail(c, err)
 		return

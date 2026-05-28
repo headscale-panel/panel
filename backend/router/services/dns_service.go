@@ -18,7 +18,6 @@ package services
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"headscale-panel/model"
 	"headscale-panel/pkg/constants"
 	"headscale-panel/pkg/unifyerror"
@@ -210,14 +209,14 @@ func (s *dnsService) SyncToFile(actorUserID uint) error {
 		extraRecords[i] = ExtraRecord{Name: r.Name, Type: r.Type, Value: r.Value}
 	}
 	if err := os.MkdirAll(filepath.Dir(constants.ExtraRecordsFilePath), 0755); err != nil {
-		return fmt.Errorf("failed to create directory: %w", err)
+		return unifyerror.ServerError(err)
 	}
 	data, err := json.MarshalIndent(extraRecords, "", "  ")
 	if err != nil {
-		return fmt.Errorf("JSON marshal failed: %w", err)
+		return unifyerror.ServerError(err)
 	}
 	if err := os.WriteFile(constants.ExtraRecordsFilePath, data, 0600); err != nil {
-		return fmt.Errorf("failed to write file: %w", err)
+		return unifyerror.ServerError(err)
 	}
 	return nil
 }
@@ -265,11 +264,11 @@ func (s *dnsService) readExtraRecordsFromFile() ([]ExtraRecord, error) {
 		if os.IsNotExist(err) {
 			return []ExtraRecord{}, nil
 		}
-		return nil, fmt.Errorf("failed to read file: %w", err)
+		return nil, unifyerror.ServerError(err)
 	}
 	var records []ExtraRecord
 	if err := json.Unmarshal(data, &records); err != nil {
-		return nil, fmt.Errorf("JSON parse failed: %w", err)
+		return nil, unifyerror.ServerError(err)
 	}
 	return records, nil
 }
@@ -287,10 +286,10 @@ func (s *dnsService) syncFileRecordsToDB() (int, error) {
 			Value: strings.TrimSpace(rawRecord.Value),
 		}
 		if r.Name == "" || r.Type == "" || r.Value == "" {
-			return imported, fmt.Errorf("extra-records.json contains invalid record: name/type/value must not be empty")
+			return imported, unifyerror.WrongParam("record")
 		}
 		if r.Type != "A" && r.Type != "AAAA" {
-			return imported, fmt.Errorf("extra-records.json contains invalid record type: %s", r.Type)
+			return imported, unifyerror.WrongParam("record type")
 		}
 		var existing model.DNSRecord
 		result := model.DB.Where("name = ? AND type = ?", r.Name, r.Type).First(&existing)
