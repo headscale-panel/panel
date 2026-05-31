@@ -38,6 +38,9 @@ var DB *gorm.DB
 // CurrentVersion is the version of the running backend, set during Init().
 var CurrentVersion string
 
+const migrationUpperBound_Admin = "v1.34.0"
+const migrationUpperBound_Oauth = "v1.34.0"
+
 func Init(versionCode string) {
 	CurrentVersion = versionCode
 	log.L.Info("Starting headscale-panel", zap.String("version", CurrentVersion))
@@ -204,9 +207,9 @@ func initVersionCode() {
 
 // migrateAdminFlag ensures at least one user has is_admin = true.
 // If no admin exists, promotes the earliest created user.
-// Only runs for versions <= 1.23.2.
+// Runs for versions >= 1.24.0 and < 1.34.0.
 func migrateAdminFlag(v string) {
-	if semver.Compare(v, "v1.23.2") > 0 {
+	if semver.Compare(v, migrationUpperBound_Admin) >= 0 {
 		return
 	}
 
@@ -237,9 +240,9 @@ func migrateAdminFlag(v string) {
 }
 
 // migrateLegacyOauthClientSecrets hashes legacy plaintext OAuth client secrets.
-// Only runs for versions <= 1.23.2.
+// Runs for versions >= 1.24.0 and < 1.34.0.
 func migrateLegacyOauthClientSecrets(v string) {
-	if semver.Compare(v, "v1.23.2") > 0 {
+	if semver.Compare(v, migrationUpperBound_Oauth) >= 0 {
 		return
 	}
 
