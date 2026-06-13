@@ -1,4 +1,4 @@
-// Copyright (C) 2026 
+// Copyright (C) 2026
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as
@@ -32,7 +32,9 @@ func TestNormalizeACLDestination(t *testing.T) {
 		{name: "tag keeps explicit port", in: "tag:server:443", want: "tag:server:443"},
 		{name: "autogroup gets wildcard port", in: "autogroup:self", want: "autogroup:self:*"},
 		{name: "host alias gets wildcard port", in: "db-primary", want: "db-primary:*"},
+		{name: "host alias keeps explicit port", in: "nas:22", want: "nas:22"},
 		{name: "user alias gets wildcard port", in: "alice@", want: "alice@:*"},
+		{name: "user alias keeps explicit port", in: "boss@:22", want: "boss@:22"},
 		{name: "ipv4 keeps explicit port", in: "100.64.0.1:22", want: "100.64.0.1:22"},
 	}
 

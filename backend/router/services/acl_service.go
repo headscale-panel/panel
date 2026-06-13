@@ -1,4 +1,4 @@
-// Copyright (C) 2026 
+// Copyright (C) 2026
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as
@@ -19,8 +19,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"headscale-panel/model"
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
+	"headscale-panel/model"
 	"headscale-panel/pkg/constants"
 	"headscale-panel/pkg/unifyerror"
 	"net/http"
@@ -447,26 +447,18 @@ func (s *aclService) resolveSources(sources []string, groups map[string][]string
 func (s *aclService) resolveDestinations(destinations []string, hosts map[string]string) []string {
 	var resolved []string
 	for _, dst := range destinations {
-		parts := strings.Split(dst, ":")
-		if len(parts) >= 1 {
-			hostPart := parts[0]
-			portPart := ""
-			if len(parts) >= 2 {
-				portPart = parts[1]
-			}
+		hostPart := dst
+		portPart := ""
+		if lastColon := strings.LastIndex(dst, ":"); lastColon > 0 && lastColon < len(dst)-1 {
+			hostPart = dst[:lastColon]
+			portPart = dst[lastColon+1:]
+		}
 
-			if ip, ok := hosts[hostPart]; ok {
-				if portPart != "" {
-					resolved = append(resolved, ip+":"+portPart)
-				} else {
-					resolved = append(resolved, ip)
-				}
-			} else if strings.HasPrefix(hostPart, "group:") {
-				// group:xxx:* format - means all devices of users in that group
-				resolved = append(resolved, dst)
+		if ip, ok := hosts[hostPart]; ok {
+			if portPart != "" {
+				resolved = append(resolved, ip+":"+portPart)
 			} else {
-				// It's already an IP or other format
-				resolved = append(resolved, dst)
+				resolved = append(resolved, ip)
 			}
 		} else {
 			resolved = append(resolved, dst)
