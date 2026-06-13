@@ -887,6 +887,7 @@ const zh = {
     onlineOnly: '仅在线',
     instructions: '拖动平移 · 滚轮缩放 · 点击节点查看详情',
     belongsToUser: '所属用户',
+    tags: '标签',
     lastOnline: '最后在线',
     aclPermissions: 'ACL 访问权限',
     quickActions: '快捷操作',

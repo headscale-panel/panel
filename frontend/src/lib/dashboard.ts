@@ -37,6 +37,7 @@ export interface DashboardTopologyDevice {
   online: boolean;
   ipAddresses: string[];
   lastSeen: string;
+  tags?: string[];
 }
 
 export interface DashboardTopologyACLRule {
@@ -48,6 +49,7 @@ export interface DashboardTopologyACLRule {
 export interface DashboardTopologyPolicy {
   groups?: Record<string, string[]>;
   hosts?: Record<string, string>;
+  tagOwners?: Record<string, string[]>;
 }
 
 export interface DashboardTopologyData {

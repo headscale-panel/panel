@@ -136,6 +136,7 @@ export default function Dashboard() {
           online: device.online,
           ipAddresses: device.ip_addresses,
           lastSeen: device.last_seen || new Date().toISOString(),
+          tags: device.tags,
         }));
       }
 

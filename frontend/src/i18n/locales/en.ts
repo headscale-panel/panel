@@ -889,6 +889,7 @@ const en: Translations = {
     onlineOnly: 'Online only',
     instructions: 'Drag to pan · Scroll to zoom · Click a node for details',
     belongsToUser: 'Owner',
+    tags: 'Tags',
     lastOnline: 'Last seen',
     aclPermissions: 'ACL Permissions',
     quickActions: 'Quick Actions',

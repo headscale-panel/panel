@@ -1,4 +1,4 @@
-// Copyright (C) 2026 
+// Copyright (C) 2026
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as
@@ -19,10 +19,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"headscale-panel/model"
 	"headscale-panel/pkg/acl"
 	"headscale-panel/pkg/unifyerror"
-	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"strings"
 	"time"
 )
@@ -48,6 +48,7 @@ type TopologyDevice struct {
 	Online      bool     `json:"online"`
 	IPAddresses []string `json:"ipAddresses"`
 	LastSeen    string   `json:"lastSeen"`
+	Tags        []string `json:"tags,omitempty"`
 }
 
 // TopologyACL represents an ACL rule
@@ -59,8 +60,9 @@ type TopologyACL struct {
 
 // TopologyACLPolicy represents the full ACL policy for frontend
 type TopologyACLPolicy struct {
-	Groups map[string][]string `json:"groups"` // group:name -> [user emails]
-	Hosts  map[string]string   `json:"hosts"`  // hostname -> IP/CIDR
+	Groups    map[string][]string `json:"groups"`    // group:name -> [user emails]
+	Hosts     map[string]string   `json:"hosts"`     // hostname -> IP/CIDR
+	TagOwners map[string][]string `json:"tagOwners"` // tag:name -> [owners]
 }
 
 // TopologyResponse is the response format expected by frontend
@@ -169,6 +171,7 @@ func (s *topologyService) GetTopologyWithContext(ctx context.Context, actorUserI
 			Online:      online,
 			IPAddresses: node.IpAddresses,
 			LastSeen:    lastSeenStr,
+			Tags:        extractNodeTags(node),
 		})
 	}
 
@@ -256,8 +259,9 @@ func (s *topologyService) GetTopologyWithACLContext(ctx context.Context, actorUs
 	// Store full policy for frontend
 	if scope.isAdmin {
 		topology.Policy = &TopologyACLPolicy{
-			Groups: policy.Groups,
-			Hosts:  policy.Hosts,
+			Groups:    policy.Groups,
+			Hosts:     policy.Hosts,
+			TagOwners: policy.TagOwners,
 		}
 	}
 
@@ -289,6 +293,19 @@ func (s *topologyService) GetTopologyWithACLContext(ctx context.Context, actorUs
 		return devices
 	}
 
+	getTaggedDevices := func(tagName string) []TopologyDevice {
+		var devices []TopologyDevice
+		for _, device := range topology.Devices {
+			for _, tag := range device.Tags {
+				if strings.EqualFold(strings.TrimSpace(tag), strings.TrimSpace(tagName)) {
+					devices = append(devices, device)
+					break
+				}
+			}
+		}
+		return devices
+	}
+
 	// Helper: Resolve a destination to matching device IDs
 	// Destination formats: "*:*", "group:xxx:*", "hostname:port", "ip:port", etc.
 	resolveDestination := func(dst string) []string {
@@ -312,6 +329,18 @@ func (s *topologyService) GetTopologyWithACLContext(ctx context.Context, actorUs
 				for _, device := range groupDevices {
 					deviceIDs = append(deviceIDs, device.ID)
 				}
+			}
+			return deviceIDs
+		}
+
+		if strings.HasPrefix(dst, "tag:") {
+			parts := strings.SplitN(dst, ":", 3)
+			tagName := dst
+			if len(parts) >= 2 {
+				tagName = parts[0] + ":" + parts[1]
+			}
+			for _, device := range getTaggedDevices(tagName) {
+				deviceIDs = append(deviceIDs, device.ID)
 			}
 			return deviceIDs
 		}
@@ -389,6 +418,8 @@ func (s *topologyService) GetTopologyWithACLContext(ctx context.Context, actorUs
 				srcDevices = append(srcDevices, topology.Devices...)
 			} else if strings.HasPrefix(src, "group:") {
 				srcDevices = append(srcDevices, getGroupDevices(src)...)
+			} else if strings.HasPrefix(src, "tag:") {
+				srcDevices = append(srcDevices, getTaggedDevices(src)...)
 			} else {
 				for userName, devices := range userToDevices {
 					if acl.MatchUserToMember(userName, src) {

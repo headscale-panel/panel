@@ -561,6 +561,7 @@ export function normalizeTopology(value: unknown): DashboardTopologyData | null 
             online: asBoolean(device.online),
             ipAddresses: asStringArray(device.ipAddresses),
             lastSeen: asString(device.lastSeen) || new Date().toISOString(),
+            tags: asStringArray(device.tags),
           };
 
           return normalizedDevice.id ? normalizedDevice : null;
@@ -604,6 +605,14 @@ export function normalizeTopology(value: unknown): DashboardTopologyData | null 
               Object.entries(asRecord(policyRecord.hosts) ?? {}).map(([key, item]) => [
                 key,
                 asString(item),
+              ]),
+            )
+          : undefined,
+        tagOwners: asRecord(policyRecord.tagOwners)
+          ? Object.fromEntries(
+              Object.entries(asRecord(policyRecord.tagOwners) ?? {}).map(([key, item]) => [
+                key,
+                asStringArray(item),
               ]),
             )
           : undefined,

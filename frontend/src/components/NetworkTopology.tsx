@@ -28,6 +28,7 @@ import {
   EyeOutlined,
   LaptopOutlined,
   MobileOutlined,
+  TagOutlined,
   TabletOutlined,
   WifiOutlined,
   ZoomInOutlined,
@@ -69,6 +70,7 @@ interface Device {
   userId: string;
   userName?: string;
   lastSeen?: string;
+  tags: string[];
 }
 
 interface User {
@@ -77,6 +79,7 @@ interface User {
   avatar?: string;
   online: boolean;
   deviceCount: number;
+  kind?: 'user' | 'tag' | 'owner';
 }
 
 interface ACLRule {
@@ -88,6 +91,7 @@ interface ACLRule {
 interface ACLPolicy {
   groups?: Record<string, string[]>;
   hosts?: Record<string, string>;
+  tagOwners?: Record<string, string[]>;
 }
 
 interface TopologyData {
@@ -112,6 +116,7 @@ interface NetworkTopologyProps {
       online: boolean;
       ipAddresses: string[];
       lastSeen: string;
+      tags?: string[];
     }>;
     acl: Array<{
       src: string;
@@ -121,6 +126,7 @@ interface NetworkTopologyProps {
     policy?: {
       groups?: Record<string, string[]>;
       hosts?: Record<string, string>;
+      tagOwners?: Record<string, string[]>;
     };
   } | null;
   deviceStatuses?: Map<string, any>;
@@ -142,6 +148,18 @@ function inferDeviceType(name: string): Device['type'] {
     return DeviceType.Server;
   }
   return DeviceType.Desktop;
+}
+
+function normalizeIdentityKey(value?: string) {
+  return (value || '').trim().toLowerCase();
+}
+
+function getTagNodeId(tag: string) {
+  return `tag:${normalizeIdentityKey(tag)}`;
+}
+
+function getOwnerNodeId(owner: string) {
+  return `owner:${normalizeIdentityKey(owner) || 'unknown'}`;
 }
 
 export default function NetworkTopology({ data, deviceStatuses }: NetworkTopologyProps) {
@@ -185,19 +203,44 @@ export default function NetworkTopology({ data, deviceStatuses }: NetworkTopolog
       ? data.devices.filter((d) => deviceStatuses?.get(String(d.id))?.online ?? d.online)
       : data.devices;
 
-    const users: User[] = data.users.map((u) => {
-      const userDevices = filteredDevices.filter((d) => d.user === u.name);
-      return {
-        id: String(u.id),
-        name: u.name,
-        online: userDevices.some((d) => deviceStatuses?.get(String(d.id))?.online ?? d.online),
-        deviceCount: userDevices.length,
-      };
-    }).filter((u) => u.deviceCount > 0 || !hideOfflineDevices);
+    const userIdByName = new Map(data.users.map((u) => [normalizeIdentityKey(u.name), String(u.id)]));
+    const syntheticUsers = new Map<string, User>();
 
     const devices: Device[] = filteredDevices.map((d) => {
-      const matchingUser = data.users.find((u) => u.name === d.user);
-      const userId = matchingUser ? String(matchingUser.id) : d.user;
+      const tags = (d.tags || []).map((tag) => tag.trim()).filter(Boolean);
+      const ownerKey = normalizeIdentityKey(d.user);
+      const matchingUserId = userIdByName.get(ownerKey);
+      let userId = matchingUserId || '';
+      let userName = d.user;
+
+      if (!userId && tags.length > 0) {
+        const primaryTag = tags[0];
+        userId = getTagNodeId(primaryTag);
+        userName = primaryTag;
+        if (!syntheticUsers.has(userId)) {
+          syntheticUsers.set(userId, {
+            id: userId,
+            name: primaryTag,
+            online: false,
+            deviceCount: 0,
+            kind: 'tag',
+          });
+        }
+      }
+
+      if (!userId) {
+        userId = getOwnerNodeId(d.user);
+        userName = d.user || 'unknown';
+        if (!syntheticUsers.has(userId)) {
+          syntheticUsers.set(userId, {
+            id: userId,
+            name: userName,
+            online: false,
+            deviceCount: 0,
+            kind: 'owner',
+          });
+        }
+      }
 
       return {
         id: String(d.id),
@@ -206,9 +249,33 @@ export default function NetworkTopology({ data, deviceStatuses }: NetworkTopolog
         ip: d.ipAddresses?.[0] || 'N/A',
         online: deviceStatuses?.get(String(d.id))?.online ?? d.online,
         userId,
-        userName: d.user,
+        userName,
         lastSeen: d.lastSeen,
+        tags,
       };
+    });
+
+    const users: User[] = data.users.map((u) => {
+      const userDevices = devices.filter((d) => d.userId === String(u.id));
+      return {
+        id: String(u.id),
+        name: u.name,
+        online: userDevices.some((d) => d.online),
+        deviceCount: userDevices.length,
+        kind: 'user' as const,
+      };
+    }).filter((u) => u.deviceCount > 0 || !hideOfflineDevices);
+
+    syntheticUsers.forEach((syntheticUser, id) => {
+      const userDevices = devices.filter((d) => d.userId === id);
+      if (userDevices.length === 0 && hideOfflineDevices) {
+        return;
+      }
+      users.push({
+        ...syntheticUser,
+        online: userDevices.some((d) => d.online),
+        deviceCount: userDevices.length,
+      });
     });
 
     return {
@@ -1212,6 +1279,7 @@ export default function NetworkTopology({ data, deviceStatuses }: NetworkTopolog
               if (!pos)
                 return null;
               const userColor = USER_COLORS[topologyData.users.indexOf(user) % USER_COLORS.length];
+              const isTagNode = user.kind === 'tag';
 
               const hoveredDev = visibleDevices.find((d) => d.id === hoveredNode);
               const isInAccessPath = hoveredDev ? getAccessibleDevicesWithPaths(hoveredDev.id).pathNodes.has(user.id) : false;
@@ -1251,7 +1319,7 @@ export default function NetworkTopology({ data, deviceStatuses }: NetworkTopolog
                         background: user.online ? userColor.gradient : '#999',
                       }}
                       >
-                        {user.name.charAt(0).toUpperCase()}
+                        {isTagNode ? <TagOutlined /> : user.name.charAt(0).toUpperCase()}
                       </div>
                       <div style={{
                         position: 'absolute',
@@ -1298,7 +1366,8 @@ export default function NetworkTopology({ data, deviceStatuses }: NetworkTopolog
                 return null;
               const isSelected = selectedDevice?.id === device.id;
               const isHovered = hoveredNode === device.id;
-              const deviceUserColor = USER_COLORS[topologyData.users.findIndex((u) => u.id === device.userId) % USER_COLORS.length];
+              const userColorIndex = Math.max(0, topologyData.users.findIndex((u) => u.id === device.userId));
+              const deviceUserColor = USER_COLORS[userColorIndex % USER_COLORS.length];
 
               const hoveredDev = visibleDevices.find((d) => d.id === hoveredNode);
               const isAccessible = hoveredDev && hoveredDev.id !== device.id ? canAccess(hoveredDev.id, device.id) : false;
@@ -1367,11 +1436,17 @@ export default function NetworkTopology({ data, deviceStatuses }: NetworkTopolog
                         {device.online && <WifiOutlined className="text-5px text-white" />}
                       </div>
                     </div>
-                    <div style={{ position: 'absolute', bottom: -28, left: '50%', transform: 'translateX(-50%)', textAlign: 'center', whiteSpace: 'nowrap' }}>
+                    <div style={{ position: 'absolute', bottom: device.tags.length > 0 ? -42 : -28, left: '50%', transform: 'translateX(-50%)', textAlign: 'center', whiteSpace: 'nowrap' }}>
                       <p style={{ fontSize: 8, fontWeight: 500, lineHeight: 1.2, color: device.online ? token.colorText : token.colorTextSecondary }}>
                         {device.name.length > 10 ? `${device.name.slice(0, 10)}...` : device.name}
                       </p>
                       <p style={{ fontSize: 7, color: token.colorTextSecondary, fontFamily: 'var(--font-mono)' }}>{device.ip}</p>
+                      {device.tags.length > 0 && (
+                        <p style={{ fontSize: 7, color: token.colorWarningText, lineHeight: 1.1 }}>
+                          {device.tags[0]}
+                          {device.tags.length > 1 ? ` +${device.tags.length - 1}` : ''}
+                        </p>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1502,6 +1577,16 @@ export default function NetworkTopology({ data, deviceStatuses }: NetworkTopolog
               <Text type="secondary">{t.topology.belongsToUser}</Text>
               <Text strong>{selectedDevice.userName || selectedDevice.userId}</Text>
             </div>
+            {selectedDevice.tags.length > 0 && (
+              <div className="flex justify-between items-start gap-3">
+                <Text type="secondary">{t.topology.tags}</Text>
+                <div className="flex flex-wrap justify-end gap-1">
+                  {selectedDevice.tags.map((tag) => (
+                    <Tag key={tag} color="gold" className="m-0">{tag}</Tag>
+                  ))}
+                </div>
+              </div>
+            )}
             {selectedDevice.lastSeen && (
               <div className="flex justify-between items-center">
                 <Text type="secondary">{t.topology.lastOnline}</Text>
