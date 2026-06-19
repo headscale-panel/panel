@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2026 
+ * Copyright (C) 2026
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -27,6 +27,9 @@ export interface SetPolicyRawReq {
   policy: string;
 }
 export interface SetPolicyRawRes { success: boolean; message?: string }
+
+export interface CheckPolicyReq { policy: string }
+export interface CheckPolicyRes { valid: boolean }
 
 export interface GetParsedRulesReq {}
 export type GetParsedRulesRes = ParsedACLRule[];

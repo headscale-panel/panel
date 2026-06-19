@@ -466,24 +466,42 @@ export default function ACL() {
               )}
         </Card>
 
-        <Alert
-          showIcon
-          type="info"
-          message={t.acl.policyFeaturesTitle}
-          description={t.acl.policyFeaturesSummary
-            .replace('{nodeAttrs}', String(policy?.nodeAttrs?.length || 0))
-            .replace('{ssh}', String(policy?.ssh?.length || 0))
-            .replace('{sshTests}', String(policy?.sshTests?.length || 0))
-            .replace('{autoRoutes}', String(Object.keys(policy?.autoApprovers?.routes || {}).length))
-            .replace('{randomize}', policy?.randomizeClientPort ? t.common.status.enabled : t.common.status.disabled)}
-          action={<Button size="small" icon={<CodeOutlined />} onClick={handleExportJson}>{t.acl.editAdvanced}</Button>}
-        />
+        <Card>
+          <div className="flex items-start justify-between gap-4 mb-4">
+            <div>
+              <Title level={5} className="mb-1!">{t.acl.policyFeaturesTitle}</Title>
+              <Text type="secondary" className="text-13px">{t.acl.policyFeaturesDesc}</Text>
+            </div>
+            <Button size="small" icon={<CodeOutlined />} onClick={handleExportJson}>{t.acl.editAdvanced}</Button>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+            {[
+              { label: t.acl.nodeAttrsFeature, value: policy?.nodeAttrs?.length || 0, color: token.colorPrimary },
+              { label: t.acl.sshFeature, value: policy?.ssh?.length || 0, color: token.colorSuccess },
+              { label: t.acl.sshTestsFeature, value: policy?.sshTests?.length || 0, color: token.colorWarning },
+              { label: t.acl.autoApproversFeature, value: Object.keys(policy?.autoApprovers?.routes || {}).length, color: token.colorInfo },
+            ].map((feature) => (
+              <div key={feature.label} style={{ padding: 14, border: `1px solid ${token.colorBorderSecondary}`, borderRadius: token.borderRadius, background: token.colorBgLayout }}>
+                <div style={{ width: 28, height: 3, borderRadius: 2, background: feature.color, marginBottom: 10 }} />
+                <Text type="secondary" className="text-12px block">{feature.label}</Text>
+                <Text strong className="text-22px leading-tight">{feature.value}</Text>
+              </div>
+            ))}
+            <div style={{ padding: 14, border: `1px solid ${token.colorBorderSecondary}`, borderRadius: token.borderRadius, background: token.colorBgLayout }}>
+              <div style={{ width: 28, height: 3, borderRadius: 2, background: token.colorInfo, marginBottom: 10 }} />
+              <Text type="secondary" className="text-12px block mb-2">{t.acl.randomizePortFeature}</Text>
+              <Tag color={policy?.randomizeClientPort ? 'success' : 'default'} className="m-0!">
+                {policy?.randomizeClientPort ? t.common.status.enabled : t.common.status.disabled}
+              </Tag>
+            </div>
+          </div>
+        </Card>
 
         {/* Rule List */}
         <Card>
-          <div className="flex items-center gap-2">
-            <Title level={5} className="mb-1!">{t.acl.ruleListTitle}</Title>
-            <Tag>{t.acl.legacy}</Tag>
+          <div className="flex items-center gap-2 mb-1">
+            <Text strong className="text-16px leading-none">{t.acl.ruleListTitle}</Text>
+            <Tag className="m-0! leading-5">{t.acl.legacy}</Tag>
           </div>
           <Text type="secondary" className="text-13px block mb-4">{t.acl.ruleListDesc}</Text>
 

@@ -29,6 +29,8 @@ import (
 	"sync"
 
 	"github.com/tailscale/hujson"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 type aclService struct {
@@ -131,6 +133,9 @@ func (s *aclService) UpdatePolicyWithContext(ctx context.Context, actorUserID ui
 
 	queryCtx, cancel := withServiceTimeout(ctx)
 	defer cancel()
+	if err := checkPolicyRPC(queryCtx, client, string(policyBytes)); err != nil {
+		return err
+	}
 
 	_, grpcErr := client.SetPolicy(queryCtx, &v1.SetPolicyRequest{
 		Policy: string(policyBytes),
@@ -160,11 +165,47 @@ func (s *aclService) SetPolicyRawWithContext(ctx context.Context, actorUserID ui
 
 	queryCtx, cancel := withServiceTimeout(ctx)
 	defer cancel()
+	if err := checkPolicyRPC(queryCtx, client, normalizedPolicyJSON); err != nil {
+		return err
+	}
 
 	_, grpcErr := client.SetPolicy(queryCtx, &v1.SetPolicyRequest{
 		Policy: normalizedPolicyJSON,
 	})
 	return wrapACLPolicyApplyError(grpcErr)
+}
+
+// CheckPolicyRawWithContext validates a policy with Headscale v0.29 without
+// persisting it. Headscale also evaluates tests and sshTests in this call.
+func (s *aclService) CheckPolicyRawWithContext(ctx context.Context, actorUserID uint, policyJSON string) error {
+	if err := RequirePermission(actorUserID, "headscale:acl:update"); err != nil {
+		return err
+	}
+	normalizedPolicyJSON, err := normalizeRawACLPolicyJSON(policyJSON)
+	if err != nil {
+		return err
+	}
+	client, err := headscaleServiceClient()
+	if err != nil {
+		return err
+	}
+	queryCtx, cancel := withServiceTimeout(ctx)
+	defer cancel()
+	return checkPolicyRPC(queryCtx, client, normalizedPolicyJSON)
+}
+
+func checkPolicyRPC(ctx context.Context, client v1.HeadscaleServiceClient, policy string) error {
+	if _, err := client.CheckPolicy(ctx, &v1.CheckPolicyRequest{Policy: policy}); err != nil {
+		if status.Code(err) == codes.Unimplemented {
+			return nil
+		}
+		detail := strings.TrimSpace(status.Convert(err).Message())
+		if detail == "" {
+			detail = constants.MsgACLPolicyFormatInvalid
+		}
+		return unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, detail)
+	}
+	return nil
 }
 
 func normalizeACLPolicyStructure(policy *model.ACLPolicyStructure) error {

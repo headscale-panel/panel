@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2026 
+ * Copyright (C) 2026
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -15,12 +15,13 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-import Editor, { loader, type Monaco } from '@monaco-editor/react';
+import type { Monaco } from '@monaco-editor/react';
+import Editor, { loader } from '@monaco-editor/react';
 import { Button, message, Modal, theme, Typography } from 'antd';
 import * as monaco from 'monaco-editor/esm/vs/editor/editor.api';
-import editorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker';
+import EditorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker';
+import JsonWorker from 'monaco-editor/esm/vs/language/json/json.worker?worker';
 import { jsonDefaults } from 'monaco-editor/esm/vs/language/json/monaco.contribution';
-import jsonWorker from 'monaco-editor/esm/vs/language/json/json.worker?worker';
 import { useState } from 'react';
 import { aclApi } from '@/api';
 import { useTranslation } from '@/i18n/index';
@@ -37,9 +38,9 @@ if (!monacoGlobal.MonacoEnvironment?.getWorker) {
   monacoGlobal.MonacoEnvironment = {
     getWorker(_workerId: string, label: string) {
       if (label === 'json') {
-        return new jsonWorker();
+        return new JsonWorker();
       }
-      return new editorWorker();
+      return new EditorWorker();
     },
   };
 }
@@ -68,6 +69,7 @@ export default function JsonEditorModal({ open, initialJson, isDarkMode, onCance
   const { token } = theme.useToken();
   const [jsonContent, setJsonContent] = useState('');
   const [saving, setSaving] = useState(false);
+  const [checking, setChecking] = useState(false);
 
   const handleAfterOpenChange = (nextOpen: boolean) => {
     if (nextOpen) {
@@ -89,6 +91,19 @@ export default function JsonEditorModal({ open, initialJson, isDarkMode, onCance
     }
   };
 
+  const handleCheck = async () => {
+    setChecking(true);
+    try {
+      await aclApi.checkPolicy({ policy: jsonContent });
+      message.success(t.acl.policyCheckSuccess);
+    } catch (error: unknown) {
+      const detail = (error as { response?: { data?: { msg?: string } } })?.response?.data?.msg;
+      message.error(detail || t.acl.policyCheckFailed);
+    } finally {
+      setChecking(false);
+    }
+  };
+
   return (
     <Modal
       open={open}
@@ -99,6 +114,7 @@ export default function JsonEditorModal({ open, initialJson, isDarkMode, onCance
       styles={{ body: { height: '60vh', padding: 0 } }}
       footer={[
         <Button key="cancel" onClick={onCancel}>{t.common.actions.cancel}</Button>,
+        <Button key="check" onClick={handleCheck} loading={checking}>{t.acl.checkPolicy}</Button>,
         <Button key="ok" type="primary" onClick={handleOk} loading={saving}>{t.acl.saveAndApply}</Button>,
       ]}
     >

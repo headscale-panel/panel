@@ -1,4 +1,4 @@
-// Copyright (C) 2026 
+// Copyright (C) 2026
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as
@@ -16,11 +16,11 @@
 package controllers
 
 import (
-	"net/http"
+	"headscale-panel/model"
 	"headscale-panel/pkg/constants"
 	"headscale-panel/pkg/unifyerror"
-	"headscale-panel/model"
 	"headscale-panel/router/services"
+	"net/http"
 
 	"github.com/gin-gonic/gin"
 )
@@ -103,6 +103,21 @@ func (c *ACLController) SetPolicyRaw(ctx *gin.Context) {
 		return
 	}
 	unifyerror.Success(ctx, nil)
+}
+
+// CheckPolicy validates a policy using Headscale without applying it.
+func (c *ACLController) CheckPolicy(ctx *gin.Context) {
+	var req SetPolicyRawRequest
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		unifyerror.Fail(ctx, unifyerror.ErrBind)
+		return
+	}
+	userID := ctx.GetUint("userID")
+	if err := services.ACLService.CheckPolicyRawWithContext(ctx.Request.Context(), userID, req.Policy); err != nil {
+		unifyerror.Fail(ctx, err)
+		return
+	}
+	unifyerror.Success(ctx, gin.H{"valid": true})
 }
 
 // GetParsedRules godoc

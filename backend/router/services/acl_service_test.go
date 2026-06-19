@@ -16,9 +16,66 @@
 package services
 
 import (
+	"context"
 	"encoding/json"
+	"net"
 	"testing"
+
+	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/status"
+	"google.golang.org/grpc/test/bufconn"
 )
+
+type policyCheckTestServer struct {
+	v1.UnimplementedHeadscaleServiceServer
+	err error
+}
+
+func (s policyCheckTestServer) CheckPolicy(context.Context, *v1.CheckPolicyRequest) (*v1.CheckPolicyResponse, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	return &v1.CheckPolicyResponse{}, nil
+}
+
+func newPolicyCheckTestClient(t *testing.T, server v1.HeadscaleServiceServer) v1.HeadscaleServiceClient {
+	t.Helper()
+	listener := bufconn.Listen(1024 * 1024)
+	grpcServer := grpc.NewServer()
+	v1.RegisterHeadscaleServiceServer(grpcServer, server)
+	go func() { _ = grpcServer.Serve(listener) }()
+	t.Cleanup(func() {
+		grpcServer.Stop()
+		_ = listener.Close()
+	})
+	conn, err := grpc.NewClient("passthrough:///bufnet",
+		grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) { return listener.Dial() }),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = conn.Close() })
+	return v1.NewHeadscaleServiceClient(conn)
+}
+
+func TestCheckPolicyRPC(t *testing.T) {
+	client := newPolicyCheckTestClient(t, policyCheckTestServer{})
+	if err := checkPolicyRPC(context.Background(), client, `{}`); err != nil {
+		t.Fatalf("valid policy rejected: %v", err)
+	}
+}
+
+func TestCheckPolicyRPCSurfacesValidationError(t *testing.T) {
+	client := newPolicyCheckTestClient(t, policyCheckTestServer{err: status.Error(codes.InvalidArgument, "invalid grant destination")})
+	err := checkPolicyRPC(context.Background(), client, `{}`)
+	if err == nil || err.Error() != "invalid grant destination" {
+		t.Fatalf("validation error = %v", err)
+	}
+}
 
 func TestNormalizeACLDestination(t *testing.T) {
 	t.Parallel()

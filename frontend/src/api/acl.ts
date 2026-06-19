@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2026 
+ * Copyright (C) 2026
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -22,6 +22,8 @@ import type {
   ApplyRes,
   CheckACLAccessReq,
   CheckACLAccessRes,
+  CheckPolicyReq,
+  CheckPolicyRes,
   DeleteRuleByIndexReq,
   DeleteRuleByIndexRes,
   GenerateReq,
@@ -61,6 +63,13 @@ export const aclApi = {
   setPolicyRaw: (req: SetPolicyRawReq) =>
     request<RespType<SetPolicyRawRes>>({
       url: '/headscale/acl/policy/raw',
+      method: 'POST',
+      data: { policy: req.policy },
+    }),
+
+  checkPolicy: (req: CheckPolicyReq) =>
+    request<RespType<CheckPolicyRes>>({
+      url: '/headscale/acl/policy/check',
       method: 'POST',
       data: { policy: req.policy },
     }),

@@ -153,6 +153,7 @@ func InitRouter() *gin.Engine {
 			auth.GET("/headscale/acl/policy", middleware.PermissionMiddleware("headscale:acl:view"), aclController.GetPolicy)
 			auth.PUT("/headscale/acl/policy", middleware.PermissionMiddleware("headscale:acl:update"), aclController.UpdatePolicy)
 			auth.POST("/headscale/acl/policy/raw", middleware.PermissionMiddleware("headscale:acl:update"), aclController.SetPolicyRaw)
+			auth.POST("/headscale/acl/policy/check", middleware.PermissionMiddleware("headscale:acl:update"), aclController.CheckPolicy)
 			auth.GET("/headscale/acl/parsed-rules", middleware.PermissionMiddleware("headscale:acl:view"), aclController.GetParsedRules)
 			auth.POST("/headscale/acl/sync-resources", middleware.PermissionMiddleware("headscale:acl:sync"), aclController.SyncResourcesAsHosts)
 			auth.POST("/headscale/acl/add-rule", middleware.PermissionMiddleware("headscale:acl:update"), aclController.AddRule)
