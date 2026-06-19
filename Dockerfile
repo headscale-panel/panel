@@ -13,7 +13,7 @@ COPY frontend/ .
 RUN pnpm build && \
     find dist -name '*.map' -delete
 
-FROM golang:1.25-alpine AS backend-builder
+FROM golang:1.26-alpine AS backend-builder
 
 ARG ALPINE_MIRROR
 ARG VERSION_CODE
