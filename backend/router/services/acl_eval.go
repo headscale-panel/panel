@@ -1,4 +1,4 @@
-// Copyright (C) 2026 
+// Copyright (C) 2026
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as
@@ -18,10 +18,10 @@ package services
 import (
 	"context"
 	"encoding/json"
+	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"headscale-panel/model"
 	"headscale-panel/pkg/acl"
 	"headscale-panel/pkg/unifyerror"
-	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"strings"
 )
 
@@ -40,6 +40,9 @@ func CanActorAccessIP(ctx context.Context, actorUserID uint, targetIP string) (b
 	if err != nil {
 		return false, nil
 	}
+	if policy.ACLs == nil && policy.Grants == nil {
+		return true, nil
+	}
 
 	for _, rule := range policy.ACLs {
 		if rule.Action != "accept" {
@@ -47,6 +50,13 @@ func CanActorAccessIP(ctx context.Context, actorUserID uint, targetIP string) (b
 		}
 		for name := range scope.headscaleNames {
 			if acl.IsUserInRuleSources(policy, name, rule) && acl.DoesRuleAllowIP(policy, rule, targetIP) {
+				return true, nil
+			}
+		}
+	}
+	for _, grant := range policy.Grants {
+		for name := range scope.headscaleNames {
+			if acl.IsUserInGrantSources(policy, name, grant) && acl.DoesGrantAllowIP(policy, grant, targetIP) {
 				return true, nil
 			}
 		}
@@ -69,6 +79,9 @@ func FilterResourcesByACL(ctx context.Context, actorUserID uint, resources []mod
 	if err != nil {
 		return []model.Resource{}, nil
 	}
+	if policy.ACLs == nil && policy.Grants == nil {
+		return resources, nil
+	}
 
 	var actorRules []model.ACLRule
 	for _, rule := range policy.ACLs {
@@ -82,15 +95,39 @@ func FilterResourcesByACL(ctx context.Context, actorUserID uint, resources []mod
 			}
 		}
 	}
+	var actorGrants []model.GrantRule
+	for _, grant := range policy.Grants {
+		if !acl.GrantHasNetworkAccess(grant) {
+			continue
+		}
+		for name := range scope.headscaleNames {
+			if acl.IsUserInGrantSources(policy, name, grant) {
+				actorGrants = append(actorGrants, grant)
+				break
+			}
+		}
+	}
 
 	filtered := make([]model.Resource, 0, len(resources))
 	for _, res := range resources {
 		ip := res.IPAddress
+		allowed := false
 		for _, rule := range actorRules {
 			if acl.DoesRuleAllowIP(policy, rule, ip) {
-				filtered = append(filtered, res)
+				allowed = true
 				break
 			}
+		}
+		if !allowed {
+			for _, grant := range actorGrants {
+				if acl.DoesGrantAllowIP(policy, grant, ip) {
+					allowed = true
+					break
+				}
+			}
+		}
+		if allowed {
+			filtered = append(filtered, res)
 		}
 	}
 	return filtered, nil

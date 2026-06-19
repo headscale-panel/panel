@@ -1,4 +1,4 @@
-// Copyright (C) 2026 
+// Copyright (C) 2026
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as
@@ -16,9 +16,37 @@
 package acl
 
 import (
+	"encoding/json"
 	"headscale-panel/model"
 	"testing"
 )
+
+func TestGrantNetworkEvaluation(t *testing.T) {
+	policy := &model.ACLPolicyStructure{
+		Groups: map[string][]string{"group:dev": {"alice@"}},
+		Hosts:  map[string]string{"database": "10.0.0.5/32"},
+	}
+	networkGrant := model.GrantRule{
+		Src: []string{"group:dev"},
+		Dst: []string{"database"},
+		IP:  json.RawMessage(`["tcp:5432"]`),
+	}
+	if !IsUserInGrantSources(policy, "alice", networkGrant) {
+		t.Fatal("alice should match the grant source")
+	}
+	if !DoesGrantAllowIP(policy, networkGrant, "10.0.0.5") {
+		t.Fatal("network grant should allow its host destination")
+	}
+
+	appOnly := model.GrantRule{
+		Src: []string{"group:dev"},
+		Dst: []string{"database"},
+		App: map[string]json.RawMessage{"example.com/cap": json.RawMessage(`[{}]`)},
+	}
+	if GrantHasNetworkAccess(appOnly) || DoesGrantAllowIP(policy, appOnly, "10.0.0.5") {
+		t.Fatal("app-only grants must not be treated as network access")
+	}
+}
 
 func TestMatchUserToMember(t *testing.T) {
 	tests := []struct {
@@ -89,6 +117,7 @@ func TestIsUserInACLSource(t *testing.T) {
 		want     bool
 	}{
 		{"wildcard", "anyone", "*", true},
+		{"personal member autogroup", "anyone", "autogroup:member", true},
 		{"group member", "alice", "group:devs", true},
 		{"group non-member", "charlie", "group:devs", false},
 		{"direct pattern", "alice", "alice@", true},

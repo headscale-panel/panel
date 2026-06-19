@@ -1,4 +1,4 @@
-// Copyright (C) 2026 
+// Copyright (C) 2026
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as
@@ -57,7 +57,7 @@ func FrontendMiddleware(staticDir string) gin.HandlerFunc {
 		reqPath := c.Request.URL.Path
 
 		// Let API and well-known routes pass through
-		if strings.HasPrefix(reqPath, "/panel/api/") || strings.HasPrefix(reqPath, "/api/") || strings.HasPrefix(reqPath, "/.well-known/") {
+		if strings.HasPrefix(reqPath, "/panel/api/") || strings.HasPrefix(reqPath, "/api/") || strings.HasPrefix(reqPath, "/.well-known/") || strings.HasPrefix(reqPath, "/panel/.well-known/") {
 			c.Next()
 			return
 		}
@@ -117,7 +117,7 @@ func EmbedFrontendMiddleware(fsys fs.FS) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		reqPath := c.Request.URL.Path
 
-		if strings.HasPrefix(reqPath, "/api/") || strings.HasPrefix(reqPath, "/.well-known/") {
+		if strings.HasPrefix(reqPath, "/api/") || strings.HasPrefix(reqPath, "/.well-known/") || strings.HasPrefix(reqPath, "/panel/.well-known/") {
 			c.Next()
 			return
 		}

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2026 
+ * Copyright (C) 2026
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -18,6 +18,7 @@
 import type {
   DragEndEvent,
 } from '@dnd-kit/core';
+import type { GrantRuleValue } from '@/components/acl/GrantModal';
 import type { ACLPolicy, HeadscaleUserOption, NormalizedResource } from '@/lib/normalizers';
 import {
   CheckCircleFilled,
@@ -54,6 +55,7 @@ import { Alert, Button, Card, Empty, message, Space, Spin, Tag, theme, Tooltip, 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation } from 'wouter';
 import { aclApi } from '@/api';
+import GrantModal from '@/components/acl/GrantModal';
 import JsonEditorModal from '@/components/acl/JsonEditorModal';
 
 import RuleModal from '@/components/acl/RuleModal';
@@ -72,6 +74,7 @@ interface ACLRule {
   sources: string[];
   destinations: string[];
   action: ACLAction;
+  proto?: string;
 }
 
 interface DeviceItem {
@@ -149,6 +152,9 @@ export default function ACL() {
   const [jsonContent, setJsonContent] = useState('');
   const [editingRule, setEditingRule] = useState<ACLRule | null>(null);
   const [editingIndex, setEditingIndex] = useState<number>(-1);
+  const [showGrantDialog, setShowGrantDialog] = useState(false);
+  const [editingGrant, setEditingGrant] = useState<GrantRuleValue | null>(null);
+  const [editingGrantIndex, setEditingGrantIndex] = useState(-1);
 
   const [isDarkMode, setIsDarkMode] = useState(
     document.documentElement.classList.contains('dark'),
@@ -184,6 +190,7 @@ export default function ACL() {
             sources: acl.src || [],
             destinations: acl.dst || [],
             action: acl.action as ACLAction,
+            proto: acl.proto,
           }));
           setRules(parsedRules);
         } else {
@@ -235,6 +242,23 @@ export default function ACL() {
     }
   };
 
+  const handleDeleteGrant = async (index: number) => {
+    if (!policy)
+      return;
+    setSaving(true);
+    try {
+      const grants = [...(policy.grants || [])];
+      grants.splice(index, 1);
+      await aclApi.updatePolicy({ ...policy, grants });
+      message.success(t.acl.grantDeleted);
+      loadData();
+    } catch {
+      message.error(t.acl.grantSaveFailed);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const handleExportJson = async () => {
     try {
       const res = await aclApi.getPolicy();
@@ -276,6 +300,7 @@ export default function ACL() {
       newPolicy.acls = newRules.map((rule) => ({
         '#ha-meta': { name: rule.name, open: true },
         'action': rule.action,
+        'proto': rule.proto,
         'src': rule.sources,
         'dst': rule.destinations,
       }));
@@ -290,7 +315,7 @@ export default function ACL() {
   }, [rules, policy]);
 
   const stats = {
-    total: rules.length,
+    total: rules.length + (policy?.grants?.length || 0),
     allow: rules.filter((r) => r.action === ACLAction.Accept).length,
     deny: rules.filter((r) => r.action === ACLAction.Deny).length,
     groups: Object.keys(aclGroups).length,
@@ -343,6 +368,16 @@ export default function ACL() {
             <Button data-tour-id="acl-sync" icon={<DatabaseOutlined />} onClick={handleSyncResources} disabled={saving}>{t.acl.syncResources}</Button>
             <Button data-tour-id="acl-json" icon={<CodeOutlined />} onClick={handleExportJson}>{t.acl.jsonEditor}</Button>
             <Button
+              icon={<PlusOutlined />}
+              onClick={() => {
+                setEditingGrant(null);
+                setEditingGrantIndex(-1);
+                setShowGrantDialog(true);
+              }}
+            >
+              {t.acl.addGrant}
+            </Button>
+            <Button
               type="primary"
               icon={<PlusOutlined />}
               data-tour-id="acl-add-rule"
@@ -378,9 +413,78 @@ export default function ACL() {
           ]}
         />
 
+        <Card>
+          <div className="flex items-start justify-between gap-4 mb-4">
+            <div>
+              <Title level={5} className="mb-1!">{t.acl.grantsTitle}</Title>
+              <Text type="secondary" className="text-13px">{t.acl.grantsDesc}</Text>
+            </div>
+            <Tag color="blue">{t.acl.recommended}</Tag>
+          </div>
+          {(policy?.grants || []).length === 0
+            ? <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t.acl.noGrants} />
+            : (
+                <Space direction="vertical" className="w-full" size={12}>
+                  {(policy?.grants || []).map((grant, index) => {
+                    const capabilities = typeof grant.ip === 'string' ? [grant.ip] : grant.ip || [];
+                    return (
+                      <div key={index} style={{ display: 'flex', gap: 12, padding: 16, border: `1px solid ${token.colorBorderSecondary}`, borderRadius: token.borderRadius }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 32, height: 32, borderRadius: '50%', background: token.colorBgLayout, flexShrink: 0 }}>{index + 1}</div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex gap-2 flex-wrap mb-2">
+                            {grant.src.map((value) => <Tag key={`src-${value}`} color="blue">{value}</Tag>)}
+                            <span style={{ color: token.colorTextSecondary }}>→</span>
+                            {grant.dst.map((value) => <Tag key={`dst-${value}`} color="orange">{value}</Tag>)}
+                          </div>
+                          <Space size={[4, 4]} wrap>
+                            {capabilities.map((value) => <Tag key={value} color="green">{value}</Tag>)}
+                            {grant.app && (
+                              <Tag color="purple">
+                                app ×
+                                {Object.keys(grant.app).length}
+                              </Tag>
+                            )}
+                            {grant.via?.map((value) => (
+                              <Tag key={value}>
+                                {t.acl.via}
+                                :
+                                {' '}
+                                {value}
+                              </Tag>
+                            ))}
+                          </Space>
+                        </div>
+                        <Space size={4}>
+                          <Button type="text" size="small" icon={<EditOutlined />} onClick={() => { setEditingGrant(grant); setEditingGrantIndex(index); setShowGrantDialog(true); }} />
+                          <Button type="text" size="small" icon={<CopyOutlined />} onClick={() => { navigator.clipboard.writeText(JSON.stringify(grant, null, 2)); message.success(t.acl.ruleCopied); }} />
+                          <Button type="text" size="small" danger icon={<DeleteOutlined />} disabled={saving} onClick={() => handleDeleteGrant(index)} />
+                        </Space>
+                      </div>
+                    );
+                  })}
+                </Space>
+              )}
+        </Card>
+
+        <Alert
+          showIcon
+          type="info"
+          message={t.acl.policyFeaturesTitle}
+          description={t.acl.policyFeaturesSummary
+            .replace('{nodeAttrs}', String(policy?.nodeAttrs?.length || 0))
+            .replace('{ssh}', String(policy?.ssh?.length || 0))
+            .replace('{sshTests}', String(policy?.sshTests?.length || 0))
+            .replace('{autoRoutes}', String(Object.keys(policy?.autoApprovers?.routes || {}).length))
+            .replace('{randomize}', policy?.randomizeClientPort ? t.common.status.enabled : t.common.status.disabled)}
+          action={<Button size="small" icon={<CodeOutlined />} onClick={handleExportJson}>{t.acl.editAdvanced}</Button>}
+        />
+
         {/* Rule List */}
         <Card>
-          <Title level={5} className="mb-1!">{t.acl.ruleListTitle}</Title>
+          <div className="flex items-center gap-2">
+            <Title level={5} className="mb-1!">{t.acl.ruleListTitle}</Title>
+            <Tag>{t.acl.legacy}</Tag>
+          </div>
           <Text type="secondary" className="text-13px block mb-4">{t.acl.ruleListDesc}</Text>
 
           {rules.length === 0
@@ -533,6 +637,15 @@ export default function ACL() {
           resources={resources}
           headscaleUsers={headscaleUsers}
           onCancel={() => { setShowAddDialog(false); setEditingRule(null); setEditingIndex(-1); }}
+          onSuccess={loadData}
+        />
+
+        <GrantModal
+          open={showGrantDialog}
+          editingGrant={editingGrant}
+          editingIndex={editingGrantIndex}
+          policy={policy}
+          onCancel={() => { setShowGrantDialog(false); setEditingGrant(null); setEditingGrantIndex(-1); }}
           onSuccess={loadData}
         />
 

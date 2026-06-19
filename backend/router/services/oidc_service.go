@@ -1,4 +1,4 @@
-// Copyright (C) 2026 
+// Copyright (C) 2026
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as
@@ -18,6 +18,8 @@ package services
 import (
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/sha256"
+	"crypto/subtle"
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/pem"
@@ -45,12 +47,14 @@ type oidcService struct {
 }
 
 type authCodeData struct {
-	UserID      uint
-	ClientID    string
-	RedirectURI string
-	Nonce       string
-	Scope       string
-	ExpiresAt   time.Time
+	UserID              uint
+	ClientID            string
+	RedirectURI         string
+	Nonce               string
+	Scope               string
+	CodeChallenge       string
+	CodeChallengeMethod string
+	ExpiresAt           time.Time
 }
 
 var OIDCService = &oidcService{
@@ -83,7 +87,7 @@ func (s *oidcService) Init() error {
 	return nil
 }
 
-func (s *oidcService) GenerateAuthCode(userID uint, clientID, redirectURI, nonce, scope string) (string, error) {
+func (s *oidcService) GenerateAuthCode(userID uint, clientID, redirectURI, nonce, scope, codeChallenge, codeChallengeMethod string) (string, error) {
 	code := make([]byte, 32)
 	if _, err := rand.Read(code); err != nil {
 		return "", unifyerror.ServerError(err)
@@ -94,18 +98,20 @@ func (s *oidcService) GenerateAuthCode(userID uint, clientID, redirectURI, nonce
 	defer s.mu.Unlock()
 	s.cleanupExpiredCodesLocked(time.Now())
 	s.codes[codeStr] = authCodeData{
-		UserID:      userID,
-		ClientID:    clientID,
-		RedirectURI: redirectURI,
-		Nonce:       nonce,
-		Scope:       scope,
-		ExpiresAt:   time.Now().Add(constants.OIDCAuthCodeTTL),
+		UserID:              userID,
+		ClientID:            clientID,
+		RedirectURI:         redirectURI,
+		Nonce:               nonce,
+		Scope:               scope,
+		CodeChallenge:       codeChallenge,
+		CodeChallengeMethod: codeChallengeMethod,
+		ExpiresAt:           time.Now().Add(constants.OIDCAuthCodeTTL),
 	}
 	return codeStr, nil
 }
 
 // ExchangeCode validates an authorization code and returns id_token, access_token, refresh_token.
-func (s *oidcService) ExchangeCode(code, clientID, clientSecret string) (string, string, string, error) {
+func (s *oidcService) ExchangeCode(code, clientID, clientSecret, redirectURI, codeVerifier string) (string, string, string, error) {
 	var client model.OauthClient
 	if err := model.DB.Where("client_id = ?", clientID).First(&client).Error; err != nil {
 		return "", "", "", unifyerror.UnAuth()
@@ -133,6 +139,12 @@ func (s *oidcService) ExchangeCode(code, clientID, clientSecret string) (string,
 		return "", "", "", unifyerror.TokenExpired()
 	}
 	if data.ClientID != clientID {
+		return "", "", "", unifyerror.UnAuth()
+	}
+	if strings.TrimSpace(redirectURI) == "" || redirectURI != data.RedirectURI {
+		return "", "", "", unifyerror.UnAuth()
+	}
+	if !verifyPKCE(data.CodeChallenge, data.CodeChallengeMethod, codeVerifier) {
 		return "", "", "", unifyerror.UnAuth()
 	}
 
@@ -185,6 +197,9 @@ func (s *oidcService) RefreshTokens(refreshTokenStr, clientID, clientSecret stri
 
 	tokenType, _ := claims["type"].(string)
 	if tokenType != "refresh" {
+		return "", "", "", unifyerror.InvalidToken()
+	}
+	if !tokenAudienceContains(claims["aud"], clientID) {
 		return "", "", "", unifyerror.InvalidToken()
 	}
 
@@ -255,6 +270,9 @@ func (s *oidcService) GetUserInfoBySub(sub string) (map[string]interface{}, erro
 	if user.ProfilePicURL != "" {
 		info["picture"] = user.ProfilePicURL
 	}
+	if groups := oidcUserGroups(user); len(groups) > 0 {
+		info["groups"] = groups
+	}
 
 	return info, nil
 }
@@ -267,7 +285,7 @@ func (s *oidcService) generateIDToken(user model.User, clientID, nonce string) (
 	}
 
 	claims := jwt.MapClaims{
-		"iss":                conf.Conf.System.BaseURL,
+		"iss":                oidcIssuer(),
 		"sub":                fmt.Sprintf("%d", user.ID),
 		"aud":                clientID,
 		"exp":                now.Add(constants.OIDCTokenTTL).Unix(),
@@ -283,6 +301,9 @@ func (s *oidcService) generateIDToken(user model.User, clientID, nonce string) (
 	if user.ProfilePicURL != "" {
 		claims["picture"] = user.ProfilePicURL
 	}
+	if groups := oidcUserGroups(user); len(groups) > 0 {
+		claims["groups"] = groups
+	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
 	token.Header["kid"] = "1"
@@ -293,10 +314,17 @@ func (s *oidcService) generateIDToken(user model.User, clientID, nonce string) (
 	return signed, nil
 }
 
+func oidcUserGroups(user model.User) []string {
+	if name := strings.TrimSpace(user.Group.Name); name != "" {
+		return []string{name}
+	}
+	return nil
+}
+
 func (s *oidcService) generateAccessToken(user model.User, clientID, scope string) (string, error) {
 	now := time.Now()
 	claims := jwt.MapClaims{
-		"iss":   conf.Conf.System.BaseURL,
+		"iss":   oidcIssuer(),
 		"sub":   fmt.Sprintf("%d", user.ID),
 		"aud":   clientID,
 		"exp":   now.Add(constants.OIDCTokenTTL).Unix(),
@@ -317,7 +345,7 @@ func (s *oidcService) generateAccessToken(user model.User, clientID, scope strin
 func (s *oidcService) generateRefreshToken(user model.User, clientID string) (string, error) {
 	now := time.Now()
 	claims := jwt.MapClaims{
-		"iss":  conf.Conf.System.BaseURL,
+		"iss":  oidcIssuer(),
 		"sub":  fmt.Sprintf("%d", user.ID),
 		"aud":  clientID,
 		"exp":  now.Add(constants.OIDCRefreshTokenTTL).Unix(),
@@ -346,9 +374,72 @@ func (s *oidcService) parseToken(tokenStr string) (jwt.MapClaims, error) {
 		return nil, unifyerror.FromError(err)
 	}
 	if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
+		issuer, _ := claims["iss"].(string)
+		if issuer != oidcIssuer() {
+			return nil, unifyerror.InvalidToken()
+		}
 		return claims, nil
 	}
 	return nil, unifyerror.InvalidToken()
+}
+
+func oidcIssuer() string {
+	return strings.TrimRight(strings.TrimSpace(conf.Conf.System.BaseURL), "/")
+}
+
+// ValidatePKCEChallenge validates the authorization request. PKCE remains
+// optional for confidential clients, but when supplied only S256 is accepted.
+func ValidatePKCEChallenge(challenge, method string) error {
+	challenge = strings.TrimSpace(challenge)
+	method = strings.TrimSpace(method)
+	if challenge == "" && method == "" {
+		return nil
+	}
+	if challenge == "" || method != "S256" || len(challenge) != 43 {
+		return unifyerror.WrongParam("code_challenge")
+	}
+	if _, err := base64.RawURLEncoding.DecodeString(challenge); err != nil {
+		return unifyerror.WrongParam("code_challenge")
+	}
+	return nil
+}
+
+func verifyPKCE(challenge, method, verifier string) bool {
+	if challenge == "" && method == "" {
+		return true
+	}
+	if method != "S256" || !isValidPKCEVerifier(verifier) {
+		return false
+	}
+	digest := sha256.Sum256([]byte(verifier))
+	return subtle.ConstantTimeCompare([]byte(challenge), []byte(base64.RawURLEncoding.EncodeToString(digest[:]))) == 1
+}
+
+func isValidPKCEVerifier(verifier string) bool {
+	if len(verifier) < 43 || len(verifier) > 128 {
+		return false
+	}
+	for _, char := range verifier {
+		if (char >= 'a' && char <= 'z') || (char >= 'A' && char <= 'Z') || (char >= '0' && char <= '9') || strings.ContainsRune("-._~", char) {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+func tokenAudienceContains(raw any, clientID string) bool {
+	switch audience := raw.(type) {
+	case string:
+		return audience == clientID
+	case []any:
+		for _, value := range audience {
+			if candidate, ok := value.(string); ok && candidate == clientID {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func (s *oidcService) GetJWKS() (interface{}, error) {

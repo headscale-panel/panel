@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2026 
+ * Copyright (C) 2026
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -108,15 +108,34 @@ export interface NormalizedResource {
 }
 
 export interface ACLPolicy {
+
+  [key: string]: unknown;
   groups?: Record<string, string[]>;
   hosts?: Record<string, string>;
   tagOwners?: Record<string, string[]>;
   acls?: Array<{
     '#ha-meta'?: { name: string; open: boolean };
     'action': string;
+    'proto'?: string;
     'src': string[];
     'dst': string[];
   }>;
+  grants?: Array<{
+    src: string[];
+    dst: string[];
+    ip?: string | string[];
+    app?: Record<string, unknown>;
+    via?: string[];
+  }>;
+  autoApprovers?: {
+    routes?: Record<string, string[]>;
+    exitNode?: string[];
+  };
+  ssh?: unknown[];
+  tests?: Array<{ src: string; accept?: string[]; deny?: string[] }>;
+  sshTests?: unknown[];
+  nodeAttrs?: Array<{ target: string[]; attr: string[] }>;
+  randomizeClientPort?: boolean;
 }
 
 export interface OIDCStatusData {
@@ -442,6 +461,7 @@ export function normalizeACLPolicy(value: unknown): ACLPolicy | null {
               }
             : undefined,
           action,
+          'proto': asString(rule.proto) || undefined,
           'src': asStringArray(rule.src),
           'dst': asStringArray(rule.dst),
         });
@@ -449,7 +469,38 @@ export function normalizeACLPolicy(value: unknown): ACLPolicy | null {
       }, [])
     : undefined;
 
+  const grants = isArray(candidate.grants)
+    ? candidate.grants.reduce<NonNullable<ACLPolicy['grants']>>((result, value) => {
+        const grant = asRecord(value);
+        if (!grant)
+          return result;
+        const ip = isString(grant.ip) ? grant.ip : isArray(grant.ip) ? asStringArray(grant.ip) : undefined;
+        result.push({
+          src: asStringArray(grant.src),
+          dst: asStringArray(grant.dst),
+          ip,
+          app: asRecord(grant.app) ?? undefined,
+          via: asStringArray(grant.via).length ? asStringArray(grant.via) : undefined,
+        });
+        return result;
+      }, [])
+    : undefined;
+
+  const nodeAttrs = isArray(candidate.nodeAttrs)
+    ? candidate.nodeAttrs.reduce<NonNullable<ACLPolicy['nodeAttrs']>>((result, value) => {
+        const rule = asRecord(value);
+        if (rule)
+          result.push({ target: asStringArray(rule.target), attr: asStringArray(rule.attr) });
+        return result;
+      }, [])
+    : undefined;
+
+  const autoApproversRecord = asRecord(candidate.autoApprovers);
+  const routesRecord = autoApproversRecord ? asRecord(autoApproversRecord.routes) : null;
+
   return {
+
+    ...candidate,
     groups: groups
       ? Object.fromEntries(
           Object.entries(groups).map(([key, item]) => [key, asStringArray(item)]),
@@ -466,6 +517,17 @@ export function normalizeACLPolicy(value: unknown): ACLPolicy | null {
         )
       : undefined,
     acls,
+    grants,
+    nodeAttrs,
+    autoApprovers: autoApproversRecord
+      ? {
+          routes: routesRecord
+            ? Object.fromEntries(Object.entries(routesRecord).map(([key, item]) => [key, asStringArray(item)]))
+            : undefined,
+          exitNode: asStringArray(autoApproversRecord.exitNode),
+        }
+      : undefined,
+    randomizeClientPort: isBoolean(candidate.randomizeClientPort) ? candidate.randomizeClientPort : undefined,
   };
 }
 

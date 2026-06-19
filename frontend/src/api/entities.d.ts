@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2026 
+ * Copyright (C) 2026
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -131,6 +131,7 @@ export interface ACLRuleMeta {
 export interface ACLRule {
   '#ha-meta'?: ACLRuleMeta;
   'action': string;
+  'proto'?: string;
   'src': string[];
   'dst': string[];
 }
@@ -141,13 +142,38 @@ export interface ACLTest {
   deny?: string[];
 }
 
+export interface GrantRule {
+  src: string[];
+  dst: string[];
+  ip?: string | string[];
+  app?: Record<string, unknown>;
+  via?: string[];
+}
+
+export interface ACLNodeAttrRule {
+  target: string[];
+  attr: string[];
+}
+
+export interface ACLAutoApprovers {
+  routes?: Record<string, string[]>;
+  exitNode?: string[];
+}
+
 export interface ACLPolicyStructure {
+
+  [key: string]: unknown;
   groups?: Record<string, string[]>;
   hosts?: Record<string, string>;
   tagOwners?: Record<string, string[]>;
   acls?: ACLRule[];
+  grants?: GrantRule[];
+  autoApprovers?: ACLAutoApprovers;
   ssh?: unknown[];
   tests?: ACLTest[];
+  sshTests?: unknown[];
+  nodeAttrs?: ACLNodeAttrRule[];
+  randomizeClientPort?: boolean;
 }
 
 // ─── model.ParsedACLRule ─────────────────────────────────────────────────────

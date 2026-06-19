@@ -1,4 +1,4 @@
-// Copyright (C) 2026 
+// Copyright (C) 2026
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as
@@ -16,6 +16,7 @@
 package acl
 
 import (
+	"bytes"
 	"headscale-panel/model"
 	"net/netip"
 	"strings"
@@ -41,6 +42,36 @@ func MatchUserToMember(userName string, member string) bool {
 	return false
 }
 
+// IsUserInGrantSources checks whether a user matches any source selector in a grant.
+func IsUserInGrantSources(policy *model.ACLPolicyStructure, userName string, grant model.GrantRule) bool {
+	for _, src := range grant.Src {
+		if IsUserInACLSource(policy, userName, src) {
+			return true
+		}
+	}
+	return false
+}
+
+// GrantHasNetworkAccess distinguishes network grants from app-only grants.
+// App capabilities must not make Panel report arbitrary IP connectivity.
+func GrantHasNetworkAccess(grant model.GrantRule) bool {
+	ip := bytes.TrimSpace(grant.IP)
+	return len(ip) > 0 && !bytes.Equal(ip, []byte("null")) && !bytes.Equal(ip, []byte("[]")) && !bytes.Equal(ip, []byte(`""`))
+}
+
+// DoesGrantAllowIP checks the destination selectors of a network grant.
+func DoesGrantAllowIP(policy *model.ACLPolicyStructure, grant model.GrantRule, targetIP string) bool {
+	if !GrantHasNetworkAccess(grant) {
+		return false
+	}
+	for _, dst := range grant.Dst {
+		if doesDstMatchIP(policy, dst, targetIP) {
+			return true
+		}
+	}
+	return false
+}
+
 // GetGroupMembers returns the member patterns that belong to a given ACL group.
 func GetGroupMembers(policy *model.ACLPolicyStructure, groupName string) []string {
 	if policy == nil {
@@ -56,7 +87,7 @@ func GetGroupMembers(policy *model.ACLPolicyStructure, groupName string) []strin
 // IsUserInACLSource checks if the given Headscale user name is matched by an ACL source pattern.
 // Source can be: "*", "group:xxx", or a user pattern like "user@".
 func IsUserInACLSource(policy *model.ACLPolicyStructure, userName string, src string) bool {
-	if src == "*" {
+	if src == "*" || src == "autogroup:member" {
 		return true
 	}
 	if strings.HasPrefix(src, "group:") {

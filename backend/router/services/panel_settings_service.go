@@ -462,7 +462,7 @@ func (s *panelSettingsService) GetBuiltinOIDC(actorUserID uint) (*BuiltinOIDCCon
 		Enabled:  true,
 		Issuer:   issuer,
 		ClientID: client.ClientID,
-		Scope:    []string{"openid", "profile", "email"},
+		Scope:    []string{"openid", "profile", "email", "groups"},
 	}, nil
 }
 
@@ -508,7 +508,7 @@ func (s *panelSettingsService) EnableBuiltinOIDC(actorUserID uint) (*BuiltinOIDC
 			Issuer:       issuer,
 			ClientID:     client.ClientID,
 			ClientSecret: plainSecret,
-			Scope:        []string{"openid", "profile", "email"},
+			Scope:        []string{"openid", "profile", "email", "groups"},
 		}, nil
 	}
 
@@ -535,7 +535,7 @@ func (s *panelSettingsService) EnableBuiltinOIDC(actorUserID uint) (*BuiltinOIDC
 		Issuer:       issuer,
 		ClientID:     client.ClientID,
 		ClientSecret: plainSecret,
-		Scope:        []string{"openid", "profile", "email"},
+		Scope:        []string{"openid", "profile", "email", "groups"},
 	}, nil
 }
 

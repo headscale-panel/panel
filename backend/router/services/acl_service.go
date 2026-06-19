@@ -563,6 +563,7 @@ func (s *aclService) UpdateRuleByIndexWithContext(ctx context.Context, actorUser
 			Open: false,
 		},
 		Action: action,
+		Proto:  policy.ACLs[index].Proto,
 		Src:    sources,
 		Dst:    destinations,
 	}

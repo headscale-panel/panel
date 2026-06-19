@@ -406,20 +406,27 @@ func (s *topologyService) GetTopologyWithACLContext(ctx context.Context, actorUs
 	}
 
 	// Process each ACL rule
-	for _, rule := range policy.ACLs {
-		if rule.Action != "accept" {
-			continue // Only process accept rules for now
-		}
-
-		// For each source, find matching devices
+	applyNetworkRule := func(sources, destinations []string) {
 		var srcDevices []TopologyDevice
-		for _, src := range rule.Src {
+		for _, src := range sources {
 			if src == "*" {
 				srcDevices = append(srcDevices, topology.Devices...)
 			} else if strings.HasPrefix(src, "group:") {
 				srcDevices = append(srcDevices, getGroupDevices(src)...)
 			} else if strings.HasPrefix(src, "tag:") {
 				srcDevices = append(srcDevices, getTaggedDevices(src)...)
+			} else if src == "autogroup:member" {
+				for _, device := range topology.Devices {
+					if len(device.Tags) == 0 {
+						srcDevices = append(srcDevices, device)
+					}
+				}
+			} else if src == "autogroup:tagged" {
+				for _, device := range topology.Devices {
+					if len(device.Tags) > 0 {
+						srcDevices = append(srcDevices, device)
+					}
+				}
 			} else {
 				for userName, devices := range userToDevices {
 					if acl.MatchUserToMember(userName, src) {
@@ -429,14 +436,30 @@ func (s *topologyService) GetTopologyWithACLContext(ctx context.Context, actorUs
 			}
 		}
 
-		// For each destination, resolve to device IDs
-		var dstDeviceIDs []string
-		for _, dst := range rule.Dst {
-			dstDeviceIDs = append(dstDeviceIDs, resolveDestination(dst)...)
-		}
-
-		// Set access in matrix
 		for _, srcDevice := range srcDevices {
+			var dstDeviceIDs []string
+			for _, dst := range destinations {
+				switch dst {
+				case "autogroup:self", "autogroup:self:*":
+					for _, device := range userToDevices[srcDevice.User] {
+						dstDeviceIDs = append(dstDeviceIDs, device.ID)
+					}
+				case "autogroup:member", "autogroup:member:*":
+					for _, device := range topology.Devices {
+						if len(device.Tags) == 0 {
+							dstDeviceIDs = append(dstDeviceIDs, device.ID)
+						}
+					}
+				case "autogroup:tagged", "autogroup:tagged:*":
+					for _, device := range topology.Devices {
+						if len(device.Tags) > 0 {
+							dstDeviceIDs = append(dstDeviceIDs, device.ID)
+						}
+					}
+				default:
+					dstDeviceIDs = append(dstDeviceIDs, resolveDestination(dst)...)
+				}
+			}
 			for _, dstID := range dstDeviceIDs {
 				if srcDevice.ID != dstID {
 					aclMatrix[srcDevice.ID][dstID] = "accept"
@@ -445,13 +468,17 @@ func (s *topologyService) GetTopologyWithACLContext(ctx context.Context, actorUs
 		}
 	}
 
-	// Same user devices can always communicate (implicit rule)
-	for _, devices := range userToDevices {
-		for _, d1 := range devices {
-			for _, d2 := range devices {
-				if d1.ID != d2.ID {
-					aclMatrix[d1.ID][d2.ID] = "accept"
-				}
+	if policy.ACLs == nil && policy.Grants == nil {
+		applyNetworkRule([]string{"*"}, []string{"*"})
+	} else {
+		for _, rule := range policy.ACLs {
+			if rule.Action == "accept" {
+				applyNetworkRule(rule.Src, rule.Dst)
+			}
+		}
+		for _, grant := range policy.Grants {
+			if acl.GrantHasNetworkAccess(grant) {
+				applyNetworkRule(grant.Src, grant.Dst)
 			}
 		}
 	}

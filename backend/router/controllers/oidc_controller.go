@@ -54,6 +54,7 @@ func (oc *OIDCController) Discovery(c *gin.Context) {
 			"openid",
 			"profile",
 			"email",
+			"groups",
 		},
 		"grant_types_supported": []string{
 			"authorization_code",
@@ -61,21 +62,27 @@ func (oc *OIDCController) Discovery(c *gin.Context) {
 		},
 		"token_endpoint_auth_methods_supported": []string{
 			"client_secret_post",
+			"client_secret_basic",
+		},
+		"code_challenge_methods_supported": []string{
+			"S256",
 		},
 		"claims_supported": []string{
-			"sub", "name", "preferred_username", "email", "email_verified", "picture",
+			"sub", "name", "preferred_username", "email", "email_verified", "picture", "groups",
 		},
 	})
 }
 
 // AuthorizeQuery is the query parameter struct for Authorize.
 type AuthorizeQuery struct {
-	ClientID     string `form:"client_id"`
-	RedirectURI  string `form:"redirect_uri"`
-	ResponseType string `form:"response_type"`
-	Nonce        string `form:"nonce"`
-	State        string `form:"state"`
-	Scope        string `form:"scope,default=openid"`
+	ClientID            string `form:"client_id"`
+	RedirectURI         string `form:"redirect_uri"`
+	ResponseType        string `form:"response_type"`
+	Nonce               string `form:"nonce"`
+	State               string `form:"state"`
+	Scope               string `form:"scope,default=openid"`
+	CodeChallenge       string `form:"code_challenge"`
+	CodeChallengeMethod string `form:"code_challenge_method"`
 }
 
 func (oc *OIDCController) Authorize(c *gin.Context) {
@@ -92,6 +99,10 @@ func (oc *OIDCController) Authorize(c *gin.Context) {
 
 	if !services.OIDCService.ValidateRedirectURI(q.ClientID, q.RedirectURI) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_client_or_redirect_uri"})
+		return
+	}
+	if err := services.ValidatePKCEChallenge(q.CodeChallenge, q.CodeChallengeMethod); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "error_description": "invalid PKCE challenge"})
 		return
 	}
 
@@ -113,7 +124,7 @@ func (oc *OIDCController) Authorize(c *gin.Context) {
 	userID = claims.UserID
 
 	// Generate Code
-	code, err := services.OIDCService.GenerateAuthCode(userID, q.ClientID, q.RedirectURI, q.Nonce, q.Scope)
+	code, err := services.OIDCService.GenerateAuthCode(userID, q.ClientID, q.RedirectURI, q.Nonce, q.Scope, q.CodeChallenge, q.CodeChallengeMethod)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "server_error"})
 		return
@@ -148,11 +159,21 @@ func (oc *OIDCController) Token(c *gin.Context) {
 	grantType := c.PostForm("grant_type")
 	clientID := c.PostForm("client_id")
 	clientSecret := c.PostForm("client_secret")
+	if basicClientID, basicClientSecret, ok := c.Request.BasicAuth(); ok {
+		if clientID == "" {
+			clientID = basicClientID
+		}
+		if clientSecret == "" {
+			clientSecret = basicClientSecret
+		}
+	}
 
 	switch grantType {
 	case "authorization_code":
 		code := c.PostForm("code")
-		idToken, accessToken, refreshToken, err := services.OIDCService.ExchangeCode(code, clientID, clientSecret)
+		redirectURI := c.PostForm("redirect_uri")
+		codeVerifier := c.PostForm("code_verifier")
+		idToken, accessToken, refreshToken, err := services.OIDCService.ExchangeCode(code, clientID, clientSecret, redirectURI, codeVerifier)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_grant"})
 			return

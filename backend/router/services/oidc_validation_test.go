@@ -1,4 +1,4 @@
-// Copyright (C) 2026 
+// Copyright (C) 2026
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as
@@ -16,9 +16,49 @@
 package services
 
 import (
+	"crypto/sha256"
+	"encoding/base64"
 	"headscale-panel/model"
 	"testing"
 )
+
+func TestPKCES256(t *testing.T) {
+	verifier := "0123456789abcdefghijklmnopqrstuvwxyzABCDEFG"
+	digest := sha256.Sum256([]byte(verifier))
+	challenge := base64.RawURLEncoding.EncodeToString(digest[:])
+
+	if err := ValidatePKCEChallenge(challenge, "S256"); err != nil {
+		t.Fatalf("valid challenge rejected: %v", err)
+	}
+	if !verifyPKCE(challenge, "S256", verifier) {
+		t.Fatal("valid verifier rejected")
+	}
+	if verifyPKCE(challenge, "S256", verifier+"wrong") {
+		t.Fatal("wrong verifier accepted")
+	}
+	if err := ValidatePKCEChallenge(challenge, "plain"); err == nil {
+		t.Fatal("plain PKCE must be rejected")
+	}
+}
+
+func TestTokenAudienceContains(t *testing.T) {
+	if !tokenAudienceContains("headscale-builtin", "headscale-builtin") {
+		t.Fatal("string audience should match")
+	}
+	if !tokenAudienceContains([]any{"other", "headscale-builtin"}, "headscale-builtin") {
+		t.Fatal("array audience should match")
+	}
+	if tokenAudienceContains("other", "headscale-builtin") {
+		t.Fatal("wrong audience accepted")
+	}
+}
+
+func TestOIDCUserGroups(t *testing.T) {
+	groups := oidcUserGroups(model.User{Group: model.Group{Name: "operators"}})
+	if len(groups) != 1 || groups[0] != "operators" {
+		t.Fatalf("groups = %#v, want [operators]", groups)
+	}
+}
 
 func TestNormalizeRedirectURIs(t *testing.T) {
 	tests := []struct {
