@@ -48,6 +48,7 @@ func InitRouter() *gin.Engine {
 
 	oidcController := controllers.NewOIDCController()
 	r.GET("/.well-known/openid-configuration", oidcController.Discovery)
+	r.GET("/panel/.well-known/openid-configuration", oidcController.Discovery)
 
 	api := r.Group("/panel/api/v1")
 	{

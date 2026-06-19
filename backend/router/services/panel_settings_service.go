@@ -32,6 +32,7 @@ import (
 	"headscale-panel/pkg/log"
 	"headscale-panel/pkg/unifyerror"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"go.uber.org/zap"
@@ -475,6 +476,7 @@ func (s *panelSettingsService) EnableBuiltinOIDC(actorUserID uint) (*BuiltinOIDC
 	if issuer == "" {
 		return nil, unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, constants.MsgBaseURLRequired)
 	}
+	redirectURI := builtinOIDCRedirectURI(issuer)
 
 	var client model.OauthClient
 	err := model.DB.Where("client_id = ?", builtinOIDCClientID).First(&client).Error
@@ -491,7 +493,6 @@ func (s *panelSettingsService) EnableBuiltinOIDC(actorUserID uint) (*BuiltinOIDC
 			return nil, unifyerror.ServerError(err)
 		}
 
-		redirectURI := issuer + "/panel/api/v1/auth/oidc/callback"
 		client = model.OauthClient{
 			ClientID:         builtinOIDCClientID,
 			ClientSecretHash: hashedSecret,
@@ -524,7 +525,7 @@ func (s *panelSettingsService) EnableBuiltinOIDC(actorUserID uint) (*BuiltinOIDC
 	}
 
 	client.ClientSecretHash = hashedSecret
-	client.RedirectURIs = issuer + "/panel/api/v1/auth/oidc/callback"
+	client.RedirectURIs = redirectURI
 	if err := model.DB.Save(&client).Error; err != nil {
 		return nil, unifyerror.DbError(err)
 	}
@@ -536,6 +537,17 @@ func (s *panelSettingsService) EnableBuiltinOIDC(actorUserID uint) (*BuiltinOIDC
 		ClientSecret: plainSecret,
 		Scope:        []string{"openid", "profile", "email"},
 	}, nil
+}
+
+// builtinOIDCRedirectURI returns Headscale's callback URL. SYSTEM_BASE_URL
+// points at the panel (usually ending in /panel), while Headscale's callback
+// lives at the same public origin outside that prefix.
+func builtinOIDCRedirectURI(issuer string) string {
+	parsed, err := url.Parse(strings.TrimSpace(issuer))
+	if err == nil && parsed.Scheme != "" && parsed.Host != "" {
+		return parsed.Scheme + "://" + parsed.Host + "/oidc/callback"
+	}
+	return strings.TrimRight(strings.TrimSpace(issuer), "/") + "/oidc/callback"
 }
 
 func marshalOIDCSettingsPayload(payload *OIDCSettingsPayload) ([]byte, error) {

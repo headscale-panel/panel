@@ -1,4 +1,4 @@
-// Copyright (C) 2026 
+// Copyright (C) 2026
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as
@@ -34,13 +34,13 @@ func NewOIDCController() *OIDCController {
 }
 
 func (oc *OIDCController) Discovery(c *gin.Context) {
-	baseURL := conf.Conf.System.BaseURL
+	baseURL := strings.TrimRight(conf.Conf.System.BaseURL, "/")
 	c.JSON(http.StatusOK, gin.H{
 		"issuer":                 baseURL,
-		"authorization_endpoint": baseURL + "/panel/api/v1/oidc/authorize",
-		"token_endpoint":         baseURL + "/panel/api/v1/oidc/token",
-		"jwks_uri":               baseURL + "/panel/api/v1/oidc/jwks",
-		"userinfo_endpoint":      baseURL + "/panel/api/v1/oidc/userinfo",
+		"authorization_endpoint": baseURL + "/api/v1/oidc/authorize",
+		"token_endpoint":         baseURL + "/api/v1/oidc/token",
+		"jwks_uri":               baseURL + "/api/v1/oidc/jwks",
+		"userinfo_endpoint":      baseURL + "/api/v1/oidc/userinfo",
 		"response_types_supported": []string{
 			"code",
 		},
@@ -95,19 +95,19 @@ func (oc *OIDCController) Authorize(c *gin.Context) {
 		return
 	}
 
-	// Check authentication via Cookie
+	// Check authentication via Cookie. SYSTEM_BASE_URL is the external panel
+	// base (for example https://vpn.example.com/panel), so the login page is
+	// relative to that base rather than the domain root.
 	token, err := c.Cookie("headscale_panel_token")
 	var userID uint
 	if err != nil || token == "" {
-		returnURL := conf.Conf.System.BaseURL + c.Request.RequestURI
-		c.Redirect(http.StatusFound, "/login?return_url="+url.QueryEscape(returnURL))
+		c.Redirect(http.StatusFound, oidcLoginURL(conf.Conf.System.BaseURL, c.Request.RequestURI))
 		return
 	}
 
 	claims, err := jwt.ParseToken(token)
 	if err != nil {
-		returnURL := conf.Conf.System.BaseURL + c.Request.RequestURI
-		c.Redirect(http.StatusFound, "/login?return_url="+url.QueryEscape(returnURL))
+		c.Redirect(http.StatusFound, oidcLoginURL(conf.Conf.System.BaseURL, c.Request.RequestURI))
 		return
 	}
 	userID = claims.UserID
@@ -130,6 +130,18 @@ func (oc *OIDCController) Authorize(c *gin.Context) {
 	}
 
 	c.Redirect(http.StatusFound, target)
+}
+
+func oidcLoginURL(baseURL, requestURI string) string {
+	base := strings.TrimRight(strings.TrimSpace(baseURL), "/")
+	parsed, err := url.Parse(base)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		return "/panel/login?return_url=" + url.QueryEscape(requestURI)
+	}
+
+	origin := parsed.Scheme + "://" + parsed.Host
+	returnURL := origin + requestURI
+	return base + "/login?return_url=" + url.QueryEscape(returnURL)
 }
 
 func (oc *OIDCController) Token(c *gin.Context) {
