@@ -17,9 +17,6 @@
     </a>
 </p>
 
-> [!IMPORTANT]
-> Due to the large number of breaking changes between headscale versions, the current release only supports headscale v0.28.0.
-
 > [!WARNING]
 > This project is in a very early stage of development. You may encounter critical bugs, missing features, or complete unavailability. We are actively working to resolve reported issues and will continue to push forward with fixes and new features. Use on public networks or in production environments is strongly discouraged.
 

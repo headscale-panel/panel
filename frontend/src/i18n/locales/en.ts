@@ -1245,6 +1245,12 @@ const en: Translations = {
     subTitle: 'Sorry, the page you are looking for doesn\'t exist.',
     goHome: 'Go Home',
   },
+  unauthorized: {
+    title: '🙂 You are signed in, but no permissions are assigned',
+    subtitle: 'Please contact an administrator to assign a group or permissions to this account.',
+    description: 'After authorization is updated, sign in again to access the available panel features.',
+    logout: 'Log out',
+  },
   errorBoundary: {
     title: 'An unexpected error occurred.',
     reload: 'Reload Page',

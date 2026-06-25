@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2026 
+ * Copyright (C) 2026
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -43,6 +43,7 @@ import Resources from './pages/Resources';
 import Routes from './pages/Routes';
 import Settings from './pages/Settings';
 import SetupWelcome from './pages/SetupWelcome';
+import Unauthorized from './pages/Unauthorized';
 import Users from './pages/Users';
 
 const BASE = '/panel';
@@ -164,6 +165,9 @@ function AppRoutes() {
       </Route>
       <Route path="/profile">
         <ProtectedRoute><Profile /></ProtectedRoute>
+      </Route>
+      <Route path="/unauthorized">
+        <ProtectedRoute><Unauthorized /></ProtectedRoute>
       </Route>
       <Route path="/404" component={NotFound} />
       <Route component={NotFound} />

@@ -1243,6 +1243,12 @@ const zh = {
     subTitle: '抱歉，您访问的页面不存在。',
     goHome: '返回首页',
   },
+  unauthorized: {
+    title: '🙂 账号已登录，但还没有可用权限',
+    subtitle: '请联系管理员为当前账号分配用户组或授权。',
+    description: '授权完成后，重新登录即可访问对应的面板功能。',
+    logout: '退出登录',
+  },
   errorBoundary: {
     title: '发生意外错误',
     reload: '重新加载页面',

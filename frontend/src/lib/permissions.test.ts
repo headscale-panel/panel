@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2026 
+ * Copyright (C) 2026
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -72,5 +72,17 @@ describe('permissions helpers', () => {
     expect(getDefaultRouteForUser(user)).toBe('/routes');
     expect(canAccessSection(user, 'dashboard')).toBe(false);
     expect(hasAnyPermission(user, DASHBOARD_PERMISSIONS)).toBe(false);
+  });
+
+  it('uses the unauthorized page when a user has no accessible sections', () => {
+    const user = {
+      id: 4,
+      username: 'charlie',
+      email: 'charlie@example.com',
+      role: UserRole.User,
+      permissions: [],
+    };
+
+    expect(getDefaultRouteForUser(user)).toBe('/unauthorized');
   });
 });
