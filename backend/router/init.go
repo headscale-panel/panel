@@ -230,6 +230,7 @@ func InitRouter() *gin.Engine {
 			auth.GET("/panel-accounts", middleware.PermissionMiddleware("panel:account:list"), panelAccountCtrl.List)
 			auth.GET("/panel-accounts/:id", middleware.PermissionMiddleware("panel:account:list"), panelAccountCtrl.GetDetail)
 			auth.POST("/panel-accounts", middleware.PermissionMiddleware("panel:account:create"), panelAccountCtrl.Create)
+			auth.POST("/panel-accounts/import", middleware.PermissionMiddleware("panel:account:create"), panelAccountCtrl.Import)
 			auth.PUT("/panel-accounts/:id", middleware.PermissionMiddleware("panel:account:update"), panelAccountCtrl.Update)
 			auth.PUT("/panel-accounts/:id/status", middleware.PermissionMiddleware("panel:account:update"), panelAccountCtrl.SetStatus)
 			auth.PUT("/panel-accounts/:id/reset-totp", middleware.PermissionMiddleware("panel:account:update"), panelAccountCtrl.ResetTOTP)

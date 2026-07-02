@@ -1,4 +1,4 @@
-// Copyright (C) 2026 
+// Copyright (C) 2026
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as
@@ -16,9 +16,9 @@
 package controllers
 
 import (
-	"net/http"
 	"headscale-panel/pkg/unifyerror"
 	"headscale-panel/router/services"
+	"net/http"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
@@ -134,6 +134,32 @@ func (ctrl *PanelAccountController) Create(c *gin.Context) {
 	}
 
 	unifyerror.Success(c, nil)
+}
+
+// Import godoc
+// @Summary Dry-run or import panel accounts in bulk
+// @Tags panel-accounts
+// @Accept json
+// @Produce json
+// @Param body body services.PanelAccountImportRequest true "Import rows"
+// @Success 200 {object} unifyerror.Response{data=services.PanelAccountImportResult}
+// @Security BearerAuth
+// @Router /panel-accounts/import [post]
+func (ctrl *PanelAccountController) Import(c *gin.Context) {
+	var req services.PanelAccountImportRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		unifyerror.Fail(c, unifyerror.ErrBind)
+		return
+	}
+
+	actorUserID := c.GetUint("userID")
+	result, err := services.PanelAccountService.Import(actorUserID, &req)
+	if err != nil {
+		unifyerror.Fail(c, err)
+		return
+	}
+
+	unifyerror.Success(c, result)
 }
 
 type updatePanelAccountRequest struct {
@@ -320,8 +346,6 @@ func (ctrl *PanelAccountController) UpdateNetworkBindings(c *gin.Context) {
 
 	unifyerror.Success(c, nil)
 }
-
-
 
 // ListAvailableNetworkIdentities godoc
 // @Summary List available network identities for binding

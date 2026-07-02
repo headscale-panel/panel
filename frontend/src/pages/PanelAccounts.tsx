@@ -22,6 +22,7 @@ import {
   CheckCircleOutlined,
   CloseCircleOutlined,
   EyeOutlined,
+  ImportOutlined,
   PlusOutlined,
   ReloadOutlined,
   SearchOutlined,
@@ -46,6 +47,7 @@ import DashboardLayout from '@/components/DashboardLayout';
 import PageHeaderStatCards from '@/components/PageHeaderStatCards';
 import AccountDetailDrawer from '@/components/panel-accounts/AccountDetailDrawer';
 import CreateAccountModal from '@/components/panel-accounts/CreateAccountModal';
+import ImportAccountsModal from '@/components/panel-accounts/ImportAccountsModal';
 import { useTranslation } from '@/i18n/index';
 
 const { Title, Text } = Typography;
@@ -64,6 +66,7 @@ export default function PanelAccounts() {
   // ── Modals / Drawer ─────────────────────────────────────
   const [detailId, setDetailId] = useState<number | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
 
   // ── Data loading ───────────────────────────────────────
   const {
@@ -226,6 +229,9 @@ export default function PanelAccounts() {
           </div>
           <Space>
             <Button icon={<ReloadOutlined spin={listLoading} />} loading={listLoading} onClick={loadList} />
+            <Button icon={<ImportOutlined />} onClick={() => setImportOpen(true)}>
+              批量导入
+            </Button>
             <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)} data-tour-id="panel-accounts-create">
               {pa.newAccount}
             </Button>
@@ -309,6 +315,15 @@ export default function PanelAccounts() {
         onCancel={() => setCreateOpen(false)}
         onSuccess={() => {
           setCreateOpen(false);
+          loadList();
+        }}
+      />
+
+      <ImportAccountsModal
+        open={importOpen}
+        onCancel={() => setImportOpen(false)}
+        onSuccess={() => {
+          setImportOpen(false);
           loadList();
         }}
       />

@@ -15,7 +15,7 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-import type { CreatePanelAccountReq, ListAvailableNetworkIdentitiesReq, ListPanelAccountsReq, LoginIdentities, NetworkBinding, NetworkIdentityItem, PanelAccountDetail, PanelAccountListItem, SetPrimaryBindingReq, SetStatusReq, UpdateNetworkBindingsReq, UpdatePanelAccountReq } from './panel-account.types';
+import type { CreatePanelAccountReq, ImportPanelAccountsReq, ListAvailableNetworkIdentitiesReq, ListPanelAccountsReq, LoginIdentities, NetworkBinding, NetworkIdentityItem, PanelAccountDetail, PanelAccountImportResult, PanelAccountListItem, SetPrimaryBindingReq, SetStatusReq, UpdateNetworkBindingsReq, UpdatePanelAccountReq } from './panel-account.types';
 import type { RespPage, RespType } from '@/lib/request';
 import request from '@/lib/request';
 
@@ -42,6 +42,9 @@ export const panelAccountApi = {
 
   create: (req: CreatePanelAccountReq) =>
     request<RespType<void>>({ url: '/panel-accounts', method: 'POST', data: req }),
+
+  importAccounts: (req: ImportPanelAccountsReq) =>
+    request<RespType<PanelAccountImportResult>>({ url: '/panel-accounts/import', method: 'POST', data: req }),
 
   update: (id: number, req: UpdatePanelAccountReq) =>
     request<RespType<void>>({ url: `/panel-accounts/${id}`, method: 'PUT', data: req }),

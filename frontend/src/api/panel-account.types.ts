@@ -122,6 +122,45 @@ export interface CreatePanelAccountReq {
   group_id?: number;
 }
 
+export interface PanelAccountImportRow {
+  row_number?: number;
+  username: string;
+  password: string;
+  email?: string;
+  display_name?: string;
+  group_id?: number;
+  group_name?: string;
+  is_active?: boolean;
+}
+
+export interface ImportPanelAccountsReq {
+  dry_run: boolean;
+  rows: PanelAccountImportRow[];
+}
+
+export interface PanelAccountImportRowResult {
+  row_number: number;
+  username: string;
+  email: string;
+  display_name: string;
+  group_id: number;
+  group_name: string;
+  is_active: boolean;
+  valid: boolean;
+  errors?: string[];
+}
+
+export interface PanelAccountImportResult {
+  dry_run: boolean;
+  total: number;
+  valid: number;
+  invalid: number;
+  imported: number;
+  rows: PanelAccountImportRowResult[];
+  can_import: boolean;
+  has_errors: boolean;
+}
+
 export interface UpdatePanelAccountReq {
   email?: string;
   display_name?: string;

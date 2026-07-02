@@ -19,6 +19,9 @@ import (
 	"testing"
 
 	"headscale-panel/model"
+
+	"github.com/glebarez/sqlite"
+	"gorm.io/gorm"
 )
 
 func TestBuildValidatedBindingsRejectsUnavailableHeadscale(t *testing.T) {
@@ -39,5 +42,75 @@ func TestDeriveLoginMethodsRequiresPasswordForLocal(t *testing.T) {
 	methods := deriveLoginMethods(&model.User{Provider: "local"})
 	if len(methods) != 1 || methods[0] != "none" {
 		t.Fatalf("expected local user without password to expose no login method, got %#v", methods)
+	}
+}
+
+func setupPanelAccountImportTestDB(t *testing.T) {
+	t.Helper()
+
+	previousDB := model.DB
+	t.Cleanup(func() {
+		model.DB = previousDB
+	})
+
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	model.DB = db
+	if err := db.AutoMigrate(&model.User{}, &model.Group{}); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+}
+
+func TestValidatePanelAccountImportRowsAcceptsValidRows(t *testing.T) {
+	setupPanelAccountImportTestDB(t)
+
+	group := model.Group{Name: "User"}
+	if err := model.DB.Create(&group).Error; err != nil {
+		t.Fatalf("create group: %v", err)
+	}
+
+	result, normalized, err := validatePanelAccountImportRows([]PanelAccountImportRow{
+		{
+			RowNumber:   2,
+			Username:    "alice",
+			Password:    "ChangeMe123",
+			Email:       "alice@example.com",
+			DisplayName: "Alice",
+			GroupName:   "User",
+		},
+	})
+	if err != nil {
+		t.Fatalf("validate import rows: %v", err)
+	}
+	if result.HasErrors || !result.CanImport || result.Valid != 1 || result.Invalid != 0 {
+		t.Fatalf("expected one valid row, got %#v", result)
+	}
+	if len(normalized) != 1 || normalized[0].GroupID != group.ID {
+		t.Fatalf("expected normalized row with group id %d, got %#v", group.ID, normalized)
+	}
+}
+
+func TestValidatePanelAccountImportRowsRejectsDuplicates(t *testing.T) {
+	setupPanelAccountImportTestDB(t)
+
+	if err := model.DB.Create(&model.User{Username: "existing", Password: "ChangeMe123", Provider: "local"}).Error; err != nil {
+		t.Fatalf("create existing user: %v", err)
+	}
+
+	result, normalized, err := validatePanelAccountImportRows([]PanelAccountImportRow{
+		{RowNumber: 2, Username: "existing", Password: "ChangeMe123"},
+		{RowNumber: 3, Username: "new-user", Password: "ChangeMe123"},
+		{RowNumber: 4, Username: "new-user", Password: "ChangeMe123"},
+	})
+	if err != nil {
+		t.Fatalf("validate import rows: %v", err)
+	}
+	if !result.HasErrors || result.CanImport || result.Valid != 1 || result.Invalid != 2 {
+		t.Fatalf("expected duplicate errors with one valid row, got %#v", result)
+	}
+	if len(normalized) != 1 || normalized[0].Username != "new-user" {
+		t.Fatalf("expected only the first new-user row to normalize, got %#v", normalized)
 	}
 }

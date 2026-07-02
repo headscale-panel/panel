@@ -22,6 +22,7 @@ import (
 	"headscale-panel/model"
 	"headscale-panel/pkg/unifyerror"
 	"net/http"
+	"net/mail"
 	"strings"
 
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
@@ -127,6 +128,45 @@ type PanelAccountListQuery struct {
 	Provider string // "local", "oidc", "headscale", ""
 	Page     int
 	PageSize int
+}
+
+type PanelAccountImportRow struct {
+	RowNumber   int    `json:"row_number"`
+	Username    string `json:"username"`
+	Password    string `json:"password"`
+	Email       string `json:"email"`
+	DisplayName string `json:"display_name"`
+	GroupID     uint   `json:"group_id"`
+	GroupName   string `json:"group_name"`
+	IsActive    *bool  `json:"is_active"`
+}
+
+type PanelAccountImportRequest struct {
+	DryRun bool                    `json:"dry_run"`
+	Rows   []PanelAccountImportRow `json:"rows" binding:"required"`
+}
+
+type PanelAccountImportRowResult struct {
+	RowNumber   int      `json:"row_number"`
+	Username    string   `json:"username"`
+	Email       string   `json:"email"`
+	DisplayName string   `json:"display_name"`
+	GroupID     uint     `json:"group_id"`
+	GroupName   string   `json:"group_name"`
+	IsActive    bool     `json:"is_active"`
+	Valid       bool     `json:"valid"`
+	Errors      []string `json:"errors,omitempty"`
+}
+
+type PanelAccountImportResult struct {
+	DryRun    bool                          `json:"dry_run"`
+	Total     int                           `json:"total"`
+	Valid     int                           `json:"valid"`
+	Invalid   int                           `json:"invalid"`
+	Imported  int                           `json:"imported"`
+	Rows      []PanelAccountImportRowResult `json:"rows"`
+	CanImport bool                          `json:"can_import"`
+	HasErrors bool                          `json:"has_errors"`
 }
 
 // ---------- Service methods ----------
@@ -269,6 +309,56 @@ func (s *panelAccountService) Create(actorUserID uint, username, password, email
 		return unifyerror.DbError(err)
 	}
 	return nil
+}
+
+func (s *panelAccountService) Import(actorUserID uint, req *PanelAccountImportRequest) (*PanelAccountImportResult, error) {
+	if err := RequirePermission(actorUserID, "panel:account:create"); err != nil {
+		return nil, err
+	}
+	if req == nil || len(req.Rows) == 0 {
+		return nil, unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "import rows are required")
+	}
+	if len(req.Rows) > 500 {
+		return nil, unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "cannot import more than 500 accounts at once")
+	}
+
+	result, normalizedRows, err := validatePanelAccountImportRows(req.Rows)
+	if err != nil {
+		return nil, err
+	}
+	result.DryRun = req.DryRun
+
+	if req.DryRun || result.HasErrors {
+		return result, nil
+	}
+
+	if err := model.DB.Transaction(func(tx *gorm.DB) error {
+		for _, row := range normalizedRows {
+			active := true
+			if row.IsActive != nil {
+				active = *row.IsActive
+			}
+
+			user := model.User{
+				Username:    strings.TrimSpace(row.Username),
+				Password:    strings.TrimSpace(row.Password),
+				Email:       strings.TrimSpace(row.Email),
+				DisplayName: strings.TrimSpace(row.DisplayName),
+				GroupID:     row.GroupID,
+				Provider:    "local",
+				IsActive:    active,
+			}
+			if err := tx.Create(&user).Error; err != nil {
+				return unifyerror.DbError(err)
+			}
+			result.Imported++
+		}
+		return nil
+	}); err != nil {
+		return nil, unifyerror.FromError(err)
+	}
+
+	return result, nil
 }
 
 func (s *panelAccountService) Update(actorUserID, accountID uint, email, displayName, password string, groupID uint) error {
@@ -455,6 +545,138 @@ func (s *panelAccountService) ListAvailableNetworkIdentities(actorUserID uint, s
 }
 
 // ---------- Helpers ----------
+
+func validatePanelAccountImportRows(rows []PanelAccountImportRow) (*PanelAccountImportResult, []PanelAccountImportRow, error) {
+	var groups []model.Group
+	if err := model.DB.Find(&groups).Error; err != nil {
+		return nil, nil, unifyerror.DbError(err)
+	}
+	groupByID := make(map[uint]model.Group, len(groups))
+	groupByName := make(map[string]model.Group, len(groups))
+	for _, group := range groups {
+		groupByID[group.ID] = group
+		groupByName[strings.ToLower(strings.TrimSpace(group.Name))] = group
+	}
+
+	var existingUsers []model.User
+	if err := model.DB.Select("username").Find(&existingUsers).Error; err != nil {
+		return nil, nil, unifyerror.DbError(err)
+	}
+	existingUsernames := make(map[string]struct{}, len(existingUsers))
+	for _, user := range existingUsers {
+		existingUsernames[strings.ToLower(strings.TrimSpace(user.Username))] = struct{}{}
+	}
+
+	seenUsernames := make(map[string]int, len(rows))
+	result := &PanelAccountImportResult{
+		Total: len(rows),
+		Rows:  make([]PanelAccountImportRowResult, 0, len(rows)),
+	}
+	normalizedRows := make([]PanelAccountImportRow, 0, len(rows))
+
+	for index, row := range rows {
+		rowNumber := row.RowNumber
+		if rowNumber <= 0 {
+			rowNumber = index + 1
+		}
+
+		username := strings.TrimSpace(row.Username)
+		password := strings.TrimSpace(row.Password)
+		email := strings.TrimSpace(row.Email)
+		displayName := strings.TrimSpace(row.DisplayName)
+		groupName := strings.TrimSpace(row.GroupName)
+		groupID := row.GroupID
+		active := true
+		if row.IsActive != nil {
+			active = *row.IsActive
+		}
+
+		errorsForRow := make([]string, 0)
+		if username == "" {
+			errorsForRow = append(errorsForRow, "username is required")
+		} else {
+			if len(username) > 64 {
+				errorsForRow = append(errorsForRow, "username exceeds 64 characters")
+			}
+			lowerUsername := strings.ToLower(username)
+			if _, exists := existingUsernames[lowerUsername]; exists {
+				errorsForRow = append(errorsForRow, "username already exists")
+			}
+			if firstRow, exists := seenUsernames[lowerUsername]; exists {
+				errorsForRow = append(errorsForRow, fmt.Sprintf("duplicate username in import file (first seen at row %d)", firstRow))
+			} else {
+				seenUsernames[lowerUsername] = rowNumber
+			}
+		}
+
+		if password == "" {
+			errorsForRow = append(errorsForRow, "password is required")
+		} else if len(password) < 6 {
+			errorsForRow = append(errorsForRow, "password must be at least 6 characters")
+		}
+
+		if email != "" {
+			if len(email) > 254 {
+				errorsForRow = append(errorsForRow, "email exceeds 254 characters")
+			} else if _, err := mail.ParseAddress(email); err != nil {
+				errorsForRow = append(errorsForRow, "email format is invalid")
+			}
+		}
+
+		if len(displayName) > 64 {
+			errorsForRow = append(errorsForRow, "display name exceeds 64 characters")
+		}
+
+		resolvedGroupName := ""
+		if groupID > 0 {
+			group, ok := groupByID[groupID]
+			if !ok {
+				errorsForRow = append(errorsForRow, "group_id does not exist")
+			} else {
+				resolvedGroupName = group.Name
+			}
+		} else if groupName != "" {
+			group, ok := groupByName[strings.ToLower(groupName)]
+			if !ok {
+				errorsForRow = append(errorsForRow, "group_name does not exist")
+			} else {
+				groupID = group.ID
+				resolvedGroupName = group.Name
+			}
+		}
+
+		rowResult := PanelAccountImportRowResult{
+			RowNumber:   rowNumber,
+			Username:    username,
+			Email:       email,
+			DisplayName: displayName,
+			GroupID:     groupID,
+			GroupName:   resolvedGroupName,
+			IsActive:    active,
+			Valid:       len(errorsForRow) == 0,
+			Errors:      errorsForRow,
+		}
+		result.Rows = append(result.Rows, rowResult)
+		if rowResult.Valid {
+			result.Valid++
+			normalizedRows = append(normalizedRows, PanelAccountImportRow{
+				RowNumber:   rowNumber,
+				Username:    username,
+				Password:    password,
+				Email:       email,
+				DisplayName: displayName,
+				GroupID:     groupID,
+				GroupName:   resolvedGroupName,
+				IsActive:    &active,
+			})
+		} else {
+			result.Invalid++
+			result.HasErrors = true
+		}
+	}
+	result.CanImport = !result.HasErrors && result.Valid > 0
+	return result, normalizedRows, nil
+}
 
 func deriveLoginMethods(u *model.User) []string {
 	methods := make([]string, 0)
