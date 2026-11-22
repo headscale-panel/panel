@@ -15,16 +15,23 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-import type { ACLPolicyRecord, ACLPolicyStructure, ACLRule, ParsedACLRule } from './entities';
+import type { ACLPolicy, ACLRevision, ACLRule, ParsedACLRule } from './entities';
 
 export interface GetPolicyReq {}
-export type GetPolicyRes = ACLPolicyStructure;
+export interface GetPolicyRes {
+  policy: ACLPolicy;
+  /* Optimistic-lock token; send it back on save so a concurrent edit is detected. */
+  updatedAt?: string;
+}
 
-export interface UpdatePolicyReq extends ACLPolicyStructure {}
-export type UpdatePolicyRes = ACLPolicyStructure;
+export interface UpdatePolicyReq extends ACLPolicy {
+  expectedUpdatedAt?: string;
+}
+export type UpdatePolicyRes = ACLPolicy;
 
 export interface SetPolicyRawReq {
   policy: string;
+  expectedUpdatedAt?: string;
 }
 export interface SetPolicyRawRes { success: boolean; message?: string }
 
@@ -60,10 +67,10 @@ export interface DeleteRuleByIndexReq {
 export interface DeleteRuleByIndexRes { success: boolean }
 
 export interface GenerateReq {}
-export type GenerateRes = ACLPolicyStructure;
+export type GenerateRes = ACLPolicy;
 
 export interface ListPoliciesReq {}
-export type ListPoliciesRes = ACLPolicyRecord[];
+export type ListPoliciesRes = ACLRevision[];
 
 export interface ApplyReq {
   id: number;

@@ -1,4 +1,4 @@
-// Copyright (C) 2026 
+// Copyright (C) 2026
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as
@@ -17,27 +17,42 @@ package middleware
 
 import (
 	"headscale-panel/pkg/unifyerror"
-	"headscale-panel/router/services"
 
 	"github.com/gin-gonic/gin"
 )
 
-// PermissionMiddleware checks if the user has the required permission
-func PermissionMiddleware(requiredPermission string) gin.HandlerFunc {
+// PermissionMiddleware guards a route with a permission code.
+//
+// This is the first of two checks; the service layer checks again. The
+// duplication is deliberate: a handler reachable through a second route, or
+// called directly from another service, must not be able to skip authorization
+// because someone forgot to copy the guard.
+func PermissionMiddleware(code string) gin.HandlerFunc {
+	return requireAny(code)
+}
+
+// PermissionAnyMiddleware passes when the caller holds at least one code.
+func PermissionAnyMiddleware(codes ...string) gin.HandlerFunc {
+	return requireAny(codes...)
+}
+
+func requireAny(codes ...string) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		userID := c.GetUint("userID")
-		if userID == 0 {
+		session := CurrentSession(c)
+		if session == nil {
 			unifyerror.Fail(c, unifyerror.InvalidToken())
 			c.Abort()
 			return
 		}
 
-		if err := services.RequirePermission(userID, requiredPermission); err != nil {
-			unifyerror.Fail(c, err)
-			c.Abort()
-			return
+		for _, code := range codes {
+			if session.Can(code) {
+				c.Next()
+				return
+			}
 		}
 
-		c.Next()
+		unifyerror.Fail(c, unifyerror.Forbidden())
+		c.Abort()
 	}
 }

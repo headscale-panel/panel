@@ -1,104 +1,100 @@
-/*
- * Copyright (C) 2026 
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
- */
+// Copyright (C) 2026
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Affero General Public License as
+// published by the Free Software Foundation, either version 3 of the
+// License, or (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+// GNU Affero General Public License for more details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program. If not, see <http://www.gnu.org/licenses/>.
 
-export interface HSNoiseConfig {
-  private_key_path?: string;
+export type ConfigOwner = 'managed' | 'readonly' | 'passthrough';
+export type ConfigTier = 'api' | 'hotfile' | 'configfile';
+export type ConfigKind = 'string' | 'bool' | 'int' | 'duration' | 'strings' | 'string_map';
+export type ConfigOwnershipMode = 'managed' | 'observed';
+
+export interface ConfigField {
+  key: string;
+  value?: unknown;
+  owner: ConfigOwner;
+  tier: ConfigTier;
+  kind: ConfigKind;
+  section: string;
+  secret: boolean;
+  note?: string;
 }
 
-export interface HSPrefixes {
-  v4?: string;
-  allocation?: string;
+export interface ConfigDriftEntry {
+  key: string;
+  in_file?: unknown;
+  expected?: unknown;
+  secret: boolean;
 }
 
-export interface HSEmbeddedDERPServer {
-  enabled?: boolean;
+export interface ConfigDriftReport {
+  drift?: ConfigDriftEntry[];
+  missing?: string[];
+  unmodelled?: string[];
 }
 
-export interface HSDERPConfig {
-  server?: HSEmbeddedDERPServer;
-  paths?: string[];
+export interface HeadscaleConfigView {
+  mode: ConfigOwnershipMode;
+  configured: boolean;
+  path: string;
+  fields: ConfigField[];
+  drift?: ConfigDriftReport;
+  unmodelled?: string[];
 }
 
-export interface HSSQLiteDB {
-  path?: string;
-  write_ahead_log?: boolean;
+export interface ConfigChange {
+  key: string;
+  from?: unknown;
+  to?: unknown;
+  bootstrap?: boolean;
 }
 
-export interface HSDatabaseConf {
-  type?: string;
-  sqlite?: HSSQLiteDB;
+export interface ConfigBlockedWrite {
+  key: string;
+  reason: string;
 }
 
-export interface HSNameservers {
-  global?: string[];
+export interface ConfigRestartOutcome {
+  performed?: boolean;
+  requires_manual?: boolean;
+  manual_hint?: string;
+  reason?: string;
 }
 
-export interface HSDNSConfig {
-  magic_dns?: boolean;
-  override_local_dns?: boolean;
-  base_domain?: string;
-  nameservers?: HSNameservers;
+export interface UpdateConfigReq {
+  values: Record<string, unknown>;
+  restart?: boolean;
 }
 
-export interface HSPKCEConfig {
-  enabled?: boolean;
-  method?: string;
+export interface UpdateConfigRes {
+  message?: string;
+  changes?: ConfigChange[];
+  blocked?: ConfigBlockedWrite[];
+  restart?: ConfigRestartOutcome;
 }
 
-export interface HSOIDCConfig {
-  only_start_if_oidc_is_available?: boolean;
-  issuer?: string;
-  client_id?: string;
-  client_secret?: string;
-  client_secret_path?: string;
-  scope?: string[];
-  email_verified_required?: boolean;
-  allowed_domains?: string[];
-  allowed_users?: string[];
-  allowed_groups?: string[];
-  strip_email_domain?: boolean;
-  expiry?: string;
-  use_expiry_from_token?: boolean;
-  pkce?: HSPKCEConfig;
-}
-
-export interface HSPolicyConfig {
-  mode?: string;
-}
-
-export interface HeadscaleConfig {
-  server_url?: string;
-  listen_addr?: string;
-  metrics_listen_addr?: string;
-  grpc_listen_addr?: string;
-  grpc_allow_insecure?: boolean;
-  private_key_path?: string;
-  noise?: HSNoiseConfig;
-  prefixes?: HSPrefixes;
-  derp?: HSDERPConfig;
-  database?: HSDatabaseConf;
-  dns?: HSDNSConfig;
-  policy?: HSPolicyConfig;
-  oidc?: HSOIDCConfig;
-}
-
-export type GetConfigRes = HeadscaleConfig;
-export type UpdateConfigReq = HeadscaleConfig;
-export type PreviewConfigReq = HeadscaleConfig;
 export interface PreviewConfigRes {
   yaml?: string;
+  changes?: ConfigChange[];
+  blocked?: ConfigBlockedWrite[];
 }
+
+export interface UpdateModeReq {
+  mode: ConfigOwnershipMode;
+}
+
+export interface RunningConfigRes {
+  yaml: string;
+  docs: boolean;
+}
+
+export type GetConfigRes = HeadscaleConfigView;

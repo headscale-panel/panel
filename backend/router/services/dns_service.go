@@ -1,4 +1,4 @@
-// Copyright (C) 2026 
+// Copyright (C) 2026
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as
@@ -94,7 +94,7 @@ func validateDNSRecord(name, recordType, value string) error {
 }
 
 func (s *dnsService) Create(actorUserID uint, req *CreateDNSRecordRequest) (*model.DNSRecord, error) {
-	if err := RequirePermission(actorUserID, "dns:record:create"); err != nil {
+	if err := RequirePermission(actorUserID, constants.PermDNSRecordManage); err != nil {
 		return nil, err
 	}
 	if err := validateDNSRecord(req.Name, req.Type, req.Value); err != nil {
@@ -111,14 +111,15 @@ func (s *dnsService) Create(actorUserID uint, req *CreateDNSRecordRequest) (*mod
 }
 
 func (s *dnsService) List(actorUserID uint, req *ListDNSRecordRequest) ([]model.DNSRecord, int64, error) {
-	if err := RequirePermission(actorUserID, "dns:record:list"); err != nil {
+	if err := RequirePermission(actorUserID, constants.PermDNSRecordList); err != nil {
 		return nil, 0, err
 	}
-	if s.shouldSyncFromFile() {
-		if _, err := s.syncFileRecordsToDB(); err != nil {
-			return nil, 0, err
-		}
-	}
+
+	// The database is the only source for reads.
+	//
+	// The file is derived from it, never read back automatically: an automatic
+	// backflow resurrects records an operator deleted from the panel, because the
+	// stale file still mentions them. Importing is an explicit action.
 	var records []model.DNSRecord
 	var total int64
 	query := model.DB.Model(&model.DNSRecord{})
@@ -140,25 +141,34 @@ func (s *dnsService) List(actorUserID uint, req *ListDNSRecordRequest) ([]model.
 }
 
 func (s *dnsService) Update(actorUserID uint, req *UpdateDNSRecordRequest) (*model.DNSRecord, error) {
-	if err := RequirePermission(actorUserID, "dns:record:update"); err != nil {
+	if err := RequirePermission(actorUserID, constants.PermDNSRecordManage); err != nil {
 		return nil, err
 	}
 	var record model.DNSRecord
 	if err := model.DB.First(&record, req.ID).Error; err != nil {
 		return nil, unifyerror.DbError(err)
 	}
+	nextName := record.Name
+	nextType := record.Type
+	nextValue := record.Value
 	updates := map[string]interface{}{}
 	if req.Name != "" {
+		nextName = req.Name
 		updates["name"] = req.Name
 	}
 	if req.Type != "" {
+		nextType = req.Type
 		updates["type"] = req.Type
 	}
 	if req.Value != "" {
+		nextValue = req.Value
 		updates["value"] = req.Value
 	}
 	if req.Comment != "" {
 		updates["comment"] = req.Comment
+	}
+	if err := validateDNSRecord(nextName, nextType, nextValue); err != nil {
+		return nil, err
 	}
 	if len(updates) > 0 {
 		if err := model.DB.Model(&record).Updates(updates).Error; err != nil {
@@ -175,7 +185,7 @@ func (s *dnsService) Update(actorUserID uint, req *UpdateDNSRecordRequest) (*mod
 }
 
 func (s *dnsService) Delete(actorUserID uint, id uint) error {
-	if err := RequirePermission(actorUserID, "dns:record:delete"); err != nil {
+	if err := RequirePermission(actorUserID, constants.PermDNSRecordManage); err != nil {
 		return err
 	}
 	if err := model.DB.Delete(&model.DNSRecord{}, id).Error; err != nil {
@@ -185,7 +195,7 @@ func (s *dnsService) Delete(actorUserID uint, id uint) error {
 }
 
 func (s *dnsService) Get(actorUserID uint, id uint) (*model.DNSRecord, error) {
-	if err := RequirePermission(actorUserID, "dns:record:get"); err != nil {
+	if err := RequirePermission(actorUserID, constants.PermDNSRecordList); err != nil {
 		return nil, err
 	}
 	var record model.DNSRecord
@@ -197,7 +207,7 @@ func (s *dnsService) Get(actorUserID uint, id uint) (*model.DNSRecord, error) {
 
 // SyncToFile synchronizes all DNS records to the extra-records.json file
 func (s *dnsService) SyncToFile(actorUserID uint) error {
-	if err := RequirePermission(actorUserID, "dns:sync"); err != nil {
+	if err := RequirePermission(actorUserID, constants.PermDNSRecordManage); err != nil {
 		return err
 	}
 	var records []model.DNSRecord
@@ -223,7 +233,7 @@ func (s *dnsService) SyncToFile(actorUserID uint) error {
 
 // GetExtraRecordsFromFile reads DNS records from the extra-records file
 func (s *dnsService) GetExtraRecordsFromFile(actorUserID uint) ([]ExtraRecord, error) {
-	if err := RequirePermission(actorUserID, "dns:file:get"); err != nil {
+	if err := RequirePermission(actorUserID, constants.PermDNSRecordList); err != nil {
 		return nil, err
 	}
 	return s.readExtraRecordsFromFile()
@@ -231,7 +241,7 @@ func (s *dnsService) GetExtraRecordsFromFile(actorUserID uint) ([]ExtraRecord, e
 
 // ImportFromFile imports DNS records from the file into the database
 func (s *dnsService) ImportFromFile(actorUserID uint) (int, error) {
-	if err := RequirePermission(actorUserID, "dns:import"); err != nil {
+	if err := RequirePermission(actorUserID, constants.PermDNSRecordManage); err != nil {
 		return 0, err
 	}
 	return s.syncFileRecordsToDB()

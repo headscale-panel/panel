@@ -13,5 +13,5 @@ jobs:
       - name: Check License Headers
         uses: apache/skywalking-eyes/header@v0.8.0
         with:
-          config: .licenserc.yml
+          config: .licenserc.yaml
           mode: check

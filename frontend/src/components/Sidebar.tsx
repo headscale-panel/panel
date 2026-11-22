@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2026 
+ * Copyright (C) 2026
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -49,25 +49,25 @@ interface SidebarProps {
 const menuIconMap: Record<string, React.ReactNode> = {
   dashboard: <HomeOutlined />,
   devices: <DesktopOutlined />,
-  users: <TeamOutlined />,
+  networkIdentities: <TeamOutlined />,
   routes: <NodeIndexOutlined />,
   resources: <DatabaseOutlined />,
   acl: <LockOutlined />,
   dns: <GlobalOutlined />,
   metrics: <BarChartOutlined />,
-  panelAccounts: <IdcardOutlined />,
+  accounts: <IdcardOutlined />,
   settings: <SettingOutlined />,
 };
 
 const menuPaths: Record<string, string> = {
   dashboard: '/',
-  users: '/users',
+  networkIdentities: '/network-identities',
   routes: '/routes',
   resources: '/resources',
   acl: '/acl',
   dns: '/dns',
   metrics: '/metrics',
-  panelAccounts: '/panel-accounts',
+  accounts: '/accounts',
   settings: '/settings',
 };
 
@@ -91,7 +91,7 @@ export default function Sidebar({
   };
 
   // Build menu items
-  const allKeys: AppSectionKey[] = ['dashboard', 'devices', 'users', 'routes', 'resources', 'acl', 'dns', 'metrics', 'panelAccounts', 'settings'];
+  const allKeys: AppSectionKey[] = ['dashboard', 'devices', 'networkIdentities', 'routes', 'resources', 'acl', 'dns', 'metrics', 'accounts', 'settings'];
   const menuItems: MenuProps['items'] = allKeys
     .filter((key) => canAccessSection(user, key))
     .map((key) => ({

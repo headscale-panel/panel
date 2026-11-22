@@ -1,4 +1,4 @@
-// Copyright (C) 2026 
+// Copyright (C) 2026
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as
@@ -22,7 +22,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"headscale-panel/pkg/conf"
-	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
+	"headscale-panel/pkg/constants"
 	"headscale-panel/pkg/log"
 	paneljwt "headscale-panel/pkg/utils/jwt"
 	"net/http"
@@ -46,12 +46,29 @@ var upgrader = websocket.Upgrader{
 
 // Client represents a WebSocket client
 type Client struct {
-	ID     string
-	UserID string
-	Conn   *websocket.Conn
-	Send   chan []byte
-	Hub    *Hub
-	mu     sync.Mutex
+	ID             string
+	UserID         string
+	AccountID      uint
+	SessionVersion uint64
+	ExpiresAt      time.Time
+	Conn           *websocket.Conn
+	Send           chan []byte
+	Hub            *Hub
+	mu             sync.Mutex
+}
+
+func (c *Client) isSessionValid() bool {
+	if c.AccountID == 0 || Accounts == nil {
+		return false
+	}
+	if !c.ExpiresAt.IsZero() && time.Now().After(c.ExpiresAt) {
+		return false
+	}
+	acc, err := Accounts.Get(c.AccountID)
+	if err != nil || !acc.IsActive() {
+		return false
+	}
+	return acc.SessionVersion == c.SessionVersion
 }
 
 // Hub maintains the set of active clients and broadcasts messages
@@ -189,6 +206,56 @@ func (h *Hub) Broadcast(msgType string, data interface{}) {
 	h.broadcast <- jsonData
 }
 
+// BroadcastAuthorized sends a message only to connected clients whose session
+// is still valid and whose role holds requiredPermission.
+func (h *Hub) BroadcastAuthorized(requiredPermission, msgType string, data interface{}) {
+	msg := WSMessage{
+		Type: msgType,
+		Data: data,
+	}
+	jsonData, err := json.Marshal(msg)
+	if err != nil {
+		log.L.Error("Failed to marshal WebSocket message", zap.Error(err))
+		return
+	}
+
+	h.mu.RLock()
+	clients := make([]*Client, 0, len(h.clients))
+	for client := range h.clients {
+		clients = append(clients, client)
+	}
+	h.mu.RUnlock()
+
+	var staleClients []*Client
+	for _, client := range clients {
+		if Accounts == nil || client.AccountID == 0 {
+			staleClients = append(staleClients, client)
+			continue
+		}
+		if !client.ExpiresAt.IsZero() && time.Now().After(client.ExpiresAt) {
+			staleClients = append(staleClients, client)
+			continue
+		}
+		acc, accErr := Accounts.Get(client.AccountID)
+		if accErr != nil || !acc.IsActive() || acc.SessionVersion != client.SessionVersion {
+			staleClients = append(staleClients, client)
+			continue
+		}
+		if requiredPermission != "" && !Accounts.HasPermission(acc, requiredPermission) {
+			continue
+		}
+		select {
+		case client.Send <- jsonData:
+		default:
+			staleClients = append(staleClients, client)
+		}
+	}
+
+	for _, client := range staleClients {
+		h.enqueueUnregister(client)
+	}
+}
+
 // BroadcastToUser sends a message to a specific user
 func (h *Hub) BroadcastToUser(userID string, msgType string, data interface{}) {
 	msg := WSMessage{
@@ -258,6 +325,9 @@ func HandleWebSocket(c *gin.Context) {
 		return
 	}
 
+	// Bound frame size before reading the unauthenticated auth frame.
+	conn.SetReadLimit(512 * 1024)
+
 	// Require the first message to be an auth message within 10 seconds.
 	conn.SetReadDeadline(time.Now().Add(10 * time.Second))
 	_, message, err := conn.ReadMessage()
@@ -302,24 +372,32 @@ func HandleWebSocket(c *gin.Context) {
 		conn.Close()
 		return
 	}
-	user, err := ValidateSessionUser(claims.UserID)
+	session, err := ResolveSession(claims)
 	if err != nil {
 		conn.WriteMessage(websocket.CloseMessage,
 			websocket.FormatCloseMessage(4001, "invalid token"))
 		conn.Close()
 		return
 	}
-	userID := fmt.Sprintf("%d", user.ID)
+	userID := fmt.Sprintf("%d", session.Account.ID)
 
 	// Auth succeeded — reset deadline and register client
 	conn.SetReadDeadline(time.Time{})
 
+	var expiresAt time.Time
+	if claims.ExpiresAt != nil {
+		expiresAt = claims.ExpiresAt.Time
+	}
+
 	client := &Client{
-		ID:     generateClientID(),
-		UserID: userID,
-		Conn:   conn,
-		Send:   make(chan []byte, 256),
-		Hub:    wsHub,
+		ID:             generateClientID(),
+		UserID:         userID,
+		AccountID:      session.Account.ID,
+		SessionVersion: session.Account.SessionVersion,
+		ExpiresAt:      expiresAt,
+		Conn:           conn,
+		Send:           make(chan []byte, 256),
+		Hub:            wsHub,
 	}
 
 	wsHub.register <- client
@@ -329,11 +407,6 @@ func HandleWebSocket(c *gin.Context) {
 }
 
 func extractWebSocketToken(c *gin.Context) string {
-	token := strings.TrimSpace(c.Query("token"))
-	if token != "" {
-		return token
-	}
-
 	authHeader := strings.TrimSpace(c.GetHeader("Authorization"))
 	if strings.HasPrefix(strings.ToLower(authHeader), "bearer ") {
 		return strings.TrimSpace(authHeader[7:])
@@ -377,6 +450,12 @@ func (c *Client) writePump() {
 			}
 
 		case <-ticker.C:
+			if !c.isSessionValid() {
+				c.Conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
+				_ = c.Conn.WriteMessage(websocket.CloseMessage,
+					websocket.FormatCloseMessage(4001, "session expired"))
+				return
+			}
 			c.Conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
 			if err := c.Conn.WriteMessage(websocket.PingMessage, nil); err != nil {
 				return
@@ -452,8 +531,8 @@ func startMetricsCollector(ctx context.Context, stopped chan<- struct{}) {
 
 		deviceMetrics := collectDeviceCountMetrics(ctx)
 
-		// Broadcast metrics update
-		wsHub.Broadcast("metrics_update", MetricsUpdate{
+		// Broadcast metrics update only to clients authorized to view metrics
+		wsHub.BroadcastAuthorized(constants.PermMetricsView, "metrics_update", MetricsUpdate{
 			Type: "device_count",
 			Data: deviceMetrics,
 		})
@@ -466,7 +545,7 @@ func collectDeviceCountMetrics(ctx context.Context) map[string]interface{} {
 		"total":  0,
 	}
 
-	client, err := headscaleServiceClient()
+	client, err := headscaleRESTClient()
 	if err != nil {
 		log.L.Warn("WebSocket metrics: headscale client unavailable", zap.Error(err))
 		return metrics
@@ -475,35 +554,36 @@ func collectDeviceCountMetrics(ctx context.Context) map[string]interface{} {
 	queryCtx, cancel := withServiceTimeout(ctx)
 	defer cancel()
 
-	nodesResp, grpcErr := client.ListNodes(queryCtx, &v1.ListNodesRequest{})
-	if grpcErr != nil {
-		log.L.Error("WebSocket metrics: failed to list headscale nodes", zap.Error(grpcErr))
+	nodes, apiErr := client.ListNodes(queryCtx, "")
+	if apiErr != nil {
+		log.L.Error("WebSocket metrics: failed to list headscale nodes", zap.Error(apiErr))
 		return metrics
 	}
 
 	online := 0
-	for _, node := range nodesResp.Nodes {
+	for _, node := range nodes {
 		if node.LastSeen == nil {
 			continue
 		}
-		if time.Since(node.LastSeen.AsTime()) < 5*time.Minute {
+		if time.Since(*node.LastSeen) < 5*time.Minute {
 			online++
 		}
 	}
 
 	metrics["online"] = online
-	metrics["total"] = len(nodesResp.Nodes)
+	metrics["total"] = len(nodes)
 
 	return metrics
 }
 
-// BroadcastDeviceStatus broadcasts a device status update
+// BroadcastDeviceStatus broadcasts a device status update to clients authorized
+// to list all network devices.
 func BroadcastDeviceStatus(machineID string, online bool, lastSeen string, ipAddresses []string) {
 	if wsHub == nil {
 		return
 	}
 
-	wsHub.Broadcast("device_status", DeviceStatusUpdate{
+	wsHub.BroadcastAuthorized(constants.PermNetworkDeviceList, "device_status", DeviceStatusUpdate{
 		MachineID:   machineID,
 		Online:      online,
 		LastSeen:    lastSeen,
@@ -522,20 +602,36 @@ func isOriginAllowed(r *http.Request) bool {
 	if err != nil || originURL.Host == "" {
 		return false
 	}
-
-	originHost := strings.ToLower(originURL.Host)
-	requestHost := strings.ToLower(strings.TrimSpace(r.Host))
-	if requestHost != "" && originHost == requestHost {
-		return true
+	originScheme := strings.ToLower(originURL.Scheme)
+	if originScheme != "http" && originScheme != "https" {
+		return false
 	}
 
+	originHost := strings.ToLower(originURL.Host)
 	baseURL := strings.TrimSpace(conf.Conf.System.BaseURL)
 	if baseURL != "" {
-		if base, err := url.Parse(baseURL); err == nil {
-			if strings.EqualFold(originHost, strings.ToLower(base.Host)) {
+		if base, parseErr := url.Parse(baseURL); parseErr == nil && base.Host != "" {
+			baseScheme := strings.ToLower(base.Scheme)
+			if strings.EqualFold(originHost, strings.ToLower(base.Host)) && originScheme == baseScheme {
 				return true
 			}
+			// Allow Vite dev server when running locally.
+			if strings.HasPrefix(strings.ToLower(baseURL), "http://localhost") ||
+				strings.HasPrefix(strings.ToLower(baseURL), "http://127.0.0.1") {
+				if originScheme == "http" && originHost == "localhost:5173" {
+					return true
+				}
+			}
 		}
+	}
+
+	requestHost := strings.ToLower(strings.TrimSpace(r.Host))
+	requestScheme := "http"
+	if r.TLS != nil {
+		requestScheme = "https"
+	}
+	if requestHost != "" && originHost == requestHost && originScheme == requestScheme {
+		return true
 	}
 
 	return false

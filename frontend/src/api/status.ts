@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2026 
+ * Copyright (C) 2026
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -26,5 +26,5 @@ export const statusApi = {
 
   /** GET /headscale/status — lightweight headscale gRPC liveness probe (requires auth). */
   getHeadscaleStatus: () =>
-    request<RespType<GetHeadscaleStatusRes>>({ url: '/headscale/status', method: 'GET' }),
+    request<RespType<GetHeadscaleStatusRes>>({ url: '/system/health', method: 'GET' }),
 };

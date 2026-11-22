@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2026 
+ * Copyright (C) 2026
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -47,23 +47,23 @@ export default function ProtectedRoute({
   useEffect(() => {
     if (pendingProfile && !fetched.current) {
       fetched.current = true;
-      authApi.getUserInfo().then((data: any) => {
-        if (data?.user) {
-          const u = data.user;
-          const role = u.group?.name?.toLowerCase() === UserRole.Admin ? UserRole.Admin : UserRole.User;
-          updateUser({
-            id: u.id,
-            username: u.username,
-            email: u.email,
-            role,
-            headscale_name: u.headscale_name || u.username,
-            display_name: u.display_name,
-            avatar: u.profile_pic_url,
-            permissions: data.permissions,
-            totp_enabled: u.totp_enabled,
-            guide_tour_seen_at: u.guide_tour_seen_at ?? null,
-          });
-        }
+      authApi.me().then((me) => {
+        if (!me)
+          return;
+        // Administrator status comes from the role flag, never from a role name:
+        // a deployment may rename its roles at any time.
+        updateUser({
+          id: me.id,
+          username: me.username,
+          email: me.email ?? '',
+          role: me.is_system_admin ? UserRole.Admin : UserRole.User,
+          headscale_name: me.username,
+          display_name: me.display_name,
+          avatar: me.profile_pic_url,
+          permissions: me.permissions,
+          totp_enabled: me.totp_enabled,
+          guide_tour_seen_at: me.guide_tour_seen ? '' : null,
+        });
       }).catch(() => {
         // Token invalid - interceptor handles 401 redirect
       });

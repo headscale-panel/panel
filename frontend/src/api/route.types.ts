@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2026 
+ * Copyright (C) 2026
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -15,34 +15,16 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
+import type { Route } from './entities';
+
 export interface ListRoutesReq {
-  page?: number;
-  pageSize?: number;
-  all?: boolean;
-  userId?: string;
+  q?: string;
+  user_id?: number;
   machine_id?: string;
 }
-
-export interface RouteItem {
-  id?: number;
-  machine_id?: number;
-  prefix?: string;
-  advertised?: boolean;
-  enabled?: boolean;
-  is_primary?: boolean;
-}
-
-export interface ListRoutesRes {
-  list: RouteItem[];
-  total: number;
-  page: number;
-  page_size: number;
-  page_count: number;
-}
+export type ListRoutesRes = Route[];
 
 export interface ToggleRouteReq {
-  machine_id: number;
+  nodeId: number;
   destination: string;
 }
-
-export interface ToggleRouteRes {}

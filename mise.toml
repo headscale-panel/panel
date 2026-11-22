@@ -1,0 +1,262 @@
+# Single root mise configuration for headscale-panel.
+# No mise config files should be placed in subdirectories.
+
+[tools]
+go = "1.27"
+node = "26"
+pnpm = "10.33.1"
+
+[env]
+PROJECT_ROOT = "{{config_root}}"
+BACKEND_DIR = "{{config_root}}/backend"
+FRONTEND_DIR = "{{config_root}}/frontend"
+SHELL_DIR = "{{config_root}}/shell"
+DEV_DATA_DIR = "{{config_root}}/dev-data"
+HS_REPO_URL = "https://github.com/juanfont/headscale.git"
+
+# ── Backend ───────────────────────────────────────────────────────────────────
+
+[tasks."backend:dev"]
+description = "Run the Go backend locally"
+dir = "backend"
+run = "go run ."
+
+[tasks."backend:build"]
+description = "Build the Go backend binary"
+dir = "backend"
+run = "go build -trimpath -o headscale-panel ."
+
+[tasks."backend:vet"]
+description = "Run go vet on the backend"
+dir = "backend"
+run = "go vet ./..."
+
+[tasks."backend:tidy"]
+description = "Tidy Go module dependencies"
+dir = "backend"
+run = "go mod tidy"
+
+# ── Frontend ──────────────────────────────────────────────────────────────────
+
+[tasks."frontend:install"]
+description = "Install frontend dependencies with pnpm"
+dir = "frontend"
+run = "pnpm install --frozen-lockfile"
+
+[tasks."frontend:dev"]
+description = "Run the Vite frontend dev server"
+dir = "frontend"
+run = "pnpm dev"
+
+[tasks."frontend:build"]
+description = "Build the frontend production bundle"
+dir = "frontend"
+run = "pnpm build"
+
+[tasks."frontend:check"]
+description = "Type-check frontend TypeScript sources"
+dir = "frontend"
+run = "pnpm check"
+
+[tasks."frontend:lint"]
+description = "Lint frontend sources with ESLint"
+dir = "frontend"
+run = "pnpm lint"
+
+[tasks."frontend:lint:fix"]
+description = "Auto-fix frontend ESLint issues"
+dir = "frontend"
+run = "pnpm lint:fix"
+
+# ── Aggregate build & quality gates ───────────────────────────────────────────
+
+[tasks.check]
+description = "Run all backend, frontend, and Headscale drift checks"
+depends = [
+  "backend:vet",
+  "frontend:check",
+  "frontend:lint",
+  "hs:check-drift",
+]
+
+[tasks.build]
+description = "Build frontend bundle and backend binary"
+depends = ["frontend:build", "backend:build"]
+
+[tasks."build:docker"]
+description = "Build the production Docker image"
+run = "docker build -t headscale-panel:local ."
+
+# ── Local dev stack (modular shell scripts) ───────────────────────────────────
+
+[tasks."dev:check-deps"]
+description = "Verify Docker, Docker Compose, OpenSSL, and /dev/net/tun"
+run = "bash shell/dev/check-deps.sh"
+
+[tasks."dev:prepare"]
+description = "Ensure dev .env, state directory, and Headscale config seed"
+run = "bash shell/dev/prepare.sh"
+
+[tasks."dev:clean-hs-state"]
+description = "Remove local Headscale DB, keys, and seeded config"
+run = "bash shell/dev/clean-hs-state.sh"
+
+[tasks."dev:ensure-hs-image"]
+description = "Build the adapted Headscale dev image if missing locally"
+run = "bash shell/dev/ensure-hs-image.sh"
+
+[tasks."dev:build-panel"]
+description = "Build the dev panel Docker image"
+run = "bash shell/dev/build-panel.sh"
+
+[tasks."dev:start"]
+description = "Start all dev containers (containerized panel) and wait for health"
+run = "bash shell/dev/start.sh --container"
+
+[tasks."dev:start:host"]
+description = "Start dev infrastructure containers (panel runs on host)"
+run = "bash shell/dev/start.sh --host"
+
+[tasks."dev:bootstrap:apikey"]
+description = "Mint or reuse the local Headscale API key"
+run = "bash shell/dev/bootstrap-apikey.sh"
+
+[tasks."dev:bootstrap:identities"]
+description = "Ensure dev Headscale users and mint pre-auth keys"
+run = "bash shell/dev/bootstrap-identities.sh"
+
+[tasks."dev:bootstrap:clients"]
+description = "Log dev Tailscale client containers into Headscale"
+run = "bash shell/dev/bootstrap-clients.sh"
+
+[tasks."dev:bootstrap:panel"]
+description = "Initialize the dev panel admin account via /setup/init"
+run = "bash shell/dev/bootstrap-panel.sh"
+
+[tasks."dev:bootstrap"]
+description = "Run all dev stack bootstrap steps in order"
+depends = [
+  "dev:bootstrap:apikey",
+  "dev:bootstrap:identities",
+  "dev:bootstrap:clients",
+  "dev:bootstrap:panel",
+]
+
+[tasks."dev:up"]
+description = "Bring up the full containerized dev stack using the released Headscale image"
+run = [
+  { task = "dev:check-deps" },
+  { task = "dev:prepare" },
+  { task = "dev:ensure-hs-image" },
+  { task = "dev:build-panel" },
+  { task = "dev:start" },
+  { task = "dev:bootstrap:apikey" },
+  { task = "dev:bootstrap:identities" },
+  { task = "dev:bootstrap:clients" },
+  { task = "dev:bootstrap:panel" },
+]
+
+[tasks."dev:up:source"]
+description = "Temporary mode: build Headscale from AdaptedHeadscaleCommit source and bring up the full dev stack"
+env = { HS_BUILD_FROM_SOURCE = "1" }
+run = [
+  { task = "dev:check-deps" },
+  { task = "dev:prepare" },
+  { task = "dev:ensure-hs-image" },
+  { task = "dev:build-panel" },
+  { task = "dev:start" },
+  { task = "dev:bootstrap:apikey" },
+  { task = "dev:bootstrap:identities" },
+  { task = "dev:bootstrap:clients" },
+  { task = "dev:bootstrap:panel" },
+]
+
+[tasks."dev:up:host"]
+description = "Bring up dev infrastructure containers (released Headscale image) for running the panel on the host"
+run = [
+  { task = "dev:check-deps" },
+  { task = "dev:prepare" },
+  { task = "dev:ensure-hs-image" },
+  { task = "dev:start:host" },
+  { task = "dev:bootstrap:apikey" },
+  { task = "dev:bootstrap:identities" },
+  { task = "dev:bootstrap:clients" },
+]
+
+[tasks."dev:up:host:source"]
+description = "Temporary mode: build Headscale from source and bring up dev infra for host-mode panel"
+env = { HS_BUILD_FROM_SOURCE = "1" }
+run = [
+  { task = "dev:check-deps" },
+  { task = "dev:prepare" },
+  { task = "dev:ensure-hs-image" },
+  { task = "dev:start:host" },
+  { task = "dev:bootstrap:apikey" },
+  { task = "dev:bootstrap:identities" },
+  { task = "dev:bootstrap:clients" },
+]
+
+[tasks."dev:up:fresh"]
+description = "Clear Headscale state and bring up a fresh containerized dev stack"
+run = [
+  { task = "dev:check-deps" },
+  { task = "dev:clean-hs-state" },
+  { task = "dev:up" },
+]
+
+[tasks."dev:up:fresh:source"]
+description = "Clear Headscale state and bring up a fresh dev stack built from Headscale source"
+env = { HS_BUILD_FROM_SOURCE = "1" }
+run = [
+  { task = "dev:check-deps" },
+  { task = "dev:clean-hs-state" },
+  { task = "dev:up:source" },
+]
+
+[tasks."dev:down"]
+description = "Stop the dev stack while keeping volumes"
+run = "bash shell/dev/down.sh"
+
+[tasks."dev:down:volumes"]
+description = "Stop the dev stack and remove volumes"
+run = "bash shell/dev/down.sh --volumes"
+
+[tasks."dev:logs"]
+description = "Follow dev stack container logs"
+run = "bash shell/dev/logs.sh"
+
+[tasks."dev:reset"]
+description = "Destroy dev containers, volumes, database, and generated state"
+run = "bash shell/dev/reset.sh"
+
+[tasks."dev:verify"]
+description = "Run end-to-end tailnet isolation and routing assertions"
+run = "bash shell/dev/verify.sh"
+
+# ── Upstream Headscale tooling ────────────────────────────────────────────────
+
+[tasks."hs:build-image"]
+description = "Build a Headscale container image from source for a commit or adapted baseline"
+run = "bash shell/hs/build-image.sh"
+
+[tasks."hs:check-drift"]
+description = "Verify vendored OpenAPI spec matches AdaptedHeadscaleCommit"
+run = "bash shell/hs/check-drift.sh"
+
+[tasks."hs:diff"]
+description = "Diff two Headscale refs across API files, config keys, and routes"
+run = "bash shell/hs/diff.sh"
+
+[tasks."hs:vendor-spec"]
+description = "Vendor the downgraded OpenAPI 3.0.3 spec for a Headscale ref"
+run = "bash shell/hs/vendor-spec.sh"
+
+# ── TLS Certificates ──────────────────────────────────────────────────────────
+
+[tasks."certs:self-signed"]
+description = "Generate a self-signed TLS certificate for the dev stack"
+run = "bash shell/certs/self-signed.sh"
+
+[tasks."certs:private-ca"]
+description = "Generate a private CA and signed server certificate"
+run = "bash shell/certs/private-ca.sh"

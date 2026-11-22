@@ -152,7 +152,11 @@ function RegionForm({
           {t.derp.regionName}
           {' *'}
         </Text>
-        <Input value={value.regionname} onChange={(e) => set('regionname', e.target.value)} placeholder="Custom Region" />
+        <Input
+          value={value.regionname}
+          onChange={(e) => set('regionname', e.target.value)}
+          placeholder={t.settingsExtra.derp.regionNamePlaceholder}
+        />
       </div>
     </Space>
   );

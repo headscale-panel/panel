@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2026 
+ * Copyright (C) 2026
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -15,92 +15,117 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-import {
-  aclApi,
-  deviceApi,
-  headscaleUserApi,
-  panelSettingsApi,
-  resourceApi,
-} from '@/api';
+import type { Account, NetworkIdentity, Resource } from '@/api/entities';
+import { accountApi, aclApi, connectionApi, deviceApi, networkIdentityApi, panelSSOApi, resourceApi, roleApi } from '@/api';
 import {
   normalizeACLPolicy,
-  normalizeDeviceListResponse,
-  normalizeHeadscaleUserOptions,
-  normalizeHeadscaleUsers,
-  normalizeOIDCForm,
-  normalizePanelConnectionSettings,
+  normalizeConnectionSettings,
+  normalizeDevices,
+  normalizeIdentityOptions,
   normalizeResources,
+  normalizeSSOForm,
 } from './normalizers';
 
-export async function loadUsersPageData() {
-  const [usersRes, policyRes, onlineDevicesRes, allDevicesRes] = await Promise.all([
-    headscaleUserApi.list({ all: true }),
+/**
+ * Prefetch helpers used by the route-level loaders.
+ *
+ * Every list endpoint returns a bare array now: the panel filters and pages in
+ * memory because headscale's own list endpoints have no paging. Fetching once and
+ * shaping in the browser keeps those controls responsive.
+ */
+
+export interface NetworkIdentitiesPageData {
+  identities: NetworkIdentity[];
+  policy: ReturnType<typeof normalizeACLPolicy>;
+  onlineOwnerIds: Set<number>;
+  devicesByOwner: Record<number, ReturnType<typeof normalizeDevices>>;
+  accounts: Account[];
+}
+
+export async function loadNetworkIdentitiesPageData(): Promise<NetworkIdentitiesPageData> {
+  const [identitiesRes, policyRes, devicesRes, accountsRes] = await Promise.all([
+    networkIdentityApi.list(),
     aclApi.getPolicy().catch(() => null),
-    deviceApi.list({ all: true, status: 'online' }).catch(() => null),
-    deviceApi.list({ all: true }).catch(() => null),
+    deviceApi.list().catch(() => null),
+    accountApi.list().catch(() => null),
   ]);
 
-  const devices = normalizeDeviceListResponse(onlineDevicesRes).list;
-  const allDevices = normalizeDeviceListResponse(allDevicesRes).list;
-  const onlineUsers = new Set(
-    devices.filter((device) => device.online && device.user?.name).map((device) => device.user!.name),
-  );
-  const userDevicesByOwner = allDevices.reduce<Record<string, typeof allDevices>>((record, device) => {
-    const ownerKey = device.user?.name?.trim().toLowerCase();
-    // Put device under its user bucket if it has an owner
-    if (ownerKey) {
-      if (!record[ownerKey]) {
-        record[ownerKey] = [];
-      }
-      record[ownerKey].push(device);
-    }
-    // Also bucket under __tagged__ if the device has any tags (regardless of user)
-    if (device.tags && device.tags.length > 0) {
-      if (!record.__tagged__) {
-        record.__tagged__ = [];
-      }
-      record.__tagged__.push(device);
-    }
-    return record;
-  }, {});
+  const identities = identitiesRes ?? [];
+  const devices = normalizeDevices(devicesRes);
 
-  const hsUsers = normalizeHeadscaleUsers(usersRes);
+  const onlineOwnerIds = new Set<number>();
+  const devicesByOwner: Record<number, typeof devices> = {};
+  for (const device of devices) {
+    if (device.online) {
+      onlineOwnerIds.add(device.owner_hs_user_id);
+    }
+    if (!devicesByOwner[device.owner_hs_user_id]) {
+      devicesByOwner[device.owner_hs_user_id] = [];
+    }
+    devicesByOwner[device.owner_hs_user_id].push(device);
+  }
 
   return {
-    hsUsers,
-    aclPolicy: normalizeACLPolicy(policyRes),
-    onlineUsers,
-    userDevicesByOwner,
+    identities,
+    policy: normalizeACLPolicy(policyRes),
+    onlineOwnerIds,
+    devicesByOwner,
+    accounts: accountsRes ?? [],
   };
 }
 
-export async function loadACLPageData() {
-  const [policyRes, devicesRes, resourcesRes, usersRes] = await Promise.all([
+export interface AccountsPageData {
+  accounts: Account[];
+  roles: Awaited<ReturnType<typeof roleApi.list>> | [];
+  identities: NetworkIdentity[];
+}
+
+export async function loadAccountsPageData(): Promise<AccountsPageData> {
+  const [accountsRes, rolesRes, identitiesRes] = await Promise.all([
+    accountApi.list(),
+    roleApi.list().catch(() => []),
+    networkIdentityApi.list().catch(() => []),
+  ]);
+
+  return {
+    accounts: accountsRes ?? [],
+    roles: rolesRes ?? [],
+    identities: identitiesRes ?? [],
+  };
+}
+
+export interface ACLPageData {
+  policy: ReturnType<typeof normalizeACLPolicy>;
+  /* Optimistic-lock token for the policy as it was read. */
+  policyUpdatedAt: string;
+  devices: ReturnType<typeof normalizeDevices>;
+  resources: Resource[];
+  identities: ReturnType<typeof normalizeIdentityOptions>;
+}
+
+export async function loadACLPageData(): Promise<ACLPageData> {
+  const [policyRes, devicesRes, resourcesRes, identitiesRes] = await Promise.all([
     aclApi.getPolicy().catch(() => null),
-    deviceApi.list({ all: true }).catch(() => null),
-    resourceApi.list({ all: true }).catch(() => null),
-    headscaleUserApi.list({ all: true }).catch(() => null),
+    deviceApi.list().catch(() => null),
+    resourceApi.list().catch(() => null),
+    networkIdentityApi.list().catch(() => null),
   ]);
 
   return {
     policy: normalizeACLPolicy(policyRes),
-    devices: normalizeDeviceListResponse(devicesRes).list,
+    policyUpdatedAt: policyRes?.updatedAt ?? '',
+    devices: normalizeDevices(devicesRes),
     resources: normalizeResources(resourcesRes),
-    headscaleUsers: normalizeHeadscaleUserOptions(usersRes),
+    identities: normalizeIdentityOptions(identitiesRes),
   };
 }
 
 export async function loadConnectionSettingsData() {
-  const value = await panelSettingsApi.getConnection();
-  return normalizePanelConnectionSettings(value);
+  const value = await connectionApi.get();
+  return normalizeConnectionSettings(value);
 }
 
-export async function loadOIDCSettingsData(): Promise<{
-  oidcForm: ReturnType<typeof normalizeOIDCForm>;
-}> {
-  const saved = await panelSettingsApi.getOIDCSettings().catch(() => null);
-
-  return {
-    oidcForm: normalizeOIDCForm(saved),
-  };
+export async function loadSSOSettingsData() {
+  const saved = await panelSSOApi.get().catch(() => null);
+  return { ssoForm: normalizeSSOForm(saved) };
 }

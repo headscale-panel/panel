@@ -18,19 +18,19 @@ package services
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
-	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"headscale-panel/model"
 	"headscale-panel/pkg/constants"
+	"headscale-panel/pkg/hsapi"
 	"headscale-panel/pkg/unifyerror"
 	"net/http"
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/tailscale/hujson"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
 
 type aclService struct {
@@ -39,13 +39,19 @@ type aclService struct {
 
 var ACLService = &aclService{}
 
-// InitPolicy ensures ACL policy exists in Headscale during startup.
+// InitPolicy seeds an empty ACL policy when Headscale has never stored one.
+//
+// headscale answers GET /api/v1/policy with HTTP 500 for two very different
+// situations: no policy has ever been saved, and the read itself failed. Only
+// the first may be repaired by writing an empty policy - treating a transient
+// database error as "no policy" would silently replace a live ACL with "{}".
+// hsapi distinguishes the two via ErrNoPolicy.
 func (s *aclService) InitPolicy() error {
 	return s.InitPolicyWithContext(context.Background())
 }
 
 func (s *aclService) InitPolicyWithContext(ctx context.Context) error {
-	client, err := headscaleServiceClient()
+	client, err := headscaleRESTClient()
 	if err != nil {
 		return err
 	}
@@ -53,17 +59,30 @@ func (s *aclService) InitPolicyWithContext(ctx context.Context) error {
 	queryCtx, cancel := withServiceTimeout(ctx)
 	defer cancel()
 
-	_, grpcErr := client.GetPolicy(queryCtx, &v1.GetPolicyRequest{})
-	if grpcErr == nil {
+	return initPolicyWithClient(queryCtx, client)
+}
+
+// initPolicyWithClient holds the decision logic so it can be exercised against
+// a stub server without touching the global client.
+func initPolicyWithClient(ctx context.Context, client policyStore) error {
+	_, getErr := client.GetPolicy(ctx)
+	if getErr == nil {
 		return nil
 	}
+	if !errors.Is(getErr, hsapi.ErrNoPolicy) {
+		return unifyerror.HeadscaleAPIError(getErr)
+	}
 
-	// Policy doesn't exist yet — initialize with an empty policy.
-	_, grpcErr = client.SetPolicy(queryCtx, &v1.SetPolicyRequest{Policy: "{}"})
-	if grpcErr != nil {
-		return unifyerror.GRPCError(grpcErr)
+	if _, setErr := client.SetPolicy(ctx, "{}"); setErr != nil {
+		return unifyerror.HeadscaleAPIError(setErr)
 	}
 	return nil
+}
+
+// policyStore is the slice of the Headscale client the init path needs.
+type policyStore interface {
+	GetPolicy(ctx context.Context) (*hsapi.PolicyResponseBody, error)
+	SetPolicy(ctx context.Context, policy string) (*hsapi.PolicyResponseBody, error)
 }
 
 // GetPolicy retrieves the current ACL policy from Headscale
@@ -72,11 +91,11 @@ func (s *aclService) GetPolicy(actorUserID uint) (*model.ACLPolicyStructure, err
 }
 
 func (s *aclService) GetPolicyWithContext(ctx context.Context, actorUserID uint) (*model.ACLPolicyStructure, error) {
-	if err := RequirePermission(actorUserID, "headscale:acl:view"); err != nil {
+	if err := RequirePermission(actorUserID, constants.PermACLPolicyRead); err != nil {
 		return nil, err
 	}
 
-	client, err := headscaleServiceClient()
+	client, err := headscaleRESTClient()
 	if err != nil {
 		return nil, err
 	}
@@ -84,12 +103,19 @@ func (s *aclService) GetPolicyWithContext(ctx context.Context, actorUserID uint)
 	queryCtx, cancel := withServiceTimeout(ctx)
 	defer cancel()
 
-	resp, grpcErr := client.GetPolicy(queryCtx, &v1.GetPolicyRequest{})
-	if grpcErr != nil {
-		return nil, unifyerror.GRPCError(grpcErr)
+	resp, apiErr := client.GetPolicy(queryCtx)
+	if apiErr != nil {
+		// No policy stored yet is not an error: the panel renders an empty editor.
+		if errors.Is(apiErr, hsapi.ErrNoPolicy) {
+			return &model.ACLPolicyStructure{}, nil
+		}
+		return nil, unifyerror.HeadscaleAPIError(apiErr)
 	}
 
-	rawPolicy := strings.TrimSpace(resp.Policy)
+	rawPolicy := ""
+	if resp != nil {
+		rawPolicy = strings.TrimSpace(resp.Policy)
+	}
 	if rawPolicy == "" || strings.EqualFold(rawPolicy, "null") {
 		return &model.ACLPolicyStructure{}, nil
 	}
@@ -109,11 +135,17 @@ func (s *aclService) GetPolicyWithContext(ctx context.Context, actorUserID uint)
 
 // UpdatePolicy updates the ACL policy in Headscale
 func (s *aclService) UpdatePolicy(actorUserID uint, policy *model.ACLPolicyStructure) error {
-	return s.UpdatePolicyWithContext(context.Background(), actorUserID, policy)
+	return s.UpdatePolicyWithContext(context.Background(), actorUserID, policy, "")
 }
 
-func (s *aclService) UpdatePolicyWithContext(ctx context.Context, actorUserID uint, policy *model.ACLPolicyStructure) error {
-	if err := RequirePermission(actorUserID, "headscale:acl:update"); err != nil {
+// UpdatePolicyWithContext saves a policy, refusing the write when the stored policy
+// changed since the client read it.
+//
+// expectedUpdatedAt is the token the client got from GetPolicy. An empty value means
+// the caller is not participating in the lock, which is allowed for internal flows
+// but means a concurrent edit is not detected for that call.
+func (s *aclService) UpdatePolicyWithContext(ctx context.Context, actorUserID uint, policy *model.ACLPolicyStructure, expectedUpdatedAt string) error {
+	if err := RequirePermission(actorUserID, constants.PermACLPolicyUpdate); err != nil {
 		return err
 	}
 
@@ -121,7 +153,7 @@ func (s *aclService) UpdatePolicyWithContext(ctx context.Context, actorUserID ui
 		return err
 	}
 
-	client, err := headscaleServiceClient()
+	client, err := headscaleRESTClient()
 	if err != nil {
 		return err
 	}
@@ -133,14 +165,86 @@ func (s *aclService) UpdatePolicyWithContext(ctx context.Context, actorUserID ui
 
 	queryCtx, cancel := withServiceTimeout(ctx)
 	defer cancel()
-	if err := checkPolicyRPC(queryCtx, client, string(policyBytes)); err != nil {
+
+	if err := ensurePolicyUnchanged(queryCtx, client, expectedUpdatedAt); err != nil {
 		return err
 	}
 
-	_, grpcErr := client.SetPolicy(queryCtx, &v1.SetPolicyRequest{
-		Policy: string(policyBytes),
-	})
-	return wrapACLPolicyApplyError(grpcErr)
+	if err := checkPolicyREST(queryCtx, client, string(policyBytes)); err != nil {
+		return err
+	}
+
+	if _, apiErr := client.SetPolicy(queryCtx, string(policyBytes)); apiErr != nil {
+		return wrapACLPolicyApplyError(apiErr)
+	}
+	return nil
+}
+
+// PolicyUpdatedAt returns the stored policy's modification time, or an empty string
+// when there is no policy yet or the read failed.
+//
+// It never returns an error: an empty token degrades the client to the old
+// last-write-wins behaviour rather than blocking the page.
+func (s *aclService) PolicyUpdatedAt(ctx context.Context) string {
+	client, err := headscaleRESTClient()
+	if err != nil {
+		return ""
+	}
+
+	queryCtx, cancel := withServiceTimeout(ctx)
+	defer cancel()
+
+	resp, apiErr := client.GetPolicy(queryCtx)
+	if apiErr != nil || resp == nil {
+		return ""
+	}
+	if resp.UpdatedAt.IsZero() {
+		return ""
+	}
+	return resp.UpdatedAt.UTC().Format(time.RFC3339Nano)
+}
+
+// ensurePolicyUnchanged compares the stored updatedAt with what the client last saw.
+//
+// Only a client that supplied a token is checked, and a policy that does not exist
+// yet cannot have changed. The comparison is by time, not by content: the point is
+// to detect that someone else wrote in between, and their write may not have altered
+// anything the current editor can see in its own draft.
+func ensurePolicyUnchanged(ctx context.Context, client *hsapi.Client, expectedUpdatedAt string) error {
+	expected := strings.TrimSpace(expectedUpdatedAt)
+	if expected == "" {
+		return nil
+	}
+
+	resp, err := client.GetPolicy(ctx)
+	if err != nil {
+		if errors.Is(err, hsapi.ErrNoPolicy) {
+			// Nothing is stored, so nothing can have been overwritten.
+			return nil
+		}
+		return unifyerror.HeadscaleAPIError(err)
+	}
+	if resp == nil || resp.UpdatedAt.IsZero() {
+		return nil
+	}
+
+	actual := resp.UpdatedAt.UTC().Format(time.RFC3339Nano)
+	if !sameInstant(actual, expected) {
+		return unifyerror.New(http.StatusConflict, unifyerror.CodeConflict,
+			"the ACL policy was changed by someone else after you loaded it; reload before saving")
+	}
+	return nil
+}
+
+// sameInstant compares two RFC3339 timestamps, falling back to string equality when
+// either side is not parseable.
+func sameInstant(a, b string) bool {
+	parsedA, errA := time.Parse(time.RFC3339Nano, a)
+	parsedB, errB := time.Parse(time.RFC3339Nano, b)
+	if errA != nil || errB != nil {
+		return a == b
+	}
+	return parsedA.Equal(parsedB)
 }
 
 // SetPolicyRaw sets the ACL policy from raw JSON string
@@ -149,7 +253,7 @@ func (s *aclService) SetPolicyRaw(actorUserID uint, policyJSON string) error {
 }
 
 func (s *aclService) SetPolicyRawWithContext(ctx context.Context, actorUserID uint, policyJSON string) error {
-	if err := RequirePermission(actorUserID, "headscale:acl:update"); err != nil {
+	if err := RequirePermission(actorUserID, constants.PermACLPolicyUpdate); err != nil {
 		return err
 	}
 
@@ -158,48 +262,82 @@ func (s *aclService) SetPolicyRawWithContext(ctx context.Context, actorUserID ui
 		return err
 	}
 
-	client, err := headscaleServiceClient()
+	client, err := headscaleRESTClient()
 	if err != nil {
 		return err
 	}
 
 	queryCtx, cancel := withServiceTimeout(ctx)
 	defer cancel()
-	if err := checkPolicyRPC(queryCtx, client, normalizedPolicyJSON); err != nil {
+	if err := checkPolicyREST(queryCtx, client, normalizedPolicyJSON); err != nil {
 		return err
 	}
 
-	_, grpcErr := client.SetPolicy(queryCtx, &v1.SetPolicyRequest{
-		Policy: normalizedPolicyJSON,
-	})
-	return wrapACLPolicyApplyError(grpcErr)
+	if _, apiErr := client.SetPolicy(queryCtx, normalizedPolicyJSON); apiErr != nil {
+		return wrapACLPolicyApplyError(apiErr)
+	}
+	return nil
+}
+
+// SetPolicyRawWithLock is SetPolicyRawWithContext plus the optimistic-lock check.
+func (s *aclService) SetPolicyRawWithLock(ctx context.Context, actorUserID uint, policyJSON, expectedUpdatedAt string) error {
+	if err := RequirePermission(actorUserID, constants.PermACLPolicyUpdate); err != nil {
+		return err
+	}
+
+	normalizedPolicyJSON, err := normalizeRawACLPolicyJSON(policyJSON)
+	if err != nil {
+		return err
+	}
+
+	client, err := headscaleRESTClient()
+	if err != nil {
+		return err
+	}
+
+	queryCtx, cancel := withServiceTimeout(ctx)
+	defer cancel()
+
+	if err := ensurePolicyUnchanged(queryCtx, client, expectedUpdatedAt); err != nil {
+		return err
+	}
+
+	if err := checkPolicyREST(queryCtx, client, normalizedPolicyJSON); err != nil {
+		return err
+	}
+
+	if _, apiErr := client.SetPolicy(queryCtx, normalizedPolicyJSON); apiErr != nil {
+		return wrapACLPolicyApplyError(apiErr)
+	}
+	return nil
 }
 
 // CheckPolicyRawWithContext validates a policy with Headscale v0.29 without
 // persisting it. Headscale also evaluates tests and sshTests in this call.
 func (s *aclService) CheckPolicyRawWithContext(ctx context.Context, actorUserID uint, policyJSON string) error {
-	if err := RequirePermission(actorUserID, "headscale:acl:update"); err != nil {
+	if err := RequirePermission(actorUserID, constants.PermACLPolicyUpdate); err != nil {
 		return err
 	}
 	normalizedPolicyJSON, err := normalizeRawACLPolicyJSON(policyJSON)
 	if err != nil {
 		return err
 	}
-	client, err := headscaleServiceClient()
+	client, err := headscaleRESTClient()
 	if err != nil {
 		return err
 	}
 	queryCtx, cancel := withServiceTimeout(ctx)
 	defer cancel()
-	return checkPolicyRPC(queryCtx, client, normalizedPolicyJSON)
+	return checkPolicyREST(queryCtx, client, normalizedPolicyJSON)
 }
 
-func checkPolicyRPC(ctx context.Context, client v1.HeadscaleServiceClient, policy string) error {
-	if _, err := client.CheckPolicy(ctx, &v1.CheckPolicyRequest{Policy: policy}); err != nil {
-		if status.Code(err) == codes.Unimplemented {
-			return nil
-		}
-		detail := strings.TrimSpace(status.Convert(err).Message())
+// checkPolicyREST validates a policy without persisting it.
+//
+// headscale evaluates policy tests and sshTests during this call, so it is the
+// real pre-flight check rather than a syntax-only one.
+func checkPolicyREST(ctx context.Context, client *hsapi.Client, policy string) error {
+	if err := client.CheckPolicy(ctx, policy); err != nil {
+		detail := strings.TrimSpace(hsapi.AsError("checking policy", err).Detail)
 		if detail == "" {
 			detail = constants.MsgACLPolicyFormatInvalid
 		}
@@ -513,8 +651,40 @@ func (s *aclService) SyncResourcesAsHosts(actorUserID uint) error {
 	return s.SyncResourcesAsHostsWithContext(context.Background(), actorUserID)
 }
 
+// SyncResourcesFromPolicy imports host aliases declared in the live policy into
+// the panel's resource table.
+//
+// This is the reverse of SyncResourcesAsHosts and is always an explicit action:
+// silently importing would resurrect hosts an operator deleted from the panel,
+// because the policy still mentions them.
+func (s *aclService) SyncResourcesFromPolicy(ctx context.Context, actorUserID uint) error {
+	if err := RequirePermission(actorUserID, constants.PermACLPolicyUpdate); err != nil {
+		return err
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	policy, err := s.GetPolicyWithContext(ctx, actorUserID)
+	if err != nil {
+		return err
+	}
+
+	for name, target := range policy.Hosts {
+		name = strings.TrimSpace(name)
+		target = strings.TrimSpace(target)
+		if name == "" || target == "" {
+			continue
+		}
+		if err := ResourceService.UpsertFromPolicy(name, target, actorUserID); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (s *aclService) SyncResourcesAsHostsWithContext(ctx context.Context, actorUserID uint) error {
-	if err := RequirePermission(actorUserID, "headscale:acl:sync"); err != nil {
+	if err := RequirePermission(actorUserID, constants.PermACLPolicyUpdate); err != nil {
 		return err
 	}
 
@@ -541,7 +711,7 @@ func (s *aclService) SyncResourcesAsHostsWithContext(ctx context.Context, actorU
 		policy.Hosts[name] = ip
 	}
 
-	return s.UpdatePolicyWithContext(ctx, actorUserID, policy)
+	return s.UpdatePolicyWithContext(ctx, actorUserID, policy, "")
 }
 
 // AddRule adds a new ACL rule
@@ -550,7 +720,7 @@ func (s *aclService) AddRule(actorUserID uint, name string, sources []string, de
 }
 
 func (s *aclService) AddRuleWithContext(ctx context.Context, actorUserID uint, name string, sources []string, destinations []string, action string) error {
-	if err := RequirePermission(actorUserID, "headscale:acl:update"); err != nil {
+	if err := RequirePermission(actorUserID, constants.PermACLPolicyUpdate); err != nil {
 		return err
 	}
 
@@ -573,7 +743,7 @@ func (s *aclService) AddRuleWithContext(ctx context.Context, actorUserID uint, n
 	}
 
 	policy.ACLs = append(policy.ACLs, newRule)
-	return s.UpdatePolicyWithContext(ctx, actorUserID, policy)
+	return s.UpdatePolicyWithContext(ctx, actorUserID, policy, "")
 }
 
 // UpdateRule updates an existing ACL rule by index
@@ -582,7 +752,7 @@ func (s *aclService) UpdateRuleByIndex(actorUserID uint, index int, name string,
 }
 
 func (s *aclService) UpdateRuleByIndexWithContext(ctx context.Context, actorUserID uint, index int, name string, sources []string, destinations []string, action string) error {
-	if err := RequirePermission(actorUserID, "headscale:acl:update"); err != nil {
+	if err := RequirePermission(actorUserID, constants.PermACLPolicyUpdate); err != nil {
 		return err
 	}
 
@@ -609,7 +779,7 @@ func (s *aclService) UpdateRuleByIndexWithContext(ctx context.Context, actorUser
 		Dst:    destinations,
 	}
 
-	return s.UpdatePolicyWithContext(ctx, actorUserID, policy)
+	return s.UpdatePolicyWithContext(ctx, actorUserID, policy, "")
 }
 
 // DeleteRuleByIndex deletes an ACL rule by index
@@ -618,7 +788,7 @@ func (s *aclService) DeleteRuleByIndex(actorUserID uint, index int) error {
 }
 
 func (s *aclService) DeleteRuleByIndexWithContext(ctx context.Context, actorUserID uint, index int) error {
-	if err := RequirePermission(actorUserID, "headscale:acl:update"); err != nil {
+	if err := RequirePermission(actorUserID, constants.PermACLPolicyUpdate); err != nil {
 		return err
 	}
 
@@ -635,7 +805,7 @@ func (s *aclService) DeleteRuleByIndexWithContext(ctx context.Context, actorUser
 	}
 
 	policy.ACLs = append(policy.ACLs[:index], policy.ACLs[index+1:]...)
-	return s.UpdatePolicyWithContext(ctx, actorUserID, policy)
+	return s.UpdatePolicyWithContext(ctx, actorUserID, policy, "")
 }
 
 // ACL Policy Management (Version history)
@@ -645,7 +815,7 @@ func (s *aclService) Generate(actorUserID uint) (*model.ACLPolicy, error) {
 }
 
 func (s *aclService) GenerateWithContext(ctx context.Context, actorUserID uint) (*model.ACLPolicy, error) {
-	if err := RequirePermission(actorUserID, "headscale:acl:generate"); err != nil {
+	if err := RequirePermission(actorUserID, constants.PermACLPolicyUpdate); err != nil {
 		return nil, err
 	}
 
@@ -667,45 +837,18 @@ func (s *aclService) GenerateWithContext(ctx context.Context, actorUserID uint) 
 		policy.Hosts[name] = ip
 	}
 
-	// Build groups from database
-	var dbGroups []model.Group
-	if err := model.DB.Preload("Users").Find(&dbGroups).Error; err == nil {
+	// Build ACL groups from panel roles.
+	//
+	// Roles, not a separate "groups" table: a second grouping concept would
+	// drift from the one that actually decides permissions, and an operator
+	// would have to maintain the same membership twice.
+	groups, groupErr := policyGroupsFromRoles(ctx)
+	if groupErr == nil && len(groups) > 0 {
 		if policy.Groups == nil {
 			policy.Groups = make(map[string][]string)
 		}
-		for _, g := range dbGroups {
-			var members []string
-			// Collect all headscale IDs for users in this group
-			allIDs := make(map[uint][]uint64) // panelUserID → headscaleIDs
-			for _, u := range g.Users {
-				allIDs[u.ID] = model.GetHeadscaleIDs(u.ID)
-			}
-			// Batch query headscale
-			flatIDs := make([]uint64, 0)
-			for _, ids := range allIDs {
-				flatIDs = append(flatIDs, ids...)
-			}
-			hsUsers := listHeadscaleUsersByIDs(flatIDs)
-			// Build member list
-			for _, u := range g.Users {
-				ids := allIDs[u.ID]
-				if len(ids) == 0 {
-					if name := strings.TrimSpace(u.Username); name != "" {
-						members = append(members, name+"@")
-					}
-					continue
-				}
-				for _, id := range ids {
-					if hsUser, ok := hsUsers[id]; ok {
-						if name := strings.TrimSpace(hsUser.Name); name != "" {
-							members = append(members, name+"@")
-						}
-					}
-				}
-			}
-			if len(members) > 0 {
-				policy.Groups["group:"+strings.ToLower(g.Name)] = members
-			}
+		for name, members := range groups {
+			policy.Groups[name] = members
 		}
 	}
 
@@ -734,7 +877,7 @@ func (s *aclService) GenerateWithContext(ctx context.Context, actorUserID uint) 
 }
 
 func (s *aclService) ListPolicies(actorUserID uint, page, pageSize int) ([]model.ACLPolicy, int64, error) {
-	if err := RequirePermission(actorUserID, "headscale:acl:history:list"); err != nil {
+	if err := RequirePermission(actorUserID, constants.PermACLPolicyRead); err != nil {
 		return nil, 0, err
 	}
 
@@ -758,7 +901,7 @@ func (s *aclService) Apply(actorUserID uint, id uint) error {
 }
 
 func (s *aclService) ApplyWithContext(ctx context.Context, actorUserID uint, id uint) error {
-	if err := RequirePermission(actorUserID, "headscale:acl:apply"); err != nil {
+	if err := RequirePermission(actorUserID, constants.PermACLPolicyUpdate); err != nil {
 		return err
 	}
 

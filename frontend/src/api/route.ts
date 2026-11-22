@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2026 
+ * Copyright (C) 2026
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -15,35 +15,36 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-import type { ListRoutesReq, RouteItem, ToggleRouteReq } from './route.types';
-import type { RespPage, RespType } from '@/lib/request';
+import type { ListRoutesReq, ListRoutesRes, ToggleRouteReq } from './route.types';
+import type { RespType } from '@/lib/request';
 import request from '@/lib/request';
 
+/**
+ * Subnet routes advertised by nodes.
+ *
+ * Enabling or disabling is an explicit per-node action: the backend replaces the
+ * whole approved set, which is why the request names one destination and lets the
+ * server compute the resulting set from the current state.
+ */
 export const routeApi = {
   list: (req?: ListRoutesReq) =>
-    request<RespType<RespPage<RouteItem>>>({
+    request<RespType<ListRoutesRes>>({
       url: '/routes',
       method: 'GET',
-      params: {
-        page: req?.page || 1,
-        page_size: req?.pageSize || 10,
-        all: req?.all ? 'true' : undefined,
-        user_id: req?.userId,
-        machine_id: req?.machine_id,
-      },
+      params: { q: req?.q, user_id: req?.user_id, machine_id: req?.machine_id },
     }),
 
   enable: (req: ToggleRouteReq) =>
     request<RespType<void>>({
-      url: '/routes/enable',
+      url: `/routes/${req.nodeId}/enable`,
       method: 'POST',
-      data: { machine_id: req.machine_id, destination: req.destination },
+      data: { machine_id: req.nodeId, destination: req.destination },
     }),
 
   disable: (req: ToggleRouteReq) =>
     request<RespType<void>>({
-      url: '/routes/disable',
+      url: `/routes/${req.nodeId}/disable`,
       method: 'POST',
-      data: { machine_id: req.machine_id, destination: req.destination },
+      data: { machine_id: req.nodeId, destination: req.destination },
     }),
 };

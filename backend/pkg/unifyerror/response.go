@@ -1,4 +1,4 @@
-// Copyright (C) 2026 
+// Copyright (C) 2026
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as
@@ -18,6 +18,7 @@ package unifyerror
 import (
 	"errors"
 	"fmt"
+	"headscale-panel/pkg/constants"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -49,5 +50,6 @@ func Fail(c *gin.Context, err error) {
 	}
 	exc := u.Handle()
 	exc.Request = requestInfo(c)
+	exc.RequestID = c.GetString(constants.RequestIDKey)
 	c.JSON(exc.HttpCode, exc)
 }

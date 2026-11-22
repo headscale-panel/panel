@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2026 
+ * Copyright (C) 2026
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -67,11 +67,14 @@ export function ThemeProvider({ children, defaultMode = ThemeMode.System, locale
 
   const applyTheme = useCallback((theme: ResolvedTheme) => {
     const root = document.documentElement;
-    if (theme === ThemeMode.Dark) {
-      root.classList.add('dark');
-    } else {
-      root.classList.remove('dark');
-    }
+    const isDark = theme === ThemeMode.Dark;
+
+    // The class drives antd and the existing `.dark …` CSS selectors; the attribute
+    // drives the colour tokens. Both are set so neither style path has to know about
+    // the other, and adding tokens later does not mean touching every component.
+    root.classList.toggle('dark', isDark);
+    root.dataset.theme = isDark ? 'dark' : 'light';
+    root.style.colorScheme = isDark ? 'dark' : 'light';
   }, []);
 
   const setMode = useCallback((newMode: ThemeMode) => {

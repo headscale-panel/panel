@@ -45,7 +45,19 @@ export interface NormalizedDevice {
   name: string;
   given_name: string;
   user: NormalizedDeviceUser | null;
+  /** Headscale user id owning the device; 0 when the owner is unknown. */
+  owner_hs_user_id: number;
+  owner_name: string;
+  /**
+   * True when headscale's synthetic tagged-devices owner holds the device.
+   *
+   * Applying a tag transfers ownership upstream, so a tagged device no longer
+   * belongs to its previous human owner. The UI must render it as its own bucket
+   * rather than show a username that has no account behind it.
+   */
+  owner_tagged: boolean;
   online: boolean;
+  ephemeral: boolean;
   last_seen: string | null;
   expiry: string | null;
   created_at: string | null;
@@ -53,6 +65,8 @@ export interface NormalizedDevice {
   tags: string[];
   approved_routes: string[];
   available_routes: string[];
+  subnet_routes: string[];
+  is_exit_node: boolean;
 }
 
 export interface DeviceListResult {
@@ -147,12 +161,13 @@ export interface OIDCStatusData {
 }
 
 export interface PanelConnectionSettings {
-  grpc_addr: string;
+  api_addr: string;
   insecure: boolean;
   tls_skip_verify: boolean;
   tls_ca_cert: string;
   has_api_key: boolean;
-  is_connected: boolean;
+  is_configured: boolean;
+  legacy_grpc_addr: string;
 }
 
 export interface OIDCFormValues {
@@ -273,7 +288,11 @@ function normalizeDevice(raw: unknown): NormalizedDevice {
     name: asString(device.name),
     given_name: asString(device.given_name) || asString(device.givenName) || asString(device.name),
     user: normalizeDeviceUser(device.user),
+    owner_hs_user_id: asNumber(device.owner_hs_user_id ?? device.hs_user_id),
+    owner_name: asString(device.owner_name) || asString((asRecord(device.user) ?? {}).name),
+    owner_tagged: asBoolean(device.owner_tagged),
     online: asBoolean(device.online),
+    ephemeral: asBoolean(device.ephemeral),
     last_seen: asString(device.last_seen) || asString(device.lastSeen) || null,
     expiry: asString(device.expiry) || null,
     created_at: asString(device.created_at) || null,
@@ -281,6 +300,8 @@ function normalizeDevice(raw: unknown): NormalizedDevice {
     tags: asStringArray(device.tags),
     approved_routes: asStringArray(device.approved_routes),
     available_routes: asStringArray(device.available_routes),
+    subnet_routes: asStringArray(device.subnet_routes),
+    is_exit_node: asBoolean(device.is_exit_node),
   };
 }
 
@@ -435,7 +456,15 @@ export function normalizeACLPolicy(value: unknown): ACLPolicy | null {
 
   const nestedData = asRecord(root.data);
   const nestedNestedData = nestedData ? asRecord(nestedData.data) : null;
-  const candidate = nestedNestedData ?? nestedData ?? root;
+  let candidate = nestedNestedData ?? nestedData ?? root;
+
+  // GET /policy answers {policy, updatedAt} so the client also receives the
+  // optimistic-lock token. Unwrapping here keeps every caller working with a policy
+  // object instead of each one needing to know about the envelope.
+  const envelope = asRecord(candidate.policy);
+  if (envelope) {
+    candidate = envelope;
+  }
 
   const groups = asRecord(candidate.groups);
   const hosts = asRecord(candidate.hosts);
@@ -535,12 +564,13 @@ export function normalizePanelConnectionSettings(value: unknown): PanelConnectio
   const data = asRecord(value) ?? {};
 
   return {
-    grpc_addr: asString(data.grpc_addr),
+    api_addr: asString(data.api_addr),
     insecure: asBoolean(data.insecure),
     tls_skip_verify: asBoolean(data.tls_skip_verify),
     tls_ca_cert: asString(data.tls_ca_cert),
     has_api_key: asBoolean(data.has_api_key),
-    is_connected: asBoolean(data.is_connected),
+    is_configured: asBoolean(data.is_configured),
+    legacy_grpc_addr: asString(data.legacy_grpc_addr),
   };
 }
 
@@ -688,3 +718,76 @@ export function normalizeTopology(value: unknown): DashboardTopologyData | null 
     policy,
   };
 }
+
+// ─── New-contract projections ────────────────────────────────────────────────
+//
+// The panel now speaks to endpoints that already return well-shaped objects, so
+// these helpers only need to default optional fields. They stay defensive because
+// a headscale upgrade can add or drop fields at any time.
+
+/** Coerce a device list response into an array. */
+export function normalizeDevices(value: unknown): NormalizedDevice[] {
+  const raw = Array.isArray(value)
+    ? value
+    : (value as Record<string, unknown> | null)?.list;
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+  return normalizeDeviceListResponse({ list: raw }).list;
+}
+
+/** Network identities as selectable options for ACL and onboarding pickers. */
+export interface IdentityOption {
+  id: string;
+  name: string;
+  /** The alias ACL rules resolve against: email when present, else the name. */
+  policyUsername: string;
+}
+
+export function normalizeIdentityOptions(value: unknown): IdentityOption[] {
+  const raw = Array.isArray(value) ? value : [];
+  return raw
+    .filter((item): item is Record<string, unknown> => typeof item === 'object' && item !== null)
+    .map((item) => ({
+      id: String(item.hs_user_id ?? ''),
+      name: asString(item.name),
+      policyUsername: asString(item.policy_username) || asString(item.name),
+    }))
+    .filter((option) => option.id !== '');
+}
+
+/** Panel SSO form state. */
+export interface SSOFormValues {
+  enabled: boolean;
+  issuer: string;
+  clientId: string;
+  /** Always empty on read: the stored secret is never returned. */
+  clientSecret: string;
+  hasClientSecret: boolean;
+  scopes: string[];
+  emailVerifiedRequired: boolean;
+  provisioning: '' | 'disabled' | 'jit';
+  defaultRoleId: number;
+}
+
+export function normalizeSSOForm(value: unknown): SSOFormValues {
+  const data = asRecord(value) ?? {};
+  const provisioning = asString(data.provisioning);
+
+  return {
+    enabled: asBoolean(data.enabled),
+    issuer: asString(data.issuer),
+    clientId: asString(data.client_id),
+    clientSecret: '',
+    hasClientSecret: asBoolean(data.has_client_secret),
+    scopes: Array.isArray(data.scopes)
+      ? data.scopes.map((scope) => asString(scope)).filter(Boolean)
+      : ['openid', 'profile', 'email'],
+    emailVerifiedRequired: asBoolean(data.email_verified_required),
+    provisioning: provisioning === 'disabled' || provisioning === 'jit' ? provisioning : '',
+    defaultRoleId: asNumber(data.default_role_id),
+  };
+}
+
+/** Alias so page-data talks about connection settings, not "panel connection". */
+export const normalizeConnectionSettings = normalizePanelConnectionSettings;

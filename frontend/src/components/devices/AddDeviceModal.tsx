@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2026 
+ * Copyright (C) 2026
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -18,14 +18,16 @@
 import { CopyOutlined } from '@ant-design/icons';
 import { Button, Card, Input, message, Modal, Space, Tabs, Tag, Typography } from 'antd';
 import { useState } from 'react';
-import { deviceApi, headscaleUserApi } from '@/api';
+import { deviceApi } from '@/api';
 import { useTranslation } from '@/i18n/index';
 
 const { Text } = Typography;
 
 interface AddDeviceModalProps {
   open: boolean;
-  owner: string;
+  /** Headscale user id the new device will belong to. */
+  ownerId: number;
+  ownerName: string;
   canCreatePreAuthKey: boolean;
   canRegisterNode: boolean;
   onCancel: () => void;
@@ -34,7 +36,8 @@ interface AddDeviceModalProps {
 
 export default function AddDeviceModal({
   open,
-  owner,
+  ownerId,
+  ownerName,
   canCreatePreAuthKey,
   canRegisterNode,
   onCancel,
@@ -62,9 +65,13 @@ export default function AddDeviceModal({
 
   const handleGenerateKey = async () => {
     try {
-      const expiration = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
-      const res: any = await headscaleUserApi.createPreAuthKey({ user: owner, reusable, ephemeral, expiration });
-      const key = res?.preAuthKey?.key || res?.key || res?.preauthkey?.key || '';
+      const res = await deviceApi.createPreAuthKey({
+        hs_user_id: ownerId,
+        reusable,
+        ephemeral,
+        expiration: '24h',
+      });
+      const key = res?.key || '';
       if (!key) {
         message.error(t.devices.keyGenerateFailed);
         return;
@@ -83,7 +90,7 @@ export default function AddDeviceModal({
     }
     setRegistering(true);
     try {
-      await deviceApi.registerNode({ user: owner, key: machineKey.trim() });
+      await deviceApi.register({ hs_user_id: ownerId, key: machineKey.trim() });
       message.success(t.devices.registerNodeSuccess);
       onCancel();
       onSuccess();
@@ -112,7 +119,7 @@ export default function AddDeviceModal({
       <div className="mb-3">
         <Text className="text-13px">{t.devices.tableOwner}</Text>
         <div className="mt-1">
-          <Tag color="blue">{owner}</Tag>
+          <Tag color="blue">{ownerName}</Tag>
         </div>
       </div>
 

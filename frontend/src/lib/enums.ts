@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2026 
+ * Copyright (C) 2026
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -41,3 +41,35 @@ export enum DNSRecordType {
   A = 'A',
   AAAA = 'AAAA',
 }
+
+export enum ConfigOwnerKind {
+  Managed = 'managed',
+  ReadOnly = 'readonly',
+  Passthrough = 'passthrough',
+}
+
+export enum ConfigFieldKind {
+  String = 'string',
+  Bool = 'bool',
+  Int = 'int',
+  Duration = 'duration',
+  Strings = 'strings',
+  StringMap = 'string_map',
+}
+
+export enum ConfigOwnershipModeEnum {
+  Managed = 'managed',
+  Observed = 'observed',
+}
+
+export enum DeviceIdentityFilter {
+  All = 'all',
+  Owner = 'owner',
+  Tagged = 'tagged',
+  Unassigned = 'unassigned',
+}
+
+export const REDACTED_SECRET_PLACEHOLDER = '******';
+export const EMPTY_DISPLAY_VALUE = '—';
+export const TAG_PREFIX = 'tag:';
+export const MAX_VISIBLE_DEVICE_TAGS = 4;

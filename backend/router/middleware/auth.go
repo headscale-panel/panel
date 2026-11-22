@@ -1,4 +1,4 @@
-// Copyright (C) 2026 
+// Copyright (C) 2026
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as
@@ -16,7 +16,7 @@
 package middleware
 
 import (
-	"headscale-panel/model"
+	"headscale-panel/pkg/constants"
 	"headscale-panel/pkg/unifyerror"
 	"headscale-panel/pkg/utils/jwt"
 	"headscale-panel/router/services"
@@ -25,70 +25,68 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// AuthMiddleware authenticates a bearer token and attaches the session.
+//
+// The token is checked against live account state, not just its signature: a
+// token that was valid when it was minted stops working the moment the account is
+// disabled or its password changes.
 func AuthMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		token := c.Request.Header.Get("Authorization")
-		if token == "" {
+		raw := c.Request.Header.Get("Authorization")
+		if raw == "" {
 			unifyerror.Fail(c, unifyerror.InvalidToken())
 			c.Abort()
 			return
 		}
 
-		// Remove "Bearer " prefix if present
-		token = strings.TrimPrefix(token, "Bearer ")
-
-		claims, err := jwt.ParseToken(token)
+		claims, err := jwt.ParseToken(strings.TrimPrefix(raw, "Bearer "))
 		if err != nil {
 			unifyerror.Fail(c, unifyerror.InvalidToken())
 			c.Abort()
 			return
 		}
 
-		user, err := services.ValidateSessionUser(claims.UserID)
+		session, err := services.ResolveSession(claims)
 		if err != nil {
 			unifyerror.Fail(c, err)
 			c.Abort()
 			return
 		}
 
-		// Set claims to context
-		c.Set("userID", user.ID)
-		c.Set("username", user.Username)
-		c.Set("groupID", user.GroupID)
+		c.Set("userID", session.Account.ID)
+		c.Set("username", session.Account.Username)
+		c.Set("roleID", session.Account.RoleID)
+		c.Set("isSystemAdmin", session.IsSystemAdmin())
+		c.Set(SessionKey, session)
 
 		c.Next()
 	}
 }
 
-// AdminOnlyMiddleware checks if the user is an admin
+// SessionKey is where the resolved session is stored on the gin context.
+const SessionKey = "session"
+
+// CurrentSession returns the session attached by AuthMiddleware.
+func CurrentSession(c *gin.Context) *services.Session {
+	value, ok := c.Get(SessionKey)
+	if !ok {
+		return nil
+	}
+	session, _ := value.(*services.Session)
+	return session
+}
+
+// AdminOnlyMiddleware restricts a route to system administrators.
 func AdminOnlyMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		userIDVal, exists := c.Get("userID")
-		if !exists {
+		session := CurrentSession(c)
+		if session == nil || !session.IsSystemAdmin() {
 			unifyerror.Fail(c, unifyerror.Forbidden())
 			c.Abort()
 			return
 		}
-
-		userID := userIDVal.(uint)
-
-		// Only allow admin users
-		var userModel model.User
-		if err := model.DB.First(&userModel, userID).Error; err != nil || !userModel.IsAdmin {
-			unifyerror.Fail(c, unifyerror.Forbidden())
-			c.Abort()
-			return
-		}
-
 		c.Next()
 	}
 }
 
-// IsAdmin checks if user is an admin
-func IsAdmin(userID uint) bool {
-	var user model.User
-	if err := model.DB.First(&user, userID).Error; err != nil {
-		return false
-	}
-	return user.IsAdmin
-}
+var _ = constants.PermWildcard

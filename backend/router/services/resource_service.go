@@ -1,4 +1,4 @@
-// Copyright (C) 2026 
+// Copyright (C) 2026
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as
@@ -18,6 +18,7 @@ package services
 import (
 	"context"
 	"headscale-panel/model"
+	"headscale-panel/pkg/constants"
 	"headscale-panel/pkg/unifyerror"
 	"net/http"
 	"net/netip"
@@ -50,7 +51,7 @@ type ListResourceRequest struct {
 }
 
 func (s *resourceService) Create(userID uint, req *CreateResourceRequest) error {
-	if err := RequirePermission(userID, "resource:create"); err != nil {
+	if err := RequirePermission(userID, constants.PermACLResourceCreate); err != nil {
 		return err
 	}
 
@@ -82,7 +83,7 @@ func (s *resourceService) Create(userID uint, req *CreateResourceRequest) error 
 		IPAddress:   ipAddress,
 		Port:        port,
 		Description: description,
-		CreatorID:   userID,
+		CreatorID:   &userID,
 	}
 
 	if err := model.DB.Create(&resource).Error; err != nil {
@@ -92,7 +93,7 @@ func (s *resourceService) Create(userID uint, req *CreateResourceRequest) error 
 }
 
 func (s *resourceService) List(userID uint, req *ListResourceRequest) ([]model.Resource, int64, error) {
-	if err := RequirePermission(userID, "resource:list"); err != nil {
+	if err := RequirePermission(userID, constants.PermACLResourceList); err != nil {
 		return nil, 0, err
 	}
 
@@ -139,7 +140,7 @@ func (s *resourceService) List(userID uint, req *ListResourceRequest) ([]model.R
 
 // Get returns a single resource if the actor can access it via ACL.
 func (s *resourceService) Get(userID uint, id uint) (*model.Resource, error) {
-	if err := RequirePermission(userID, "resource:list"); err != nil {
+	if err := RequirePermission(userID, constants.PermACLResourceList); err != nil {
 		return nil, err
 	}
 
@@ -160,7 +161,7 @@ func (s *resourceService) Get(userID uint, id uint) (*model.Resource, error) {
 }
 
 func (s *resourceService) Update(userID uint, req *UpdateResourceRequest) error {
-	if err := RequirePermission(userID, "resource:update"); err != nil {
+	if err := RequirePermission(userID, constants.PermACLResourceUpdate); err != nil {
 		return err
 	}
 
@@ -215,7 +216,7 @@ func (s *resourceService) Update(userID uint, req *UpdateResourceRequest) error 
 }
 
 func (s *resourceService) Delete(userID uint, id uint) error {
-	if err := RequirePermission(userID, "resource:delete"); err != nil {
+	if err := RequirePermission(userID, constants.PermACLResourceDelete); err != nil {
 		return err
 	}
 
@@ -252,20 +253,47 @@ func (s *resourceService) GetAllAsHosts() (map[string]string, error) {
 	return hosts, nil
 }
 
+// UpsertFromPolicy records a host alias declared in the live ACL policy.
+//
+// An existing resource keeps its own creator and description: the policy is the
+// source of the address, not of the ownership.
+func (s *resourceService) UpsertFromPolicy(name, target string, actorUserID uint) error {
+	var existing model.Resource
+	err := model.DB.Where("name = ?", name).First(&existing).Error
+	if err == nil {
+		if existing.IPAddress == target {
+			return nil
+		}
+		existing.IPAddress = target
+		if saveErr := model.DB.Save(&existing).Error; saveErr != nil {
+			return unifyerror.DbError(saveErr)
+		}
+		return nil
+	}
+
+	creatorID := actorUserID
+	resource := model.Resource{
+		Name:        name,
+		IPAddress:   target,
+		Description: "Imported from ACL policy",
+		CreatorID:   &creatorID,
+	}
+	if createErr := model.DB.Create(&resource).Error; createErr != nil {
+		return unifyerror.DbError(createErr)
+	}
+	return nil
+}
+
 func canManageResource(userID uint, resource *model.Resource) (bool, error) {
-	if resource.CreatorID == userID {
+	if resource.CreatorID != nil && *resource.CreatorID == userID {
 		return true, nil
 	}
 
-	var user model.User
-	if err := model.DB.First(&user, userID).Error; err != nil {
-		return false, unifyerror.New(http.StatusNotFound, unifyerror.CodeNotFound, "user not found")
+	acc, err := Accounts.Get(userID)
+	if err != nil {
+		return false, unifyerror.New(http.StatusNotFound, unifyerror.CodeNotFound, "account not found")
 	}
-
-	if user.IsAdmin {
-		return true, nil
-	}
-	return false, nil
+	return acc.Role.IsSystemAdmin, nil
 }
 
 func normalizeIPAddress(input string) (string, error) {

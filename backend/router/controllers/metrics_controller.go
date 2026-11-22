@@ -29,6 +29,11 @@ import (
 
 type MetricsController struct{}
 
+// NewMetricsController builds the controller.
+func NewMetricsController() *MetricsController {
+	return &MetricsController{}
+}
+
 // GetOnlineDuration godoc
 // @Summary Get online duration for user or device
 // @Tags metrics

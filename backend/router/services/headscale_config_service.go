@@ -17,452 +17,322 @@ package services
 
 import (
 	"context"
-	"headscale-panel/pkg/constants"
-	"headscale-panel/pkg/headscale"
-	"headscale-panel/pkg/unifyerror"
-	"os"
-	"path/filepath"
+	"errors"
+	"net/http"
+	"sort"
 	"strings"
 
-	"gopkg.in/yaml.v3"
+	"headscale-panel/internal/config"
+	"headscale-panel/model"
+	"headscale-panel/pkg/constants"
+	"headscale-panel/pkg/hslifecycle"
+	"headscale-panel/pkg/unifyerror"
 )
 
+// HeadscaleConfigService exposes the headscale config file.
+//
+// Every read and write goes through internal/config, which merges into the parsed
+// YAML document instead of re-marshalling a struct. That is what keeps operator
+// comments, unmodelled keys and read-only values intact.
 type headscaleConfigService struct{}
 
 var HeadscaleConfigService = new(headscaleConfigService)
 
-const redactedSecretPlaceholder = "******"
+// RedactedSecret is what the API returns in place of a stored secret. A client that
+// sends it back is saying "leave the stored value alone".
+const RedactedSecret = "******"
 
-// HeadscaleConfigFile represents the full Headscale config.yaml structure
-type HeadscaleConfigFile struct {
-	ServerURL                      string         `json:"server_url" yaml:"server_url"`
-	ListenAddr                     string         `json:"listen_addr" yaml:"listen_addr"`
-	MetricsListenAddr              string         `json:"metrics_listen_addr" yaml:"metrics_listen_addr"`
-	GRPCListenAddr                 string         `json:"grpc_listen_addr" yaml:"grpc_listen_addr"`
-	GRPCAllowInsecure              bool           `json:"grpc_allow_insecure" yaml:"grpc_allow_insecure"`
-	PrivateKeyPath                 string         `json:"private_key_path" yaml:"private_key_path"`
-	DisableCheckUpdates            bool           `json:"disable_check_updates" yaml:"disable_check_updates,omitempty"`
-	EphemeralNodeInactivityTimeout string         `json:"ephemeral_node_inactivity_timeout" yaml:"ephemeral_node_inactivity_timeout,omitempty"`
-	Noise                          NoiseConfig    `json:"noise" yaml:"noise"`
-	Prefixes                       PrefixesConfig `json:"prefixes" yaml:"prefixes"`
-	DERP                           DERPConfig     `json:"derp" yaml:"derp"`
-	Database                       DatabaseConfig `json:"database" yaml:"database"`
-	DNS                            DNSConfig      `json:"dns" yaml:"dns"`
-	Policy                         PolicyConfig   `json:"policy" yaml:"policy,omitempty"`
-	OIDC                           OIDCConfig     `json:"oidc" yaml:"oidc,omitempty"`
-	LogTail                        LogTailConfig  `json:"logtail" yaml:"logtail,omitempty"`
-	RandomizeClientPort            bool           `json:"randomize_client_port" yaml:"randomize_client_port,omitempty"`
-
-	// TLS / ACME
-	TLSLetsEncryptHostname      string `json:"tls_letsencrypt_hostname" yaml:"tls_letsencrypt_hostname,omitempty"`
-	TLSLetsEncryptCacheDir      string `json:"tls_letsencrypt_cache_dir" yaml:"tls_letsencrypt_cache_dir,omitempty"`
-	TLSLetsEncryptChallengeType string `json:"tls_letsencrypt_challenge_type" yaml:"tls_letsencrypt_challenge_type,omitempty"`
-	TLSLetsEncryptListen        string `json:"tls_letsencrypt_listen" yaml:"tls_letsencrypt_listen,omitempty"`
-	TLSCertPath                 string `json:"tls_cert_path" yaml:"tls_cert_path,omitempty"`
-	TLSKeyPath                  string `json:"tls_key_path" yaml:"tls_key_path,omitempty"`
-	ACMEUrl                     string `json:"acme_url" yaml:"acme_url,omitempty"`
-	ACMEEmail                   string `json:"acme_email" yaml:"acme_email,omitempty"`
-
-	// Log
-	Log LogConfig `json:"log" yaml:"log,omitempty"`
-
-	// Unix Socket
-	UnixSocket           string `json:"unix_socket" yaml:"unix_socket,omitempty"`
-	UnixSocketPermission string `json:"unix_socket_permission" yaml:"unix_socket_permission,omitempty"`
-
-	// Taildrop (file sharing between nodes)
-	Taildrop TaildropConfig `json:"taildrop" yaml:"taildrop,omitempty"`
+// ConfigField is one editable config value.
+type ConfigField struct {
+	Key     string `json:"key"`
+	Value   any    `json:"value"`
+	Owner   string `json:"owner"`
+	Tier    string `json:"tier"`
+	Kind    string `json:"kind"`
+	Section string `json:"section"`
+	Secret  bool   `json:"secret"`
+	Note    string `json:"note"`
 }
 
-type NoiseConfig struct {
-	PrivateKeyPath string `json:"private_key_path" yaml:"private_key_path"`
+// ConfigView is the whole config as the UI sees it.
+type ConfigView struct {
+	Mode       string              `json:"mode"`
+	Configured bool                `json:"configured"`
+	Path       string              `json:"path"`
+	Fields     []ConfigField       `json:"fields"`
+	Drift      *config.DriftReport `json:"drift"`
+	// Unmodelled lists keys the panel does not model. Surfacing them is the point:
+	// it tells the operator the panel is not claiming to own the whole file.
+	Unmodelled []string `json:"unmodelled"`
 }
 
-type PrefixesConfig struct {
-	V4         string `json:"v4" yaml:"v4"`
-	V6         string `json:"v6" yaml:"v6"`
-	Allocation string `json:"allocation" yaml:"allocation,omitempty"`
+func (s *headscaleConfigService) configService() *config.Service {
+	return config.NewService(constants.HeadscaleConfigFilePath, s.Mode())
 }
 
-type DERPConfig struct {
-	Server            DERPServerConfig `json:"server" yaml:"server"`
-	URLs              []string         `json:"urls" yaml:"urls,omitempty"`
-	Paths             []string         `json:"paths" yaml:"paths,omitempty"`
-	AutoUpdateEnabled bool             `json:"auto_update_enabled" yaml:"auto_update_enabled,omitempty"`
-	UpdateFrequency   string           `json:"update_frequency" yaml:"update_frequency,omitempty"`
-}
-
-type DERPServerConfig struct {
-	Enabled                            bool   `json:"enabled" yaml:"enabled"`
-	RegionID                           int    `json:"region_id" yaml:"region_id,omitempty"`
-	RegionCode                         string `json:"region_code" yaml:"region_code,omitempty"`
-	RegionName                         string `json:"region_name" yaml:"region_name,omitempty"`
-	VerifyClients                      bool   `json:"verify_clients" yaml:"verify_clients,omitempty"`
-	STUNAddr                           string `json:"stun_listen_addr" yaml:"stun_listen_addr,omitempty"`
-	PrivateKeyPath                     string `json:"private_key_path" yaml:"private_key_path,omitempty"`
-	AutomaticallyAddEmbeddedDERPRegion bool   `json:"automatically_add_embedded_derp_region" yaml:"automatically_add_embedded_derp_region,omitempty"`
-	IPv4                               string `json:"ipv4" yaml:"ipv4,omitempty"`
-	IPv6                               string `json:"ipv6" yaml:"ipv6,omitempty"`
-}
-
-type DatabaseConfig struct {
-	Type     string         `json:"type" yaml:"type"`
-	SQLite   SQLiteConfig   `json:"sqlite" yaml:"sqlite,omitempty"`
-	Postgres PostgresConfig `json:"postgres" yaml:"postgres,omitempty"`
-	Debug    bool           `json:"debug" yaml:"debug,omitempty"`
-	GORM     GORMConfig     `json:"gorm" yaml:"gorm,omitempty"`
-}
-
-type GORMConfig struct {
-	PrepareStmt           bool `json:"prepare_stmt" yaml:"prepare_stmt,omitempty"`
-	ParameterizedQueries  bool `json:"parameterized_queries" yaml:"parameterized_queries,omitempty"`
-	SkipErrRecordNotFound bool `json:"skip_err_record_not_found" yaml:"skip_err_record_not_found,omitempty"`
-	SlowThreshold         int  `json:"slow_threshold" yaml:"slow_threshold,omitempty"`
-}
-
-type SQLiteConfig struct {
-	Path              string `json:"path" yaml:"path"`
-	WriteAheadLog     bool   `json:"write_ahead_log" yaml:"write_ahead_log,omitempty"`
-	WALAutoCheckpoint int    `json:"wal_autocheckpoint" yaml:"wal_autocheckpoint,omitempty"`
-}
-
-type PostgresConfig struct {
-	Host                string `json:"host" yaml:"host"`
-	Port                int    `json:"port" yaml:"port"`
-	Name                string `json:"name" yaml:"name"`
-	User                string `json:"user" yaml:"user"`
-	Pass                string `json:"pass" yaml:"pass"`
-	MaxOpenConns        int    `json:"max_open_conns" yaml:"max_open_conns,omitempty"`
-	MaxIdleConns        int    `json:"max_idle_conns" yaml:"max_idle_conns,omitempty"`
-	ConnMaxIdleTimeSecs int    `json:"conn_max_idle_time_secs" yaml:"conn_max_idle_time_secs,omitempty"`
-}
-
-type DNSConfig struct {
-	BaseDomain       string            `json:"base_domain" yaml:"base_domain"`
-	MagicDNS         bool              `json:"magic_dns" yaml:"magic_dns"`
-	Nameservers      NameserversConfig `json:"nameservers" yaml:"nameservers"`
-	SearchDomains    []string          `json:"search_domains" yaml:"search_domains,omitempty"`
-	ExtraRecords     []DNSExtraRecord  `json:"extra_records" yaml:"extra_records,omitempty"`
-	ExtraRecordsPath string            `json:"extra_records_path" yaml:"extra_records_path,omitempty"`
-	OverrideLocalDNS bool              `json:"override_local_dns" yaml:"override_local_dns,omitempty"`
-}
-
-type NameserversConfig struct {
-	Global []string            `json:"global" yaml:"global"`
-	Split  map[string][]string `json:"split" yaml:"split,omitempty"`
-}
-
-type DNSExtraRecord struct {
-	Name  string `json:"name" yaml:"name"`
-	Type  string `json:"type" yaml:"type"`
-	Value string `json:"value" yaml:"value"`
-}
-
-type PolicyConfig struct {
-	Mode string `json:"mode" yaml:"mode"`
-	Path string `json:"path" yaml:"path,omitempty"`
-}
-
-type OIDCConfig struct {
-	OnlyStartIfOIDCIsAvailable bool              `json:"only_start_if_oidc_is_available" yaml:"only_start_if_oidc_is_available,omitempty"`
-	Issuer                     string            `json:"issuer" yaml:"issuer"`
-	ClientID                   string            `json:"client_id" yaml:"client_id"`
-	ClientSecret               string            `json:"client_secret" yaml:"client_secret"`
-	ClientSecretPath           string            `json:"client_secret_path" yaml:"client_secret_path,omitempty"`
-	Scope                      []string          `json:"scope" yaml:"scope,omitempty"`
-	EmailVerifiedRequired      bool              `json:"email_verified_required" yaml:"email_verified_required,omitempty"`
-	AllowedDomains             []string          `json:"allowed_domains" yaml:"allowed_domains,omitempty"`
-	AllowedUsers               []string          `json:"allowed_users" yaml:"allowed_users,omitempty"`
-	AllowedGroups              []string          `json:"allowed_groups" yaml:"allowed_groups,omitempty"`
-	StripEmailDomain           bool              `json:"strip_email_domain" yaml:"strip_email_domain,omitempty"`
-	Expiry                     string            `json:"expiry" yaml:"expiry,omitempty"`
-	UseExpiryFromToken         bool              `json:"use_expiry_from_token" yaml:"use_expiry_from_token,omitempty"`
-	ExtraParams                map[string]string `json:"extra_params" yaml:"extra_params,omitempty"`
-	PKCE                       PKCEConfig        `json:"pkce" yaml:"pkce,omitempty"`
-}
-
-type PKCEConfig struct {
-	Enabled bool   `json:"enabled" yaml:"enabled,omitempty"`
-	Method  string `json:"method" yaml:"method,omitempty"`
-}
-
-type LogTailConfig struct {
-	Enabled bool `json:"enabled" yaml:"enabled"`
-}
-
-type LogConfig struct {
-	Level  string `json:"level" yaml:"level,omitempty"`
-	Format string `json:"format" yaml:"format,omitempty"`
-}
-
-type TaildropConfig struct {
-	Enabled bool `json:"enabled" yaml:"enabled,omitempty"`
-}
-
-// defaultConfig returns the preset minimal headscale configuration written to
-// config.yaml when the file is absent or empty.
-func (s *headscaleConfigService) defaultConfig() *HeadscaleConfigFile {
-	return &HeadscaleConfigFile{
-		ServerURL:         "https://vpn.example.com",
-		ListenAddr:        "0.0.0.0:8080",
-		MetricsListenAddr: "0.0.0.0:9090",
-		GRPCListenAddr:    "0.0.0.0:50443",
-		GRPCAllowInsecure: true,
-		TLSCertPath:       "",
-		TLSKeyPath:        "",
-		PrivateKeyPath:    constants.HSPrivateKeyPath,
-		Noise: NoiseConfig{
-			PrivateKeyPath: constants.HSNoiseKeyPath,
-		},
-		Prefixes: PrefixesConfig{
-			V4:         "100.100.0.0/16",
-			Allocation: "sequential",
-		},
-		DERP: DERPConfig{
-			Server: DERPServerConfig{
-				Enabled: false,
-			},
-			Paths: []string{constants.HSDERPMapPath},
-		},
-		Database: DatabaseConfig{
-			Type: "sqlite",
-			SQLite: SQLiteConfig{
-				Path:          constants.HSDBPath,
-				WriteAheadLog: true,
-			},
-		},
-		DNS: DNSConfig{
-			MagicDNS:         true,
-			OverrideLocalDNS: true,
-			BaseDomain:       "example.net",
-			Nameservers: NameserversConfig{
-				Global: []string{"1.1.1.1", "1.0.0.1"},
-			},
-		},
-		Policy: PolicyConfig{
-			Mode: "database",
-		},
+// Mode returns the configured ownership mode, defaulting to managed.
+func (s *headscaleConfigService) Mode() config.OwnershipMode {
+	if model.DB == nil {
+		return config.ManagedMode
 	}
+	var state config.State
+	if err := model.DB.First(&state, 1).Error; err != nil {
+		return config.ManagedMode
+	}
+	if !state.Mode.Valid() {
+		return config.ManagedMode
+	}
+	return state.Mode
 }
 
-// GetConfig reads and parses the config file.
-func (s *headscaleConfigService) GetConfig() (*HeadscaleConfigFile, error) {
-	path := constants.HeadscaleConfigFilePath
-	data, err := os.ReadFile(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return s.defaultConfig(), nil
+// SetMode persists the ownership mode.
+func (s *headscaleConfigService) SetMode(mode config.OwnershipMode) error {
+	if !mode.Valid() {
+		return unifyerror.BadRequest("unknown ownership mode")
+	}
+	if model.DB == nil {
+		return unifyerror.ServerError(errors.New("database not initialised"))
+	}
+
+	var state config.State
+	if err := model.DB.First(&state, 1).Error; err != nil {
+		state = config.State{Mode: mode}
+		if createErr := model.DB.Create(&state).Error; createErr != nil {
+			return unifyerror.DbError(createErr)
 		}
-		return nil, unifyerror.ServerError(err)
+		return nil
 	}
-	var cfg HeadscaleConfigFile
-	if err := yaml.Unmarshal(data, &cfg); err != nil {
-		return nil, unifyerror.ServerError(err)
-	}
-	return &cfg, nil
-}
-
-// SaveConfig writes the config to the file. When restart is true and DinD
-// mode is enabled the Headscale container will be restarted after writing.
-func (s *headscaleConfigService) SaveConfig(cfg *HeadscaleConfigFile, restart bool) error {
-	if err := s.writeConfig(cfg); err != nil {
-		return err
-	}
-	if restart {
-		s.tryRestartHeadscale()
+	state.Mode = mode
+	if err := model.DB.Save(&state).Error; err != nil {
+		return unifyerror.DbError(err)
 	}
 	return nil
 }
 
-// tryRestartHeadscale attempts to restart Headscale after writing config.
-// Failures are logged and do not block the successful config write path.
-func (s *headscaleConfigService) tryRestartHeadscale() {
-	headscale.TryRestartHeadscale(context.Background(), "config write")
-}
+// Get returns the config with secrets masked.
+func (s *headscaleConfigService) Get() (*ConfigView, error) {
+	service := s.configService()
 
-// PreviewConfig returns the YAML string of the config.
-func (s *headscaleConfigService) PreviewConfig(cfg *HeadscaleConfigFile) (string, error) {
-	data, err := yaml.Marshal(cfg)
+	values, err := service.Load()
 	if err != nil {
-		return "", unifyerror.ServerError(err)
+		return nil, unifyerror.ServerError(err)
 	}
-	return string(data), nil
+
+	fields := make([]ConfigField, 0, len(values))
+	for _, rule := range config.Registry {
+		value := values[rule.Key].Value
+		if rule.Secret && value == true {
+			value = RedactedSecret
+		}
+		fields = append(fields, ConfigField{
+			Key:     rule.Key,
+			Value:   value,
+			Owner:   string(rule.Owner),
+			Tier:    string(rule.Tier),
+			Kind:    string(rule.Kind),
+			Section: rule.Section,
+			Secret:  rule.Secret,
+			Note:    rule.Note,
+		})
+	}
+	sort.Slice(fields, func(i, j int) bool { return fields[i].Key < fields[j].Key })
+
+	doc, err := service.Document()
+	if err != nil {
+		return nil, unifyerror.ServerError(err)
+	}
+
+	return &ConfigView{
+		Mode:       string(service.Mode()),
+		Configured: len(doc.Keys()) > 0,
+		Path:       service.Path(),
+		Fields:     fields,
+		Unmodelled: config.DetectDrift(doc, nil).Unmodelled,
+	}, nil
 }
 
-// GetConfigWithAuth is GetConfig with permission check.
-func (s *headscaleConfigService) GetConfigWithAuth(actorUserID uint) (*HeadscaleConfigFile, error) {
-	if err := RequirePermission(actorUserID, "headscale:config:view"); err != nil {
-		return nil, err
+// Save merges the provided values into the config file and records how to undo it.
+//
+// A value the panel cannot prove headscale can start from is not saved silently:
+// publication keeps the previous file so an operator whose restart fails can get
+// back to a working config.
+func (s *headscaleConfigService) Save(actorID uint, actorName string, values map[string]any) (*config.PublishResult, error) {
+	desired := s.dropRedactedSecrets(values)
+
+	result, err := s.deployments().Publish(context.Background(), config.ActionSave, actorID, actorName, desired, config.MergeOptions{})
+	if err != nil {
+		return nil, mapConfigError(err)
 	}
-	return s.GetConfig()
+	return result, nil
 }
 
-// SaveConfigWithAuth is SaveConfig with permission check.
-func (s *headscaleConfigService) SaveConfigWithAuth(actorUserID uint, cfg *HeadscaleConfigFile, restart bool) error {
-	if err := RequirePermission(actorUserID, "headscale:config:update"); err != nil {
+// PublishBootstrap runs one of the bootstrap actions.
+//
+// Bootstrap is the only flow allowed to create read-only keys, and only where they
+// are absent; its output still goes through publication so a broken result can be
+// rolled back like any other change.
+func (s *headscaleConfigService) PublishBootstrap(actorID uint, actorName, action string, values map[string]any) (*config.PublishResult, error) {
+	desired := s.dropRedactedSecrets(values)
+
+	result, err := s.deployments().Publish(context.Background(), action, actorID, actorName, desired, config.MergeOptions{Bootstrap: true})
+	if err != nil {
+		return nil, mapConfigError(err)
+	}
+	return result, nil
+}
+
+// Deployments returns recent publications, newest first.
+func (s *headscaleConfigService) Deployments(limit int) ([]config.Deployment, error) {
+	list, err := s.deployments().List(limit)
+	if err != nil {
+		return nil, unifyerror.ServerError(err)
+	}
+	return list, nil
+}
+
+// VerifyDeployment checks headscale after a restart and rolls back on failure.
+func (s *headscaleConfigService) VerifyDeployment(ctx context.Context, id uint) (*config.Deployment, error) {
+	dep, err := s.deployments().Verify(ctx, id)
+	if err != nil {
+		switch {
+		case errors.Is(err, config.ErrNothingToVerify):
+			return nil, unifyerror.New(http.StatusConflict, unifyerror.CodeConflict,
+				"this deployment is not awaiting verification; a newer publication may have replaced it")
+		case errors.Is(err, config.ErrConfigChangedExternally):
+			return nil, unifyerror.New(http.StatusConflict, unifyerror.CodeConflict,
+				"the config was modified after it was published; publish again before verifying")
+		case errors.Is(err, config.ErrSnapshotUnusable):
+			return nil, unifyerror.New(http.StatusConflict, unifyerror.CodeConflict,
+				"the stored snapshot failed its integrity check; restore the config by hand")
+		}
+		return nil, unifyerror.ServerError(err)
+	}
+	return dep, nil
+}
+
+// deployments builds the publisher with the live files and a real health probe.
+func (s *headscaleConfigService) deployments() *config.DeploymentService {
+	return config.NewDeploymentService(model.DB, config.NewFile(constants.HeadscaleConfigFilePath), probeHeadscaleHealth)
+}
+
+// probeHeadscaleHealth reports whether headscale answers its own health endpoint.
+//
+// Capability probing is the right signal here: it proves the process started and can
+// reach its database, which is exactly what a config change can break.
+func probeHeadscaleHealth(ctx context.Context) error {
+	client, err := headscaleRESTClient()
+	if err != nil {
 		return err
 	}
-	return s.SaveConfig(cfg, restart)
+
+	probeCtx, cancel := withServiceTimeout(ctx)
+	defer cancel()
+	return client.Health(probeCtx)
 }
 
-// PreviewConfigWithAuth is PreviewConfig with permission check.
-func (s *headscaleConfigService) PreviewConfigWithAuth(actorUserID uint, cfg *HeadscaleConfigFile) (string, error) {
-	if err := RequirePermission(actorUserID, "headscale:config:view"); err != nil {
-		return "", err
+// mapConfigError turns config-package errors into HTTP errors with a message an
+// operator can act on.
+func mapConfigError(err error) error {
+	switch {
+	case errors.Is(err, config.ErrObservedMode):
+		return unifyerror.BadRequest("the panel is in observed mode and does not write the headscale config; switch to managed first")
+	case errors.Is(err, config.ErrNotGenerated):
+		return unifyerror.BadRequest("headscale config does not exist yet; generate it from the bootstrap page first")
+	case errors.Is(err, config.ErrDeploymentBusy):
+		return unifyerror.New(http.StatusConflict, unifyerror.CodeConflict, "another config deployment is in progress")
 	}
-	return s.PreviewConfig(cfg)
+
+	var validationErr *config.ValidationError
+	if errors.As(err, &validationErr) {
+		return unifyerror.BadRequest(validationErr.Error())
+	}
+	return unifyerror.ServerError(err)
 }
 
-// RedactSecrets returns a copy of the config with sensitive fields masked.
-func (s *headscaleConfigService) RedactSecrets(cfg *HeadscaleConfigFile) *HeadscaleConfigFile {
-	if cfg == nil {
-		return nil
+// Preview renders what the file would contain without writing it.
+func (s *headscaleConfigService) Preview(values map[string]any) (string, *config.MergeResult, error) {
+	desired := s.dropRedactedSecrets(values)
+
+	result, rendered, err := s.configService().Preview(desired)
+	if err != nil {
+		var validationErr *config.ValidationError
+		if errors.As(err, &validationErr) {
+			return "", nil, unifyerror.BadRequest(validationErr.Error())
+		}
+		return "", nil, unifyerror.ServerError(err)
 	}
-	copy := *cfg
-	if copy.OIDC.ClientSecret != "" {
-		copy.OIDC.ClientSecret = redactedSecretPlaceholder
-	}
-	if copy.Database.Postgres.Pass != "" {
-		copy.Database.Postgres.Pass = redactedSecretPlaceholder
-	}
-	return &copy
+	return rendered, result, nil
 }
 
-// MergePreservedSecrets prevents clients from overwriting secrets with the redacted placeholder.
-func (s *headscaleConfigService) MergePreservedSecrets(incoming, current *HeadscaleConfigFile) *HeadscaleConfigFile {
-	if incoming == nil {
-		return nil
-	}
-	merged := *incoming
-	if current == nil {
-		return &merged
-	}
-	if incoming.OIDC.ClientSecret == redactedSecretPlaceholder {
-		merged.OIDC.ClientSecret = current.OIDC.ClientSecret
-	}
-	if incoming.Database.Postgres.Pass == redactedSecretPlaceholder {
-		merged.Database.Postgres.Pass = current.Database.Postgres.Pass
-	}
-	return &merged
-}
-
-// IsOIDCAutoLinkAllowed reports whether the given email is permitted by the
-// OIDC allowed_users / allowed_domains allowlist. Returns true when no
-// allowlist is configured (open enrollment).
-func (s *headscaleConfigService) IsOIDCAutoLinkAllowed(cfg *HeadscaleConfigFile, email string) bool {
-	if cfg == nil {
-		return true
-	}
-
-	normalizedEmail := strings.ToLower(strings.TrimSpace(email))
-	if normalizedEmail == "" {
-		return false
-	}
-
-	allowedUsers := normalizeOIDCAllowlist(cfg.OIDC.AllowedUsers)
-	allowedDomains := normalizeOIDCAllowlist(cfg.OIDC.AllowedDomains)
-	if len(allowedUsers) == 0 && len(allowedDomains) == 0 {
-		return true
-	}
-
-	if _, ok := allowedUsers[normalizedEmail]; ok {
-		return true
-	}
-
-	parts := strings.Split(normalizedEmail, "@")
-	if len(parts) != 2 || strings.TrimSpace(parts[1]) == "" {
-		return false
-	}
-	_, ok := allowedDomains[parts[1]]
-	return ok
-}
-
-// HasOIDCAllowlist reports whether the config has any allowed_users or
-// allowed_domains configured.
-func (s *headscaleConfigService) HasOIDCAllowlist(cfg *HeadscaleConfigFile) bool {
-	if cfg == nil {
-		return false
-	}
-	return len(normalizeOIDCAllowlist(cfg.OIDC.AllowedUsers)) > 0 ||
-		len(normalizeOIDCAllowlist(cfg.OIDC.AllowedDomains)) > 0
-}
-
-func normalizeOIDCAllowlist(values []string) map[string]struct{} {
-	result := make(map[string]struct{}, len(values))
-	for _, v := range values {
-		normalized := strings.ToLower(strings.TrimSpace(v))
-		if normalized == "" {
+// dropRedactedSecrets removes values the client sent back as the redaction
+// placeholder, so a form that renders every field cannot overwrite a stored secret
+// with "******".
+func (s *headscaleConfigService) dropRedactedSecrets(values map[string]any) map[string]any {
+	desired := make(map[string]any, len(values))
+	for key, value := range values {
+		if text, ok := value.(string); ok && text == RedactedSecret {
 			continue
 		}
-		result[normalized] = struct{}{}
+		desired[key] = value
 	}
-	return result
+	return desired
 }
 
-// writeConfig marshals cfg to YAML and writes it to the config file path.
-func (s *headscaleConfigService) writeConfig(cfg *HeadscaleConfigFile) error {
-	data, err := yaml.Marshal(cfg)
+// Restart applies a written config.
+//
+// The caller has already written the file, so this is best effort; the outcome is
+// returned so the UI can tell the operator to restart by hand when lifecycle control
+// is unavailable.
+func (s *headscaleConfigService) Restart(ctx context.Context) (*hslifecycle.Outcome, error) {
+	return hslifecycle.RequestRestart(ctx, "config_saved")
+}
+
+// GetRunningConfig fetches the live redacted YAML configuration reported by
+// Headscale's GET /api/v1/config endpoint.
+func (s *headscaleConfigService) GetRunningConfig(ctx context.Context, includeDocs bool) (string, error) {
+	client, err := headscaleRESTClient()
 	if err != nil {
-		return unifyerror.ServerError(err)
+		return "", err
 	}
-	path := constants.HeadscaleConfigFilePath
-	if err := os.MkdirAll(filepath.Dir(path), 0750); err != nil {
-		return unifyerror.ServerError(err)
+	queryCtx, cancel := withServiceTimeout(ctx)
+	defer cancel()
+
+	yamlDoc, apiErr := client.GetRunningConfig(queryCtx, includeDocs)
+	if apiErr != nil {
+		return "", unifyerror.HeadscaleAPIError(apiErr)
 	}
-	if err := os.WriteFile(path, data, 0600); err != nil {
-		return unifyerror.ServerError(err)
-	}
-	return nil
+	return yamlDoc, nil
 }
 
-// mergeWithDefaults fills zero-value fields in cfg with values from the default
-// config. Only essential startup fields are back-filled.
-func (s *headscaleConfigService) mergeWithDefaults(cfg *HeadscaleConfigFile) *HeadscaleConfigFile {
-	def := s.defaultConfig()
-	out := *cfg
+// ServerURL returns the configured public URL, or an empty string when unset.
+//
+// Other domains derive the panel IdP redirect from this. A missing value is a
+// configuration problem the config page reports, not a reason to break an unrelated
+// endpoint, so this never returns an error.
+func (s *headscaleConfigService) ServerURL() string {
+	return s.stringValue("server_url")
+}
 
-	if out.ServerURL == "" {
-		out.ServerURL = def.ServerURL
-	}
-	if out.ListenAddr == "" {
-		out.ListenAddr = def.ListenAddr
-	}
-	if out.MetricsListenAddr == "" {
-		out.MetricsListenAddr = def.MetricsListenAddr
-	}
-	if out.GRPCListenAddr == "" {
-		out.GRPCListenAddr = def.GRPCListenAddr
-	}
-	if out.PrivateKeyPath == "" {
-		out.PrivateKeyPath = def.PrivateKeyPath
-	}
-	if out.Noise.PrivateKeyPath == "" {
-		out.Noise.PrivateKeyPath = def.Noise.PrivateKeyPath
-	}
-	if out.Prefixes.V4 == "" {
-		out.Prefixes.V4 = def.Prefixes.V4
-	}
-	if out.Prefixes.Allocation == "" {
-		out.Prefixes.Allocation = def.Prefixes.Allocation
-	}
-	if len(out.DERP.Paths) == 0 {
-		out.DERP.Paths = def.DERP.Paths
-	}
-	if out.Database.Type == "" {
-		out.Database.Type = def.Database.Type
-	}
-	if out.Database.SQLite.Path == "" {
-		out.Database.SQLite.Path = def.Database.SQLite.Path
-	}
-	if out.DNS.BaseDomain == "" {
-		out.DNS.BaseDomain = def.DNS.BaseDomain
-	}
-	if len(out.DNS.Nameservers.Global) == 0 {
-		out.DNS.Nameservers.Global = def.DNS.Nameservers.Global
-	}
-	if out.Policy.Mode == "" {
-		out.Policy.Mode = def.Policy.Mode
-	}
+// PolicyMode returns the configured policy source, "database" or "file".
+func (s *headscaleConfigService) PolicyMode() string {
+	return s.stringValue("policy.mode")
+}
 
-	return &out
+// OIDCIssuer returns the headscale OIDC issuer, or an empty string when headscale
+// is not configured for OIDC.
+func (s *headscaleConfigService) OIDCIssuer() string {
+	return s.stringValue("oidc.issuer")
+}
+
+func (s *headscaleConfigService) stringValue(key string) string {
+	doc, err := s.configService().Document()
+	if err != nil {
+		return ""
+	}
+	value, ok := doc.Get(key)
+	if !ok {
+		return ""
+	}
+	text, _ := value.(string)
+	return strings.TrimSpace(text)
 }

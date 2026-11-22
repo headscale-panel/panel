@@ -1,4 +1,4 @@
-// Copyright (C) 2026 
+// Copyright (C) 2026
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as
@@ -42,9 +42,9 @@ const (
 	CodeInvalidQuery      = 1202
 
 	// ---- 13xx server ----
-	CodeServerErr = 1300
-	CodeDBErr     = 1301
-	CodeGRPCErr   = 1302
+	CodeServerErr       = 1300
+	CodeDBErr           = 1301
+	CodeHeadscaleAPIErr = 1302
 
 	// ---- 14xx auth ----
 	CodeUnauth        = 1400
@@ -64,6 +64,12 @@ func WrongParam(fields ...string) *UniErr {
 	if len(fields) > 0 {
 		msg = constants.MsgParamErr + " [" + joinFields(fields) + "]"
 	}
+	return newUniErr(ErrTypeUser, http.StatusBadRequest, CodeParamErr, msg)
+}
+
+// BadRequest returns a 400 with a caller-supplied message, for rejections that are
+// more specific than "wrong parameter".
+func BadRequest(msg string) *UniErr {
 	return newUniErr(ErrTypeUser, http.StatusBadRequest, CodeParamErr, msg)
 }
 
@@ -123,9 +129,9 @@ func DbError(err error) *UniErr {
 	return newUniErrWithServer(ErrTypeDb, http.StatusInternalServerError, CodeDBErr, constants.MsgDBErr, err.Error())
 }
 
-// GRPCError wraps a gRPC call error.
-func GRPCError(err error) *UniErr {
-	return newUniErrWithServer(ErrTypeGRPC, http.StatusOK, CodeGRPCErr, constants.MsgGRPCErr, err.Error())
+// HeadscaleAPIError wraps a failed headscale REST API call.
+func HeadscaleAPIError(err error) *UniErr {
+	return newUniErrWithServer(ErrTypeHeadscaleAPI, http.StatusOK, CodeHeadscaleAPIErr, constants.MsgHeadscaleAPIErr, err.Error())
 }
 
 // ---- 14xx auth ----

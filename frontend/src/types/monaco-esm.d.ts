@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2026 
+ * Copyright (C) 2026
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -21,10 +21,10 @@ declare module 'monaco-editor/esm/vs/editor/editor.api' {
 
 declare module 'monaco-editor/esm/vs/language/json/monaco.contribution' {
   export const jsonDefaults: {
-    setDiagnosticsOptions(options: {
+    setDiagnosticsOptions: (options: {
       validate?: boolean;
       allowComments?: boolean;
       trailingCommas?: 'ignore' | 'error' | 'warning';
-    }): void;
+    }) => void;
   };
 }

@@ -18,7 +18,7 @@ package services
 import (
 	"context"
 	"fmt"
-	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
+	"headscale-panel/pkg/constants"
 	"headscale-panel/pkg/influxdb"
 	"headscale-panel/pkg/log"
 	"headscale-panel/pkg/unifyerror"
@@ -45,19 +45,19 @@ var MetricsService = &metricsService{}
 func (s *metricsService) CollectDeviceStatus(ctx context.Context) error {
 	ctx, cancel := withServiceTimeout(ctx)
 	defer cancel()
-	client, err := headscaleServiceClient()
+	client, err := headscaleRESTClient()
 	if err != nil {
-		return unifyerror.GRPCError(err)
+		return err
 	}
 
-	nodes, grpcErr := client.ListNodes(ctx, &v1.ListNodesRequest{})
-	if grpcErr != nil {
-		return unifyerror.GRPCError(grpcErr)
+	nodes, listErr := client.ListNodes(ctx, "")
+	if listErr != nil {
+		return unifyerror.HeadscaleAPIError(listErr)
 	}
 
-	for _, node := range nodes.Nodes {
+	for _, node := range nodes {
 		// Align with device list semantics: trust Headscale's online flag.
-		online := node.GetOnline()
+		online := node.Online
 
 		// Get primary IP
 		ipAddress := ""
@@ -65,15 +65,13 @@ func (s *metricsService) CollectDeviceStatus(ctx context.Context) error {
 			ipAddress = node.IpAddresses[0]
 		}
 
-		userID := "0"
-		if node.User != nil {
-			userID = fmt.Sprintf("%d", node.User.Id)
-		}
+		ownerID := parseHSUserID(node.User.Id)
+		userID := fmt.Sprintf("%d", ownerID)
 
 		// Write to InfluxDB
 		influxdb.WriteDeviceStatus(
 			userID,
-			fmt.Sprintf("%d", node.Id),
+			fmt.Sprintf("%d", parseHSUserID(node.Id)),
 			node.Name,
 			ipAddress,
 			online,
@@ -139,7 +137,7 @@ func (s *metricsService) StopMetricsCollector() {
 
 // GetOnlineDuration gets online duration for a user or device
 func (s *metricsService) GetOnlineDuration(ctx context.Context, actorUserID uint, userID, machineID string, start, end time.Time) (time.Duration, error) {
-	if err := RequirePermission(actorUserID, "metrics:online_duration:view"); err != nil {
+	if err := RequirePermission(actorUserID, constants.PermMetricsView); err != nil {
 		return 0, err
 	}
 	if strings.TrimSpace(machineID) != "" {
@@ -148,7 +146,7 @@ func (s *metricsService) GetOnlineDuration(ctx context.Context, actorUserID uint
 			return 0, err
 		}
 		for _, node := range nodes {
-			if fmt.Sprintf("%d", node.Id) == strings.TrimSpace(machineID) {
+			if fmt.Sprintf("%d", parseHSUserID(node.Id)) == strings.TrimSpace(machineID) {
 				dur, err := influxdb.QueryOnlineDuration(ctx, "", machineID, &start, end)
 				if err != nil {
 					return 0, unifyerror.FromError(err)
@@ -163,7 +161,7 @@ func (s *metricsService) GetOnlineDuration(ctx context.Context, actorUserID uint
 		if err != nil {
 			return 0, unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "invalid user_id")
 		}
-		if err := ensureActorCanAccessHeadscaleUserID(ctx, actorUserID, parsedUserID); err != nil {
+		if err := ensureActorCanAccessHeadscaleUser(actorUserID, parsedUserID); err != nil {
 			return 0, err
 		}
 	}
@@ -176,7 +174,7 @@ func (s *metricsService) GetOnlineDuration(ctx context.Context, actorUserID uint
 
 // GetDeviceStatusHistory gets device status history
 func (s *metricsService) GetDeviceStatusHistory(ctx context.Context, actorUserID uint, machineID string, start *time.Time, end time.Time) ([]map[string]interface{}, error) {
-	if err := RequirePermission(actorUserID, "metrics:device_status_history:view"); err != nil {
+	if err := RequirePermission(actorUserID, constants.PermMetricsView); err != nil {
 		return nil, err
 	}
 	if strings.TrimSpace(machineID) == "" {
@@ -187,7 +185,7 @@ func (s *metricsService) GetDeviceStatusHistory(ctx context.Context, actorUserID
 		return nil, err
 	}
 	for _, node := range nodes {
-		if fmt.Sprintf("%d", node.Id) == strings.TrimSpace(machineID) {
+		if fmt.Sprintf("%d", parseHSUserID(node.Id)) == strings.TrimSpace(machineID) {
 			data, err := influxdb.GetDeviceStatusHistory(ctx, machineID, start, end)
 			if err != nil {
 				return nil, unifyerror.FromError(err)
@@ -200,7 +198,7 @@ func (s *metricsService) GetDeviceStatusHistory(ctx context.Context, actorUserID
 
 // GetDeviceStatusHistories gets device status histories for multiple devices.
 func (s *metricsService) GetDeviceStatusHistories(ctx context.Context, actorUserID uint, machineIDs []string, start *time.Time, end time.Time) (map[string][]map[string]interface{}, error) {
-	if err := RequirePermission(actorUserID, "metrics:device_status_history:view"); err != nil {
+	if err := RequirePermission(actorUserID, constants.PermMetricsView); err != nil {
 		return nil, err
 	}
 	if len(machineIDs) == 0 {
@@ -214,7 +212,7 @@ func (s *metricsService) GetDeviceStatusHistories(ctx context.Context, actorUser
 
 	accessibleIDs := make(map[string]struct{}, len(nodes))
 	for _, node := range nodes {
-		accessibleIDs[fmt.Sprintf("%d", node.Id)] = struct{}{}
+		accessibleIDs[fmt.Sprintf("%d", parseHSUserID(node.Id))] = struct{}{}
 	}
 
 	filteredMachineIDs := make([]string, 0, len(machineIDs))
@@ -247,7 +245,7 @@ func (s *metricsService) GetDeviceStatusHistories(ctx context.Context, actorUser
 
 // GetOnlineDurationStats gets online duration statistics for all users
 func (s *metricsService) GetOnlineDurationStats(ctx context.Context, actorUserID uint, start *time.Time, end time.Time) ([]map[string]interface{}, error) {
-	if err := RequirePermission(actorUserID, "metrics:online_duration_stats:view"); err != nil {
+	if err := RequirePermission(actorUserID, constants.PermMetricsView); err != nil {
 		return nil, err
 	}
 	nodes, _, err := listAccessibleNodes(ctx, actorUserID)
@@ -257,21 +255,21 @@ func (s *metricsService) GetOnlineDurationStats(ctx context.Context, actorUserID
 
 	var stats []map[string]interface{}
 	for _, node := range nodes {
-		duration, err := influxdb.QueryOnlineDuration(ctx, "", fmt.Sprintf("%d", node.Id), start, end)
+		duration, err := influxdb.QueryOnlineDuration(ctx, "", node.Id, start, end)
 		if err != nil {
-			log.L.Warn("Failed to get online duration for node", zap.Uint64("nodeID", node.Id), zap.Error(err))
+			log.L.Warn("Failed to get online duration for node", zap.Uint64("nodeID", parseHSUserID(node.Id)), zap.Error(err))
 			continue
 		}
 
 		userID := ""
 		userName := ""
-		if node.User != nil {
-			userID = fmt.Sprintf("%d", node.User.Id)
+		if node.User.Id != "" {
+			userID = fmt.Sprintf("%d", parseHSUserID(node.User.Id))
 			userName = node.User.Name
 		}
 
 		stats = append(stats, map[string]interface{}{
-			"machine_id":      fmt.Sprintf("%d", node.Id),
+			"machine_id":      node.Id,
 			"machine_name":    node.Name,
 			"user_id":         userID,
 			"user_name":       userName,
@@ -285,7 +283,7 @@ func (s *metricsService) GetOnlineDurationStats(ctx context.Context, actorUserID
 
 // GetOnlineDurationSummary gets summarized online duration in multiple windows.
 func (s *metricsService) GetOnlineDurationSummary(ctx context.Context, actorUserID uint, end time.Time) (map[string]interface{}, error) {
-	if err := RequirePermission(actorUserID, "metrics:online_duration_stats:view"); err != nil {
+	if err := RequirePermission(actorUserID, constants.PermMetricsView); err != nil {
 		return nil, err
 	}
 
@@ -405,7 +403,7 @@ func toFloat64(value interface{}) (float64, bool) {
 
 // GetDeviceStatus gets current device status
 func (s *metricsService) GetDeviceStatus(ctx context.Context, actorUserID uint) ([]map[string]interface{}, error) {
-	if err := RequirePermission(actorUserID, "metrics:device_status:view"); err != nil {
+	if err := RequirePermission(actorUserID, constants.PermMetricsView); err != nil {
 		return nil, err
 	}
 	nodes, _, err := listAccessibleNodes(ctx, actorUserID)
@@ -415,7 +413,7 @@ func (s *metricsService) GetDeviceStatus(ctx context.Context, actorUserID uint) 
 
 	var devices []map[string]interface{}
 	for _, node := range nodes {
-		online := node.GetOnline()
+		online := node.Online
 
 		ipAddress := ""
 		if len(node.IpAddresses) > 0 {
@@ -424,13 +422,13 @@ func (s *metricsService) GetDeviceStatus(ctx context.Context, actorUserID uint) 
 
 		userID := ""
 		userName := ""
-		if node.User != nil {
-			userID = fmt.Sprintf("%d", node.User.Id)
+		if node.User.Id != "" {
+			userID = fmt.Sprintf("%d", parseHSUserID(node.User.Id))
 			userName = node.User.Name
 		}
 
 		devices = append(devices, map[string]interface{}{
-			"machine_id":   fmt.Sprintf("%d", node.Id),
+			"machine_id":   node.Id,
 			"machine_name": node.Name,
 			"user_id":      userID,
 			"user_name":    userName,
@@ -446,7 +444,7 @@ func (s *metricsService) GetDeviceStatus(ctx context.Context, actorUserID uint) 
 // GetTrafficStats gets traffic statistics for devices
 // Note: Headscale doesn't provide traffic stats directly, so this returns basic info
 func (s *metricsService) GetTrafficStats(ctx context.Context, actorUserID uint, machineID string, start, end time.Time) (map[string]interface{}, error) {
-	if err := RequirePermission(actorUserID, "metrics:traffic:view"); err != nil {
+	if err := RequirePermission(actorUserID, constants.PermMetricsView); err != nil {
 		return nil, err
 	}
 	nodes, _, err := listAccessibleNodes(ctx, actorUserID)
@@ -460,11 +458,11 @@ func (s *metricsService) GetTrafficStats(ctx context.Context, actorUserID uint, 
 
 	for _, node := range nodes {
 		// Skip if machineID is specified and doesn't match
-		if machineID != "" && fmt.Sprintf("%d", node.Id) != machineID {
+		if machineID != "" && fmt.Sprintf("%d", parseHSUserID(node.Id)) != machineID {
 			continue
 		}
 
-		online := node.GetOnline()
+		online := node.Online
 
 		totalDevices++
 		if online {
@@ -472,12 +470,12 @@ func (s *metricsService) GetTrafficStats(ctx context.Context, actorUserID uint, 
 		}
 
 		userName := ""
-		if node.User != nil {
+		if node.User.Id != "" {
 			userName = node.User.Name
 		}
 
 		trafficData = append(trafficData, map[string]interface{}{
-			"machine_id":   fmt.Sprintf("%d", node.Id),
+			"machine_id":   node.Id,
 			"machine_name": node.Name,
 			"user_name":    userName,
 			"online":       online,

@@ -23,6 +23,7 @@ import (
 	"headscale-panel/pkg/headscale"
 	"headscale-panel/pkg/influxdb"
 	"headscale-panel/pkg/log"
+	"headscale-panel/pkg/utils/jwt"
 	"headscale-panel/router"
 	"headscale-panel/router/services"
 	"net/http"
@@ -34,6 +35,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
 
 type Server struct {
@@ -50,21 +52,46 @@ func NewServer(versionCode string) (*Server, error) {
 	}
 	conf.Init(confPath)
 
+	// Access tokens are signed with an asymmetric key that is generated once and
+	// kept on disk. A shared secret in the environment could be read by anything
+	// that can inspect the process, and it cannot be rotated without invalidating
+	// every session at once.
+	jwt.ConfigureKeyStore(constants.JWTSigningKeyPath)
+	if _, err := jwt.KeyID(); err != nil {
+		return nil, err
+	}
+
 	if conf.Conf.System.Debug {
 		gin.SetMode(gin.DebugMode)
 	} else {
 		gin.SetMode(gin.ReleaseMode)
 	}
 
+	// gin writes its own route table and mode warnings straight to stdout.
+	gin.DefaultWriter = log.Writer{Logger: log.L, Level: zapcore.DebugLevel}
+	gin.DefaultErrorWriter = log.Writer{Logger: log.L, Level: zapcore.ErrorLevel}
+
 	model.Init(versionCode)
 
+	// The account domain owns roles and the permission catalogue, and validates
+	// that the catalogue in code matches the one in the database. A mismatch is a
+	// startup failure: it means a route guards on a code nobody can be granted.
+	if err := services.InitAccountDomain(model.DB); err != nil {
+		return nil, err
+	}
+	services.InitNetworkDomain(model.DB)
+
 	// Restore headscale connection settings from DB (survives container restart)
-	if services.LoadHeadscaleConnectionFromDB() {
+	if services.LoadConnectionFromDB() {
 		if err := services.HeadscaleInitService.InitializeFromCurrentConfig(context.Background()); err != nil {
-			log.L.Warn("Headscale init flow failed; complete setup via WebUI", zap.Error(err))
+			log.L.Warn("headscale init failed; finish the setup wizard in the UI", zap.Error(err))
 		}
 	} else {
-		log.L.Warn("No Headscale connection configured; complete setup via WebUI")
+		log.L.Warn("headscale connection is not configured yet; finish the setup wizard in the UI")
+	}
+
+	if err := services.IdPService.Init(); err != nil {
+		return nil, err
 	}
 
 	if conf.Conf.InfluxDB.URL != "" {
@@ -80,10 +107,6 @@ func NewServer(versionCode string) (*Server, error) {
 		}
 	}
 
-	if err := services.OIDCService.Init(); err != nil {
-		return nil, err
-	}
-
 	r := router.InitRouter()
 
 	return &Server{
@@ -93,8 +116,11 @@ func NewServer(versionCode string) (*Server, error) {
 
 func (s *Server) Run() {
 	s.server = &http.Server{
-		Addr:    conf.Conf.System.Port,
-		Handler: s.router,
+		Addr:              conf.Conf.System.Port,
+		Handler:           s.router,
+		ReadHeaderTimeout: 10 * time.Second,
+		IdleTimeout:       120 * time.Second,
+		MaxHeaderBytes:    1 << 20,
 	}
 
 	listenErr := make(chan error, 1)

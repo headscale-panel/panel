@@ -18,822 +18,423 @@ package controllers
 import (
 	"context"
 	"crypto/rand"
-	"encoding/hex"
-	"errors"
-	"fmt"
+	"crypto/subtle"
+	"encoding/base64"
+	"headscale-panel/internal/audit"
+	"headscale-panel/model"
 	"headscale-panel/pkg/conf"
-	"headscale-panel/pkg/constants"
 	"headscale-panel/pkg/unifyerror"
+	"headscale-panel/router/middleware"
+	"headscale-panel/router/services"
 	"net/http"
 	"net/url"
 	"strings"
 	"sync"
 	"time"
 
-	"headscale-panel/model"
-	"headscale-panel/pkg/utils/jwt"
-	"headscale-panel/router/services"
-
-	oidc "github.com/coreos/go-oidc/v3/oidc"
+	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/gin-gonic/gin"
 	"golang.org/x/oauth2"
-	"gorm.io/gorm"
 )
 
+// AuthController handles the panel's own sign-in flows.
+//
+// It knows about exactly one OIDC relationship: the panel as a *client* of some
+// external provider. The panel acting as a provider lives in IdPController, and
+// the two never share state.
 type AuthController struct{}
 
+// NewAuthController builds the controller.
 func NewAuthController() *AuthController {
 	return &AuthController{}
 }
 
-// oidcStateEntry holds PKCE verifier alongside expiry for a pending OIDC flow.
-type oidcStateEntry struct {
-	Expiry       time.Time
-	CodeVerifier string
+const ssoStateCookieName = "panel_sso_state"
+
+type ssoStateEntry struct {
+	verifier string
+	nonce    string
+	binding  string
+	expiry   time.Time
 }
 
-// In-memory state storage for OIDC login flow
 var (
-	oidcStates              = make(map[string]oidcStateEntry)
-	oidcStatesMu            sync.Mutex
-	oidcHeadscaleUserStates = make(map[string]oidcStateEntry)
-	oidcHeadscaleStatesMu   sync.Mutex
+	ssoStates   = map[string]ssoStateEntry{}
+	ssoStatesMu sync.Mutex
 )
 
-// cleanExpiredStates removes expired entries from the state map.
-func cleanExpiredStates() {
-	now := time.Now()
-	for k, v := range oidcStates {
-		if now.After(v.Expiry) {
-			delete(oidcStates, k)
+func cleanExpiredSSOStates(now time.Time) {
+	for key, entry := range ssoStates {
+		if now.After(entry.expiry) {
+			delete(ssoStates, key)
 		}
 	}
 }
 
-func cleanExpiredHeadscaleUserStates() {
-	now := time.Now()
-	for k, v := range oidcHeadscaleUserStates {
-		if now.After(v.Expiry) {
-			delete(oidcHeadscaleUserStates, k)
-		}
-	}
+// PasswordLoginRequest is the sign-in payload.
+type PasswordLoginRequest struct {
+	Username string `json:"username" binding:"required"`
+	Password string `json:"password" binding:"required"`
+	TOTPCode string `json:"totp_code"`
 }
 
-// OIDCStatus godoc
-// @Summary Get OIDC login availability
+// Login godoc
+// @Summary Sign in with a password
 // @Tags auth
+// @Accept json
 // @Produce json
 // @Success 200 {object} unifyerror.Response{data=object}
-// @Router /auth/oidc/status [get]
-// OIDCStatus returns whether OIDC login is available and provider metadata.
-func (a *AuthController) OIDCStatus(c *gin.Context) {
-	oidcCfg := services.PanelSettingsService.GetOIDCConfig()
-	if oidcCfg != nil && oidcCfg.Enabled && oidcCfg.Issuer != "" && oidcCfg.ClientID != "" {
-		unifyerror.Success(c, gin.H{
-			"enabled":       true,
-			"builtin":       false,
-			"provider_name": "OIDC",
-			"issuer":        oidcCfg.Issuer,
-		})
-		return
-	}
-
-	unifyerror.Success(c, gin.H{
-		"enabled":       false,
-		"builtin":       false,
-		"provider_name": "",
-	})
-}
-
-// OIDCLogin godoc
-// @Summary Initiate OIDC authorization code flow
-// @Tags auth
-// @Produce json
-// @Success 200 {object} unifyerror.Response{data=object} "redirect_url"
-// @Failure 500 {object} unifyerror.Response
-// @Router /auth/oidc/login [get]
-// OIDCLogin initiates the OIDC authorization code flow by returning the
-// authorization URL the frontend should redirect the user to.
-func (a *AuthController) OIDCLogin(c *gin.Context) {
-	oidcCfg := services.PanelSettingsService.GetOIDCConfig()
-	if oidcCfg == nil || !oidcCfg.Enabled || oidcCfg.Issuer == "" || oidcCfg.ClientID == "" {
-		failOIDCAuth(c)
-		return
-	}
-
-	// 32 random bytes → 64 hex chars
-	stateBytes := make([]byte, 32)
-	if _, err := rand.Read(stateBytes); err != nil {
-		unifyerror.Fail(c, unifyerror.ServerError(err))
-		return
-	}
-	state := hex.EncodeToString(stateBytes)
-
-	verifier := oauth2.GenerateVerifier()
-
-	oidcStatesMu.Lock()
-	cleanExpiredStates()
-	oidcStates[state] = oidcStateEntry{
-		Expiry:       time.Now().Add(10 * time.Minute),
-		CodeVerifier: verifier,
-	}
-	oidcStatesMu.Unlock()
-
-	scopes := oidcCfg.Scope
-	if len(scopes) == 0 {
-		scopes = []string{"openid", "profile", "email"}
-	}
-
-	redirectURI, err := oidcRedirectURI()
-	if err != nil {
-		unifyerror.Fail(c, unifyerror.New(http.StatusInternalServerError, unifyerror.CodeServerErr, "invalid OIDC redirect base URL"))
-		return
-	}
-
-	ctx, cancel := context.WithTimeout(c.Request.Context(), 15*time.Second)
-	defer cancel()
-
-	provider, err := oidc.NewProvider(ctx, oidcCfg.Issuer)
-	if err != nil {
-		failOIDCAuth(c)
-		return
-	}
-
-	oauthCfg := oauth2.Config{
-		ClientID:     oidcCfg.ClientID,
-		ClientSecret: oidcCfg.ClientSecret,
-		RedirectURL:  redirectURI,
-		Endpoint:     provider.Endpoint(),
-		Scopes:       scopes,
-	}
-
-	authURL := oauthCfg.AuthCodeURL(state, oauth2.S256ChallengeOption(verifier))
-
-	unifyerror.Success(c, gin.H{
-		"redirect_url": authURL,
-	})
-}
-
-// OIDCHeadscaleUserLogin godoc
-// @Summary Initiate OIDC flow for creating a Headscale user
-// @Tags auth
-// @Produce json
-// @Success 200 {object} unifyerror.Response{data=object} "redirect_url"
-// @Failure 500 {object} unifyerror.Response
-// @Security BearerAuth
-// @Router /auth/oidc/headscale-user/login [get]
-func (a *AuthController) OIDCHeadscaleUserLogin(c *gin.Context) {
-	oidcCfg := services.PanelSettingsService.GetOIDCConfig()
-	if oidcCfg == nil || !oidcCfg.Enabled || oidcCfg.Issuer == "" || oidcCfg.ClientID == "" {
-		failOIDCAuth(c)
-		return
-	}
-
-	stateBytes := make([]byte, 32)
-	if _, err := rand.Read(stateBytes); err != nil {
-		unifyerror.Fail(c, unifyerror.ServerError(err))
-		return
-	}
-	state := hex.EncodeToString(stateBytes)
-
-	verifier := oauth2.GenerateVerifier()
-
-	oidcHeadscaleStatesMu.Lock()
-	cleanExpiredHeadscaleUserStates()
-	oidcHeadscaleUserStates[state] = oidcStateEntry{
-		Expiry:       time.Now().Add(10 * time.Minute),
-		CodeVerifier: verifier,
-	}
-	oidcHeadscaleStatesMu.Unlock()
-
-	scopes := oidcCfg.Scope
-	if len(scopes) == 0 {
-		scopes = []string{"openid", "profile", "email"}
-	}
-
-	redirectURI, err := oidcRedirectURI()
-	if err != nil {
-		unifyerror.Fail(c, unifyerror.New(http.StatusInternalServerError, unifyerror.CodeServerErr, "invalid OIDC redirect base URL"))
-		return
-	}
-
-	ctx, cancel := context.WithTimeout(c.Request.Context(), 15*time.Second)
-	defer cancel()
-
-	provider, err := oidc.NewProvider(ctx, oidcCfg.Issuer)
-	if err != nil {
-		failOIDCAuth(c)
-		return
-	}
-
-	oauthCfg := oauth2.Config{
-		ClientID:     oidcCfg.ClientID,
-		ClientSecret: oidcCfg.ClientSecret,
-		RedirectURL:  redirectURI,
-		Endpoint:     provider.Endpoint(),
-		Scopes:       scopes,
-	}
-
-	authURL := oauthCfg.AuthCodeURL(state, oauth2.S256ChallengeOption(verifier))
-	unifyerror.Success(c, gin.H{"redirect_url": authURL})
-}
-
-// OIDCCallbackQuery is the query parameter struct for OIDCCallback.
-type OIDCCallbackQuery struct {
-	Code  string `form:"code"  binding:"required"`
-	State string `form:"state" binding:"required"`
-}
-
-// OIDCCallback godoc
-// @Summary Handle OIDC authorization code callback
-// @Tags auth
-// @Produce json
-// @Param code query string true "Authorization code"
-// @Param state query string true "State parameter"
-// @Success 200 {object} unifyerror.Response{data=object} "token"
 // @Failure 400 {object} unifyerror.Response
-// @Router /auth/oidc/callback [get]
-// OIDCCallback handles the authorization code callback from the OIDC provider,
-// exchanges the code for tokens, extracts user info, and returns a panel JWT.
-func (a *AuthController) OIDCCallback(c *gin.Context) {
-	var q OIDCCallbackQuery
-	if err := c.ShouldBindQuery(&q); err != nil {
-		unifyerror.Fail(c, unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "missing code or state parameter"))
+// @Router /auth/login [post]
+func (a *AuthController) Login(c *gin.Context) {
+	var req PasswordLoginRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		unifyerror.Fail(c, unifyerror.ErrBind)
 		return
 	}
 
-	oidcStatesMu.Lock()
-	entry, exists := oidcStates[q.State]
-	if exists {
-		delete(oidcStates, q.State)
-	}
-	oidcStatesMu.Unlock()
-
-	if !exists || time.Now().After(entry.Expiry) {
-		unifyerror.Fail(c, unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "invalid or expired state parameter"))
+	result, err := services.LoginWithPassword(c.Request.Context(), services.LoginRequest{
+		Username: req.Username,
+		Password: req.Password,
+		TOTPCode: req.TOTPCode,
+	})
+	if err != nil {
+		// Record the attempt before returning. A failed login is the single most
+		// useful audit row during an incident, and it lives outside the
+		// authenticated group so nothing else writes it.
+		middleware.RecordAuthEvent(c, model.DB, audit.ActionLogin, req.Username, 0, false, err.Error())
+		unifyerror.Fail(c, err)
 		return
 	}
 
-	oidcCfg := services.PanelSettingsService.GetOIDCConfig()
-	if oidcCfg == nil || !oidcCfg.Enabled || oidcCfg.Issuer == "" || oidcCfg.ClientID == "" {
-		failOIDCAuth(c)
+	middleware.RecordAuthEvent(c, model.DB, audit.ActionLogin, result.Account.Username, result.Account.ID, true, "")
+
+	unifyerror.Success(c, gin.H{
+		"token":       result.Token,
+		"account":     services.BuildMeViewFromAccount(result.Account, result.Permissions),
+		"permissions": result.Permissions,
+	})
+}
+
+// Logout godoc
+// @Summary Sign out
+// @Tags auth
+// @Produce json
+// @Security BearerAuth
+// @Router /auth/logout [post]
+// Logout revokes active sessions for the account and clears the cookie.
+func (a *AuthController) Logout(c *gin.Context) {
+	userID := c.GetUint("userID")
+	if userID != 0 {
+		_ = services.Accounts.IncrementSessionVersion(userID)
+	}
+
+	c.SetSameSite(http.SameSiteLaxMode)
+	c.SetCookie("headscale_panel_token", "", -1, "/", "", usesHTTPS(), true)
+
+	middleware.RecordAuthEvent(c, model.DB, audit.ActionLogout, c.GetString("username"), userID, true, "")
+
+	unifyerror.Success(c, gin.H{"message": "signed out"})
+}
+
+// RegisterRequest is the self-service signup payload.
+type RegisterRequest struct {
+	Username    string `json:"username" binding:"required"`
+	Password    string `json:"password" binding:"required"`
+	Email       string `json:"email" binding:"required"`
+	DisplayName string `json:"display_name"`
+}
+
+// Register godoc
+// @Summary Self-service signup
+// @Tags auth
+// @Accept json
+// @Produce json
+// @Router /auth/register [post]
+// Register creates an account in the default role.
+//
+// Registration is closed before the panel is initialized: the first account is
+// the administrator and must be created through the setup flow, where the
+// bootstrap credential is checked.
+func (a *AuthController) Register(c *gin.Context) {
+	canRegister, err := services.SetupStateService.CanRegister()
+	if err != nil {
+		unifyerror.Fail(c, err)
+		return
+	}
+	if !canRegister {
+		unifyerror.Fail(c, unifyerror.New(http.StatusForbidden, unifyerror.CodeForbidden,
+			"self-service registration is disabled"))
+		return
+	}
+
+	var req RegisterRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		unifyerror.Fail(c, unifyerror.ErrBind)
+		return
+	}
+
+	roleID, roleErr := services.DefaultRoleID()
+	if roleErr != nil {
+		unifyerror.Fail(c, roleErr)
+		return
+	}
+
+	if _, createErr := services.Accounts.Create(services.AccountCreateInput{
+		Username:    req.Username,
+		Password:    req.Password,
+		Email:       req.Email,
+		DisplayName: req.DisplayName,
+		RoleID:      roleID,
+	}); createErr != nil {
+		unifyerror.Fail(c, services.MapAccountError(createErr))
+		return
+	}
+
+	unifyerror.Success(c, gin.H{"message": "account created"})
+}
+
+// AuthStatus godoc
+// @Summary Report which sign-in methods are available
+// @Tags auth
+// @Produce json
+// @Router /auth/status [get]
+// AuthStatus lets the login page decide what to render without guessing.
+func (a *AuthController) AuthStatus(c *gin.Context) {
+	unifyerror.Success(c, gin.H{
+		"password_login": true,
+		"panel_sso":      services.PanelSSOService.Enabled(),
+		"registration":   registrationEnabled(),
+	})
+}
+
+// PanelSSOLogin godoc
+// @Summary Start the panel SSO flow
+// @Tags auth
+// @Router /auth/panel-sso/login [get]
+func (a *AuthController) PanelSSOLogin(c *gin.Context) {
+	cfg := services.PanelSSOService.Config()
+	if cfg == nil {
+		unifyerror.Fail(c, unifyerror.New(http.StatusNotFound, unifyerror.CodeNotFound,
+			"panel SSO is not enabled"))
 		return
 	}
 
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 15*time.Second)
 	defer cancel()
 
-	provider, err := oidc.NewProvider(ctx, oidcCfg.Issuer)
+	provider, err := oidc.NewProvider(ctx, cfg.Issuer)
 	if err != nil {
-		failOIDCAuth(c)
+		unifyerror.Fail(c, unifyerror.New(http.StatusBadGateway, unifyerror.CodeServerErr,
+			"cannot reach the identity provider"))
 		return
 	}
 
-	scopes := oidcCfg.Scope
-	if len(scopes) == 0 {
-		scopes = []string{"openid", "profile", "email"}
+	state, stateErr := randomURLSafe(24)
+	if stateErr != nil {
+		unifyerror.Fail(c, unifyerror.ServerError(stateErr))
+		return
+	}
+	verifier, verifierErr := randomURLSafe(32)
+	if verifierErr != nil {
+		unifyerror.Fail(c, unifyerror.ServerError(verifierErr))
+		return
+	}
+	nonce, nonceErr := randomURLSafe(24)
+	if nonceErr != nil {
+		unifyerror.Fail(c, unifyerror.ServerError(nonceErr))
+		return
+	}
+	binding, bindingErr := randomURLSafe(24)
+	if bindingErr != nil {
+		unifyerror.Fail(c, unifyerror.ServerError(bindingErr))
+		return
 	}
 
-	redirectURI, err := oidcRedirectURI()
+	now := time.Now()
+	ssoStatesMu.Lock()
+	cleanExpiredSSOStates(now)
+	ssoStates[state] = ssoStateEntry{
+		verifier: verifier,
+		nonce:    nonce,
+		binding:  binding,
+		expiry:   now.Add(10 * time.Minute),
+	}
+	ssoStatesMu.Unlock()
+
+	c.SetSameSite(http.SameSiteLaxMode)
+	c.SetCookie(ssoStateCookieName, binding, 600, "/", "", usesHTTPS(), true)
+
+	oauthCfg := oauth2.Config{
+		ClientID:     cfg.ClientID,
+		ClientSecret: cfg.ClientSecret,
+		RedirectURL:  services.PanelSSOService.RedirectURI(),
+		Endpoint:     provider.Endpoint(),
+		Scopes:       cfg.Scopes,
+	}
+
+	// The nonce is carried through the IdP round trip and verified on return; it
+	// is what stops a replayed id_token from being accepted.
+	target := oauthCfg.AuthCodeURL(state,
+		oauth2.S256ChallengeOption(verifier),
+		oidc.Nonce(nonce))
+
+	c.Redirect(http.StatusFound, target)
+}
+
+// PanelSSOCallback godoc
+// @Summary Complete the panel SSO flow
+// @Tags auth
+// @Router /auth/panel-sso/callback [get]
+func (a *AuthController) PanelSSOCallback(c *gin.Context) {
+	state := strings.TrimSpace(c.Query("state"))
+	code := strings.TrimSpace(c.Query("code"))
+	if state == "" || code == "" {
+		unifyerror.Fail(c, unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr,
+			"missing code or state"))
+		return
+	}
+
+	bindingCookie, _ := c.Cookie(ssoStateCookieName)
+	c.SetSameSite(http.SameSiteLaxMode)
+	c.SetCookie(ssoStateCookieName, "", -1, "/", "", usesHTTPS(), true)
+
+	ssoStatesMu.Lock()
+	entry, found := ssoStates[state]
+	if found {
+		delete(ssoStates, state)
+	}
+	ssoStatesMu.Unlock()
+
+	if !found || time.Now().After(entry.expiry) ||
+		entry.binding == "" ||
+		subtle.ConstantTimeCompare([]byte(bindingCookie), []byte(entry.binding)) != 1 {
+		unifyerror.Fail(c, unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr,
+			"invalid or expired state"))
+		return
+	}
+
+	cfg := services.PanelSSOService.Config()
+	if cfg == nil {
+		unifyerror.Fail(c, unifyerror.New(http.StatusNotFound, unifyerror.CodeNotFound,
+			"panel SSO is not enabled"))
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 20*time.Second)
+	defer cancel()
+
+	provider, err := oidc.NewProvider(ctx, cfg.Issuer)
 	if err != nil {
-		failOIDCAuth(c)
+		failSSO(c)
 		return
 	}
 
 	oauthCfg := oauth2.Config{
-		ClientID:     oidcCfg.ClientID,
-		ClientSecret: oidcCfg.ClientSecret,
-		RedirectURL:  redirectURI,
+		ClientID:     cfg.ClientID,
+		ClientSecret: cfg.ClientSecret,
+		RedirectURL:  services.PanelSSOService.RedirectURI(),
 		Endpoint:     provider.Endpoint(),
-		Scopes:       scopes,
+		Scopes:       cfg.Scopes,
 	}
 
-	oauthToken, err := oauthCfg.Exchange(ctx, q.Code, oauth2.VerifierOption(entry.CodeVerifier))
-	if err != nil {
-		failOIDCAuth(c)
+	token, exchangeErr := oauthCfg.Exchange(ctx, code, oauth2.VerifierOption(entry.verifier))
+	if exchangeErr != nil {
+		failSSO(c)
 		return
 	}
 
-	rawIDToken, ok := oauthToken.Extra("id_token").(string)
+	rawIDToken, ok := token.Extra("id_token").(string)
 	if !ok {
-		failOIDCAuth(c)
+		failSSO(c)
 		return
 	}
 
-	verifier := provider.Verifier(&oidc.Config{ClientID: oidcCfg.ClientID})
-	idToken, err := verifier.Verify(ctx, rawIDToken)
-	if err != nil {
-		failOIDCAuth(c)
+	verifier := provider.Verifier(&oidc.Config{ClientID: cfg.ClientID})
+	idToken, verifyErr := verifier.Verify(ctx, rawIDToken)
+	if verifyErr != nil {
+		failSSO(c)
+		return
+	}
+	if entry.nonce == "" || subtle.ConstantTimeCompare([]byte(idToken.Nonce), []byte(entry.nonce)) != 1 {
+		failSSO(c)
 		return
 	}
 
 	var claims struct {
-		Sub           string `json:"sub"`
-		Email         string `json:"email"`
-		EmailVerified bool   `json:"email_verified"`
-		Name          string `json:"name"`
-		PreferredUser string `json:"preferred_username"`
-		Picture       string `json:"picture"`
+		Sub               string `json:"sub"`
+		Email             string `json:"email"`
+		EmailVerified     bool   `json:"email_verified"`
+		Name              string `json:"name"`
+		PreferredUsername string `json:"preferred_username"`
+		Picture           string `json:"picture"`
 	}
-	if err := idToken.Claims(&claims); err != nil {
-		failOIDCAuth(c)
+	if claimErr := idToken.Claims(&claims); claimErr != nil {
+		failSSO(c)
 		return
 	}
-
 	if claims.Sub == "" {
-		failOIDCAuth(c)
+		failSSO(c)
 		return
 	}
-	if oidcCfg.EmailVerifiedRequired && !claims.EmailVerified {
-		failOIDCAuth(c)
-		return
-	}
-
-	user, err := findOrCreateOIDCUser(oidcCfg, claims.Sub, claims.Email, claims.Name, claims.PreferredUser, claims.Picture)
-	if err != nil {
-		failOIDCAuth(c)
-		return
-	}
-	if err := services.EnsureUserCanAuthenticate(user); err != nil {
-		failOIDCAuth(c)
+	if cfg.EmailVerifiedRequired && !claims.EmailVerified {
+		failSSO(c)
 		return
 	}
 
-	token, err := jwt.GenerateToken(user.ID, user.Username, user.GroupID)
-	if err != nil {
-		failOIDCAuth(c)
+	result, signInErr := services.SignInWithSSO(services.SSOClaims{
+		Issuer:            cfg.Issuer,
+		Subject:           claims.Sub,
+		Email:             claims.Email,
+		EmailVerified:     claims.EmailVerified,
+		Name:              claims.Name,
+		PreferredUsername: claims.PreferredUsername,
+		Picture:           claims.Picture,
+	})
+	if signInErr != nil {
+		unifyerror.Fail(c, signInErr)
 		return
 	}
 
-	// Set HttpOnly cookie for OIDC authorize flow
-	secure := strings.HasPrefix(conf.Conf.System.BaseURL, "https")
 	c.SetSameSite(http.SameSiteLaxMode)
-	c.SetCookie("headscale_panel_token", token, int(conf.Conf.JWT.Expire*3600), "/", "", secure, true)
+	c.SetCookie("headscale_panel_token", result.Token, int(conf.Conf.JWT.Expire*3600), "/", "", usesHTTPS(), true)
 
-	unifyerror.Success(c, gin.H{
-		"token": token,
-		"user": gin.H{
-			"id":                 user.ID,
-			"username":           user.Username,
-			"email":              user.Email,
-			"display_name":       user.DisplayName,
-			"group_id":           user.GroupID,
-			"guide_tour_seen_at": user.GuideTourSeenAt,
-		},
-		"permissions": func() []string {
-			permissions, _ := services.UserService.GetUserPermissions(user.ID)
-			return permissions
-		}(),
-	})
+	// Hand the token back to the single-page app in the URL fragment.
+	//
+	// A fragment is never sent to a server and is not included in the Referer, so
+	// the token cannot end up in an access log or leak to a third party the page
+	// later links to. The app clears it from the address bar as soon as it has
+	// been stored.
+	c.Redirect(http.StatusFound, panelRootURL()+"#sso_token="+url.QueryEscape(result.Token))
 }
 
-// OIDCHeadscaleUserCallback godoc
-// @Summary Handle OIDC callback and create Headscale user from OIDC claims
-// @Tags auth
-// @Produce json
-// @Param code query string true "Authorization code"
-// @Param state query string true "State parameter"
-// @Success 200 {object} unifyerror.Response{data=object}
-// @Failure 400 {object} unifyerror.Response
-// @Security BearerAuth
-// @Router /auth/oidc/headscale-user/callback [get]
-func (a *AuthController) OIDCHeadscaleUserCallback(c *gin.Context) {
-	var q OIDCCallbackQuery
-	if err := c.ShouldBindQuery(&q); err != nil {
-		unifyerror.Fail(c, unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "missing code or state parameter"))
-		return
+// panelRootURL is the external URL the browser should land on after sign-in.
+func panelRootURL() string {
+	base := strings.TrimRight(strings.TrimSpace(conf.Conf.System.BaseURL), "/")
+	if base == "" {
+		return "/"
 	}
-
-	oidcHeadscaleStatesMu.Lock()
-	hsEntry, exists := oidcHeadscaleUserStates[q.State]
-	if exists {
-		delete(oidcHeadscaleUserStates, q.State)
-	}
-	oidcHeadscaleStatesMu.Unlock()
-
-	if !exists || time.Now().After(hsEntry.Expiry) {
-		unifyerror.Fail(c, unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "invalid or expired state parameter"))
-		return
-	}
-
-	oidcCfg := services.PanelSettingsService.GetOIDCConfig()
-	if oidcCfg == nil || !oidcCfg.Enabled || oidcCfg.Issuer == "" || oidcCfg.ClientID == "" {
-		failOIDCAuth(c)
-		return
-	}
-
-	ctx, cancel := context.WithTimeout(c.Request.Context(), 15*time.Second)
-	defer cancel()
-
-	claims, err := exchangeOIDCClaims(ctx, oidcCfg, q.Code, hsEntry.CodeVerifier)
-	if err != nil {
-		failOIDCAuth(c)
-		return
-	}
-
-	if claims.Sub == "" {
-		failOIDCAuth(c)
-		return
-	}
-	if oidcCfg.EmailVerifiedRequired && !claims.EmailVerified {
-		failOIDCAuth(c)
-		return
-	}
-
-	actorUserID := c.GetUint("userID")
-
-	users, err := services.HeadscaleService.ListMergedUsersWithContext(c.Request.Context(), actorUserID)
-	if err != nil {
-		unifyerror.Fail(c, err)
-		return
-	}
-
-	for _, existing := range users {
-		if !strings.EqualFold(strings.TrimSpace(existing.Name), strings.TrimSpace(claims.Name)) {
-			continue
-		}
-		if !oidcClaimsMatchHeadscaleUser(existing, claims.Name, claims.Email) {
-			unifyerror.Fail(c, unifyerror.Conflict("existing headscale user does not match OIDC claims"))
-			return
-		}
-
-		if err := upsertOIDCHeadscaleShadowUser(existing.Name, existing.ID, claims.Sub, claims.Email, claims.Name, claims.Picture); err != nil {
-			unifyerror.Fail(c, unifyerror.ServerError(err))
-			return
-		}
-
-		existing.Provider = "oidc"
-		if claims.Name != "" {
-			existing.DisplayName = claims.Name
-		}
-		if claims.Email != "" {
-			existing.Email = claims.Email
-		}
-		if claims.Picture != "" {
-			existing.ProfilePicURL = claims.Picture
-		}
-
-		unifyerror.Success(c, gin.H{
-			"created":          false,
-			"updated_existing": true,
-			"user":             existing,
-		})
-		return
-	}
-
-	createdUser, err := services.HeadscaleService.CreateUserWithContext(c.Request.Context(), actorUserID, claims.Name, claims.Name, claims.Email, claims.Picture)
-	if err != nil {
-		unifyerror.Fail(c, err)
-		return
-	}
-	if err := upsertOIDCHeadscaleShadowUser(createdUser.Name, createdUser.ID, claims.Sub, claims.Email, claims.Name, claims.Picture); err != nil {
-		unifyerror.Fail(c, unifyerror.ServerError(err))
-		return
-	}
-	createdUser.Provider = "oidc"
-
-	unifyerror.Success(c, gin.H{
-		"created":          true,
-		"updated_existing": false,
-		"user":             createdUser,
-	})
+	return base + "/"
 }
 
-// findOrCreateOIDCUser looks up an existing panel user by OIDC provider+sub,
-// falling back to email lookup (with allowlist guard), and finally creating a new user if none exists.
-func findOrCreateOIDCUser(oidcCfg *services.OIDCSettingsPayload, sub, email, name, preferredUsername, picture string) (*model.User, error) {
-	// Try 1: Find by provider + provider_id (sub)
-	var user model.User
-	err := model.DB.Preload("Group").
-		Where("provider = ? AND provider_id = ?", "oidc", sub).
-		First(&user).Error
-	if err == nil {
-		// Update profile fields if they changed
-		updates := map[string]interface{}{}
-		if email != "" && user.Email != email {
-			updates["email"] = email
-		}
-		if name != "" && user.DisplayName != name {
-			updates["display_name"] = name
-		}
-		if picture != "" && user.ProfilePicURL != picture {
-			updates["profile_pic_url"] = picture
-		}
-		if len(updates) > 0 {
-			if err := model.DB.Model(&user).Updates(updates).Error; err != nil {
-				return nil, fmt.Errorf("failed to update oidc user profile: %w", err)
-			}
-		}
-		return &user, nil
-	}
-	if !errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, err
-	}
-
-	hasAllowlist := oidcCfg != nil && (len(oidcCfg.AllowedUsers) > 0 || len(oidcCfg.AllowedDomains) > 0 || len(oidcCfg.AllowedGroups) > 0)
-	if hasAllowlist {
-		allowed := false
-		if oidcCfg != nil {
-			for _, u := range oidcCfg.AllowedUsers {
-				if strings.EqualFold(u, email) {
-					allowed = true
-					break
-				}
-			}
-			if !allowed {
-				parts := strings.SplitN(email, "@", 2)
-				if len(parts) == 2 {
-					domain := strings.ToLower(parts[1])
-					for _, d := range oidcCfg.AllowedDomains {
-						if strings.ToLower(d) == domain {
-							allowed = true
-							break
-						}
-					}
-				}
-			}
-		}
-		if !allowed {
-			return nil, errors.New("oidc access denied by allowlist")
-		}
-	}
-
-	// Try 2: Find by email and upgrade existing account to OIDC source.
-	if email != "" {
-		err = model.DB.Preload("Group").
-			Where("email = ? AND email != ''", email).
-			First(&user).Error
-		if err == nil {
-			updates := map[string]interface{}{
-				"provider":        "oidc",
-				"provider_id":     sub,
-				"profile_pic_url": picture,
-			}
-			if email != "" {
-				updates["email"] = email
-			}
-			if name != "" {
-				updates["display_name"] = name
-			}
-			if err := model.DB.Model(&user).Updates(updates).Error; err != nil {
-				return nil, fmt.Errorf("failed to link oidc account: %w", err)
-			}
-			if err := model.DB.Preload("Group").First(&user, user.ID).Error; err != nil {
-				return nil, fmt.Errorf("failed to reload linked oidc user: %w", err)
-			}
-			return &user, nil
-		}
-		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, err
-		}
-	}
-
-	if preferredUsername != "" {
-		err = model.DB.Preload("Group").Where("username = ?", preferredUsername).First(&user).Error
-		if err == nil {
-			updates := map[string]interface{}{
-				"provider":        "oidc",
-				"provider_id":     sub,
-				"profile_pic_url": picture,
-			}
-			if email != "" {
-				updates["email"] = email
-			}
-			if name != "" {
-				updates["display_name"] = name
-			}
-			if err := model.DB.Model(&user).Updates(updates).Error; err != nil {
-				return nil, fmt.Errorf("failed to link oidc account by username: %w", err)
-			}
-			if err := model.DB.Preload("Group").First(&user, user.ID).Error; err != nil {
-				return nil, fmt.Errorf("failed to reload linked oidc user: %w", err)
-			}
-			return &user, nil
-		}
-		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, err
-		}
-	}
-
-	// Try 3: Create a new user
-	// Derive a username from preferred_username, name, or email
-	username := deriveUsername(preferredUsername, name, email, sub)
-
-	// Ensure username uniqueness
-	username, err = ensureUniqueUsername(username)
-	if err != nil {
-		return nil, err
-	}
-
-	// Look up the "User" group (default group for OIDC users)
-	var userGroup model.Group
-	if err := model.DB.Where("name = ?", constants.GROUP_USER).First(&userGroup).Error; err != nil {
-		return nil, fmt.Errorf("default User group not found: %w", err)
-	}
-
-	newUser := model.User{
-		Username:      username,
-		Email:         email,
-		DisplayName:   name,
-		ProfilePicURL: picture,
-		Provider:      "oidc",
-		GroupID:       userGroup.ID,
-	}
-
-	if err := model.DB.Create(&newUser).Error; err != nil {
-		return nil, fmt.Errorf("failed to create user: %w", err)
-	}
-
-	// Create OIDC binding — headscale user will be linked when created
-	// No binding here; it's created in upsertOIDCHeadscaleShadowUser or by sync
-
-	// Reload with group
-	if err := model.DB.Preload("Group").First(&newUser, newUser.ID).Error; err != nil {
-		return nil, fmt.Errorf("failed to reload created user: %w", err)
-	}
-	return &newUser, nil
+func failSSO(c *gin.Context) {
+	unifyerror.Fail(c, unifyerror.New(http.StatusUnauthorized, unifyerror.CodeLoginFailed,
+		"single sign-on failed"))
 }
 
-func failOIDCAuth(c *gin.Context) {
-	unifyerror.Fail(c, unifyerror.New(http.StatusForbidden, unifyerror.CodeForbidden, "OIDC authentication failed"))
+func registrationEnabled() bool {
+	ok, err := services.SetupStateService.CanRegister()
+	return err == nil && ok
 }
 
-func upsertOIDCHeadscaleShadowUser(headscaleName string, headscaleID uint64, sub, email, displayName, picture string) error {
-	headscaleName = strings.TrimSpace(headscaleName)
-	if headscaleName == "" || headscaleID == 0 {
-		return nil
-	}
-
-	// Check if binding already exists for this headscale ID
-	existing := model.GetBindingByHeadscaleID(headscaleID)
-	if existing != nil {
-		return nil
-	}
-
-	// Find or create panel user
-	var panelUser model.User
-	if err := model.DB.Where("username = ?", headscaleName).First(&panelUser).Error; err != nil {
-		panelUser = model.User{
-			Username: headscaleName,
-		}
-		if createErr := model.DB.Create(&panelUser).Error; createErr != nil {
-			return createErr
-		}
-	}
-
-	// Create binding (ID mapping only)
-	return model.DB.Create(&model.UserIdentityBinding{
-		UserID:      panelUser.ID,
-		HeadscaleID: headscaleID,
-	}).Error
+func usesHTTPS() bool {
+	return strings.HasPrefix(strings.TrimSpace(conf.Conf.System.BaseURL), "https")
 }
 
-func oidcClaimsMatchHeadscaleUser(user services.HeadscaleUser, oidcName, oidcEmail string) bool {
-	if strings.TrimSpace(oidcEmail) != "" && !strings.EqualFold(strings.TrimSpace(user.Email), strings.TrimSpace(oidcEmail)) {
-		return false
+func randomURLSafe(byteLen int) (string, error) {
+	buf := make([]byte, byteLen)
+	if _, err := rand.Read(buf); err != nil {
+		return "", err
 	}
-	if strings.TrimSpace(oidcName) != "" {
-		if strings.EqualFold(strings.TrimSpace(user.DisplayName), strings.TrimSpace(oidcName)) {
-			return true
-		}
-		if strings.EqualFold(strings.TrimSpace(user.Name), strings.TrimSpace(oidcName)) {
-			return true
-		}
-		return false
-	}
-	return true
+	return base64.RawURLEncoding.EncodeToString(buf), nil
 }
-
-func exchangeOIDCClaims(ctx context.Context, oidcCfg *services.OIDCSettingsPayload, code, verifier string) (*struct {
-	Sub           string `json:"sub"`
-	Email         string `json:"email"`
-	EmailVerified bool   `json:"email_verified"`
-	Name          string `json:"name"`
-	PreferredUser string `json:"preferred_username"`
-	Picture       string `json:"picture"`
-}, error) {
-	provider, err := oidc.NewProvider(ctx, oidcCfg.Issuer)
-	if err != nil {
-		return nil, err
-	}
-
-	scopes := oidcCfg.Scope
-	if len(scopes) == 0 {
-		scopes = []string{"openid", "profile", "email"}
-	}
-
-	redirectURI, err := oidcRedirectURI()
-	if err != nil {
-		return nil, err
-	}
-
-	oauthCfg := oauth2.Config{
-		ClientID:     oidcCfg.ClientID,
-		ClientSecret: oidcCfg.ClientSecret,
-		RedirectURL:  redirectURI,
-		Endpoint:     provider.Endpoint(),
-		Scopes:       scopes,
-	}
-
-	oauthToken, err := oauthCfg.Exchange(ctx, code, oauth2.VerifierOption(verifier))
-	if err != nil {
-		return nil, err
-	}
-
-	rawIDToken, ok := oauthToken.Extra("id_token").(string)
-	if !ok {
-		return nil, errors.New("missing id_token")
-	}
-
-	idTokenVerifier := provider.Verifier(&oidc.Config{ClientID: oidcCfg.ClientID})
-	idToken, err := idTokenVerifier.Verify(ctx, rawIDToken)
-	if err != nil {
-		return nil, err
-	}
-
-	claims := &struct {
-		Sub           string `json:"sub"`
-		Email         string `json:"email"`
-		EmailVerified bool   `json:"email_verified"`
-		Name          string `json:"name"`
-		PreferredUser string `json:"preferred_username"`
-		Picture       string `json:"picture"`
-	}{}
-	if err := idToken.Claims(claims); err != nil {
-		return nil, err
-	}
-
-	return claims, nil
-}
-
-// deriveUsername picks the best available username string from OIDC claims.
-func deriveUsername(preferredUsername, name, email, sub string) string {
-	if preferredUsername != "" {
-		return sanitizeUsername(preferredUsername)
-	}
-	if email != "" {
-		parts := strings.SplitN(email, "@", 2)
-		if len(parts) > 0 && parts[0] != "" {
-			return sanitizeUsername(parts[0])
-		}
-	}
-	if name != "" {
-		return sanitizeUsername(strings.ReplaceAll(name, " ", "_"))
-	}
-	// Last resort: use a portion of the sub
-	if len(sub) > 16 {
-		return "oidc_" + sub[:16]
-	}
-	return "oidc_" + sub
-}
-
-// sanitizeUsername removes characters that are problematic for usernames.
-func sanitizeUsername(s string) string {
-	var b strings.Builder
-	for _, r := range s {
-		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_' || r == '-' || r == '.' {
-			b.WriteRune(r)
-		}
-	}
-	result := b.String()
-	if result == "" {
-		return "oidc_user"
-	}
-	return result
-}
-
-// ensureUniqueUsername appends a numeric suffix if the username is already taken.
-func ensureUniqueUsername(base string) (string, error) {
-	candidate := base
-	for i := 1; i <= 100; i++ {
-		var count int64
-		if err := model.DB.Model(&model.User{}).Where("username = ?", candidate).Count(&count).Error; err != nil {
-			return "", fmt.Errorf("failed to check username uniqueness: %w", err)
-		}
-		if count == 0 {
-			return candidate, nil
-		}
-		candidate = fmt.Sprintf("%s_%d", base, i)
-	}
-	return "", fmt.Errorf("failed to find unique username after 100 attempts for base %q", base)
-}
-
-func oidcRedirectURI() (string, error) {
-	baseURL := strings.TrimSpace(conf.Conf.System.BaseURL)
-	if baseURL == "" {
-		return "", errors.New("system.base_url is empty")
-	}
-
-	parsed, err := url.Parse(baseURL)
-	if err != nil {
-		return "", fmt.Errorf("invalid system.base_url: %w", err)
-	}
-	if parsed.Scheme == "" || parsed.Host == "" {
-		return "", errors.New("system.base_url must be absolute")
-	}
-
-	return strings.TrimRight(baseURL, "/") + "/login", nil
-}
-
-// Ensure the controller satisfies any interface at compile time (optional guard).
-var _ = (*AuthController)(nil)

@@ -1,4 +1,4 @@
-// Copyright (C) 2026 
+// Copyright (C) 2026
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as
@@ -18,15 +18,21 @@ package controllers
 import (
 	"headscale-panel/pkg/unifyerror"
 	"headscale-panel/router/services"
+	"net/http"
 
 	"github.com/gin-gonic/gin"
 )
 
 type RouteController struct{}
 
+// NewRouteController builds the controller.
+func NewRouteController() *RouteController {
+	return &RouteController{}
+}
+
 // RouteActionRequest is the request body for EnableRoute/DisableRoute.
 type RouteActionRequest struct {
-	MachineID   uint64 `json:"machine_id" binding:"required"`
+	MachineID   uint64 `json:"machine_id"`
 	Destination string `json:"destination" binding:"required"`
 }
 
@@ -46,25 +52,30 @@ type ListRoutesQuery struct {
 // @Param all query bool false "Return all records"
 // @Param user_id query string false "Filter by user ID"
 // @Param machine_id query string false "Filter by machine ID"
-// @Success 200 {object} unifyerror.Response{data=unifyerror.PaginatedData}
+// @Success 200 {object} unifyerror.Response{data=array}
 // @Security BearerAuth
 // @Router /routes [get]
+// ListRoutes returns every route as a bare array.
+//
+// Paging is not offered here: headscale has no paging on its node list, so the
+// panel fetches once and filters in the browser. A paginated envelope would
+// suggest a server-side page that does not exist.
 func (c *RouteController) ListRoutes(ctx *gin.Context) {
 	var q ListRoutesQuery
 	if err := ctx.ShouldBindQuery(&q); err != nil {
 		unifyerror.Fail(ctx, unifyerror.ErrBind)
 		return
 	}
-	page, pageSize := q.Resolve()
 
 	userID := ctx.GetUint("userID")
-	routes, total, err := services.RouteService.ListRoutesWithContext(ctx.Request.Context(), userID, page, pageSize, q.UserID, q.MachineID)
+	routes, _, err := services.RouteService.ListRoutesWithContext(
+		ctx.Request.Context(), userID, 1, -1, q.UserID, q.MachineID)
 	if err != nil {
 		unifyerror.Fail(ctx, err)
 		return
 	}
 
-	unifyerror.SuccessPage(ctx, routes, total, page, pageSize)
+	unifyerror.Success(ctx, routes)
 }
 
 // EnableRoute godoc
@@ -78,14 +89,24 @@ func (c *RouteController) ListRoutes(ctx *gin.Context) {
 // @Security BearerAuth
 // @Router /routes/enable [post]
 func (c *RouteController) EnableRoute(ctx *gin.Context) {
+	nodeID, err := parseUintParam(ctx, "nodeID")
+	if err != nil {
+		unifyerror.Fail(ctx, err)
+		return
+	}
+
 	var req RouteActionRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {
 		unifyerror.Fail(ctx, unifyerror.ErrBind)
 		return
 	}
+	if req.MachineID != 0 && req.MachineID != nodeID {
+		unifyerror.Fail(ctx, unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "node ID mismatch"))
+		return
+	}
 
 	userID := ctx.GetUint("userID")
-	if err := services.RouteService.EnableRouteWithContext(ctx.Request.Context(), userID, req.MachineID, req.Destination); err != nil {
+	if err := services.RouteService.EnableRouteWithContext(ctx.Request.Context(), userID, nodeID, req.Destination); err != nil {
 		unifyerror.Fail(ctx, err)
 		return
 	}
@@ -102,16 +123,26 @@ func (c *RouteController) EnableRoute(ctx *gin.Context) {
 // @Success 200 {object} unifyerror.Response
 // @Failure 400 {object} unifyerror.Response
 // @Security BearerAuth
-// @Router /routes/disable [post]
+// @Router /routes/{nodeID}/disable [post]
 func (c *RouteController) DisableRoute(ctx *gin.Context) {
+	nodeID, err := parseUintParam(ctx, "nodeID")
+	if err != nil {
+		unifyerror.Fail(ctx, err)
+		return
+	}
+
 	var req RouteActionRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {
 		unifyerror.Fail(ctx, unifyerror.ErrBind)
 		return
 	}
+	if req.MachineID != 0 && req.MachineID != nodeID {
+		unifyerror.Fail(ctx, unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "node ID mismatch"))
+		return
+	}
 
 	userID := ctx.GetUint("userID")
-	if err := services.RouteService.DisableRouteWithContext(ctx.Request.Context(), userID, req.MachineID, req.Destination); err != nil {
+	if err := services.RouteService.DisableRouteWithContext(ctx.Request.Context(), userID, nodeID, req.Destination); err != nil {
 		unifyerror.Fail(ctx, err)
 		return
 	}

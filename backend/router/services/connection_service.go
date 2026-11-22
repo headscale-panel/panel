@@ -1,4 +1,4 @@
-// Copyright (C) 2026 
+// Copyright (C) 2026
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as
@@ -18,287 +18,152 @@ package services
 import (
 	"context"
 	"fmt"
-	"headscale-panel/model"
+	"headscale-panel/internal/network"
 	"headscale-panel/pkg/conf"
-	"headscale-panel/pkg/headscale"
+	"headscale-panel/pkg/constants"
+	"headscale-panel/pkg/hsapi"
 	"headscale-panel/pkg/unifyerror"
-	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"net/http"
-	"strconv"
 	"strings"
+	"time"
 )
 
 type connectionService struct{}
 
+// ConnectionService renders the onboarding commands shown in the UI.
 var ConnectionService = &connectionService{}
 
+// ConnectionCommand is one ready-to-paste command block.
 type ConnectionCommand struct {
 	Platform    string   `json:"platform"`
 	Description string   `json:"description"`
 	Commands    []string `json:"commands"`
+
+	// ExpiresAt and ShowOnce describe an auth key embedded in the commands.
+	// They are surfaced because the key is displayed exactly once and cannot be
+	// retrieved again.
+	ExpiresAt *time.Time `json:"expires_at,omitempty"`
+	ShowOnce  bool       `json:"show_once,omitempty"`
 }
 
-type HeadscaleIdentity struct {
-	HeadscaleName string `json:"headscale_name"`
-	Provider      string `json:"provider"`
-	DisplayName   string `json:"display_name"`
+// IdentityOption is a selectable network identity for the onboarding dropdown.
+type IdentityOption struct {
+	HSUserID    uint64 `json:"hs_user_id"`
+	Name        string `json:"name"`
+	DisplayName string `json:"display_name"`
+	PolicyUser  string `json:"policy_username"`
+	IsPrimary   bool   `json:"is_primary"`
+	Origin      string `json:"origin"`
 }
 
-// ListHeadscaleIdentities returns all headscale identities bound to a panel user.
-func (s *connectionService) ListHeadscaleIdentities(userID uint) []HeadscaleIdentity {
-	ids := model.GetHeadscaleIDs(userID)
-	if len(ids) == 0 {
-		return nil
-	}
-	hsUsers := listHeadscaleUsersByIDs(ids)
-
-	identities := make([]HeadscaleIdentity, 0, len(ids))
-	for _, id := range ids {
-		if u, ok := hsUsers[id]; ok {
-			identities = append(identities, HeadscaleIdentity{
-				HeadscaleName: u.Name,
-				Provider:      normalizeHeadscaleProvider(u.Provider),
-				DisplayName:   u.DisplayName,
-			})
+// ListIdentities returns the identities the actor may onboard devices for.
+func (s *connectionService) ListIdentities(ctx context.Context, actorUserID uint) ([]IdentityOption, error) {
+	if err := RequirePermission(actorUserID, constants.PermNetworkIdentityList); err != nil {
+		// A self-service actor may still see their own identities.
+		if errSelf := RequirePermission(actorUserID, constants.PermNetworkDeviceCreateSelf); errSelf != nil {
+			return nil, err
 		}
 	}
-	return identities
-}
 
-// GenerateConnectionCommands generates connection commands for selected machines.
-// headscaleName selects which bound headscale identity to use. If empty, the first binding is used.
-func (s *connectionService) GenerateConnectionCommands(actorUserID uint, machineIDs []string, platform string, headscaleName string) ([]ConnectionCommand, error) {
-	return s.GenerateConnectionCommandsWithContext(context.Background(), actorUserID, machineIDs, platform, headscaleName)
-}
-
-func (s *connectionService) GenerateConnectionCommandsWithContext(ctx context.Context, actorUserID uint, machineIDs []string, platform string, headscaleName string) ([]ConnectionCommand, error) {
-	if err := RequirePermission(actorUserID, "headscale:machine:list"); err != nil {
-		return nil, err
+	snap, err := Network.Snapshot(ctx, currentPanelIssuer())
+	if err != nil {
+		return nil, unifyerror.HeadscaleAPIError(err)
 	}
 
-	if len(machineIDs) == 0 {
-		return nil, unifyerror.WrongParam("machine_ids")
-	}
-
-	// Resolve headscale identity
-	resolvedName, err := s.resolveHeadscaleName(actorUserID, headscaleName)
+	scope, err := loadActorScope(actorUserID)
 	if err != nil {
 		return nil, err
 	}
 
-	// Get Headscale server URL
-	serverURL := conf.Conf.System.BaseURL
-	if serverURL == "" {
-		serverURL = "https://headscale.example.com"
+	out := make([]IdentityOption, 0, len(snap.Identities))
+	for _, ident := range snap.Identities {
+		if !scope.AllowsHeadscaleUser(ident.HSUserID) {
+			continue
+		}
+		option := IdentityOption{
+			HSUserID:    ident.HSUserID,
+			Name:        ident.Name,
+			DisplayName: ident.DisplayName,
+			PolicyUser:  ident.PolicyUsername,
+			Origin:      string(ident.Origin),
+		}
+		if ident.Binding != nil {
+			option.IsPrimary = ident.Binding.IsPrimary
+		}
+		out = append(out, option)
+	}
+	return out, nil
+}
+
+// GenerateCommands produces the onboarding commands for a platform.
+//
+// A fresh pre-auth key is minted and embedded, because that is the whole point of
+// the command; the key is returned to the caller only once and never stored.
+func (s *connectionService) GenerateCommands(ctx context.Context, actorUserID uint, hsUserID uint64, platform string) (*ConnectionCommand, error) {
+	if err := ensureActorCanOnboardDevice(actorUserID, hsUserID); err != nil {
+		return nil, err
 	}
 
-	headscaleUserID, err := HeadscaleService.ResolveUserIDByNameWithContext(ctx, resolvedName)
+	client, err := headscaleRESTClient()
 	if err != nil {
 		return nil, err
 	}
+
 	queryCtx, cancel := withServiceTimeout(ctx)
 	defer cancel()
 
-	client, err := headscaleServiceClient()
-	if err != nil {
-		return nil, unifyerror.GRPCError(err)
+	expiration := time.Now().Add(24 * time.Hour)
+	key, createErr := client.CreatePreAuthKey(queryCtx, hsUserID, false, false, &expiration, nil)
+	if createErr != nil {
+		return nil, unifyerror.HeadscaleAPIError(createErr)
 	}
 
-	authKeyResp, grpcErr := client.CreatePreAuthKey(queryCtx, &v1.CreatePreAuthKeyRequest{
-		User:       headscaleUserID,
-		Reusable:   true,
-		Ephemeral:  false,
-		Expiration: nil,
-	})
-	if grpcErr != nil {
-		return nil, unifyerror.GRPCError(grpcErr)
-	}
-	authKey, ok := extractPreAuthKeyString(authKeyResp)
-	if !ok || strings.TrimSpace(authKey) == "" {
-		return nil, unifyerror.ServerError(fmt.Errorf("failed to extract generated auth key"))
+	loginServer := strings.TrimSpace(conf.Conf.System.BaseURL)
+	command := &ConnectionCommand{
+		Platform:  strings.ToLower(platform),
+		ExpiresAt: key.Expiration,
+		ShowOnce:  true,
 	}
 
-	var commands []ConnectionCommand
-	switch strings.ToLower(platform) {
-	case "linux":
-		commands = append(commands, s.generateLinuxCommands(serverURL, authKey))
-	case "macos":
-		commands = append(commands, s.generateMacOSCommands(serverURL, authKey))
+	switch command.Platform {
 	case "windows":
-		commands = append(commands, s.generateWindowsCommands(serverURL, authKey))
-	case "ios":
-		commands = append(commands, s.generateIOSCommands(serverURL))
-	case "android":
-		commands = append(commands, s.generateAndroidCommands(serverURL))
+		command.Description = "Run in PowerShell as Administrator"
+		command.Commands = []string{
+			"tailscale up --login-server " + loginServer + " --authkey " + key.Key,
+		}
+	case "macos", "ios", "android":
+		command.Description = "Install the Tailscale app, then register with this key"
+		command.Commands = []string{
+			"tailscale up --login-server " + loginServer + " --authkey " + key.Key,
+		}
+	case "docker":
+		command.Description = "Run the official Tailscale container"
+		command.Commands = []string{
+			"docker run -d --name tailscale \\",
+			"  --cap-add NET_ADMIN --device /dev/net/tun \\",
+			"  -e TS_AUTHKEY=" + key.Key + " \\",
+			"  -e TS_STATE_DIR=/var/lib/tailscale \\",
+			"  tailscale/tailscale",
+		}
 	default:
-		return nil, unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, fmt.Sprintf("unsupported platform: %s", platform))
-	}
-
-	// Add SSH connection commands for selected machines
-	sshCommands, err := s.generateSSHCommands(ctx, actorUserID, machineIDs, "user")
-	if err == nil && len(sshCommands.Commands) > 0 {
-		commands = append(commands, sshCommands)
-	}
-
-	return commands, nil
-}
-
-func (s *connectionService) generateLinuxCommands(serverURL, authKey string) ConnectionCommand {
-	return ConnectionCommand{
-		Platform:    "Linux",
-		Description: "Install and configure Tailscale on Linux",
-		Commands: []string{
-			"# Install Tailscale",
+		command.Platform = "linux"
+		command.Description = "Install the client and join the tailnet"
+		command.Commands = []string{
 			"curl -fsSL https://tailscale.com/install.sh | sh",
-			"",
-			"# Connect to Headscale",
-			fmt.Sprintf("sudo tailscale up --login-server=%s --authkey=%s", serverURL, authKey),
-			"",
-			"# Check status",
-			"tailscale status",
-		},
-	}
-}
-
-func (s *connectionService) generateMacOSCommands(serverURL, authKey string) ConnectionCommand {
-	return ConnectionCommand{
-		Platform:    "macOS",
-		Description: "Install and configure Tailscale on macOS",
-		Commands: []string{
-			"# Install Tailscale via Homebrew",
-			"brew install tailscale",
-			"",
-			"# Start Tailscale service",
-			"sudo tailscaled install-system-daemon",
-			"",
-			"# Connect to Headscale",
-			fmt.Sprintf("tailscale up --login-server=%s --authkey=%s", serverURL, authKey),
-			"",
-			"# Check status",
-			"tailscale status",
-		},
-	}
-}
-
-func (s *connectionService) generateWindowsCommands(serverURL, authKey string) ConnectionCommand {
-	return ConnectionCommand{
-		Platform:    "Windows",
-		Description: "Install and configure Tailscale on Windows",
-		Commands: []string{
-			"# Download Tailscale installer from https://tailscale.com/download/windows",
-			"",
-			"# After installation, run in PowerShell:",
-			fmt.Sprintf("tailscale up --login-server=%s --authkey=%s", serverURL, authKey),
-			"",
-			"# Check status",
-			"tailscale status",
-		},
-	}
-}
-
-func (s *connectionService) generateIOSCommands(serverURL string) ConnectionCommand {
-	return ConnectionCommand{
-		Platform:    "iOS",
-		Description: "Configure Tailscale on iOS",
-		Commands: []string{
-			"1. Download Tailscale from App Store",
-			"2. Open the app and tap 'Use a different server'",
-			fmt.Sprintf("3. Enter server URL: %s", serverURL),
-			"4. Log in with your credentials",
-		},
-	}
-}
-
-func (s *connectionService) generateAndroidCommands(serverURL string) ConnectionCommand {
-	return ConnectionCommand{
-		Platform:    "Android",
-		Description: "Configure Tailscale on Android",
-		Commands: []string{
-			"1. Download Tailscale from Google Play Store",
-			"2. Open the app and tap the three dots menu",
-			"3. Select 'Use a different server'",
-			fmt.Sprintf("4. Enter server URL: %s", serverURL),
-			"5. Log in with your credentials",
-		},
-	}
-}
-
-func (s *connectionService) generateSSHCommands(ctx context.Context, actorUserID uint, machineIDs []string, sshUser string) (ConnectionCommand, error) {
-	queryCtx, cancel := withServiceTimeout(ctx)
-	defer cancel()
-
-	if strings.TrimSpace(sshUser) == "" {
-		sshUser = "user"
-	}
-
-	var commands []string
-	commands = append(commands, "# SSH to selected devices:")
-	commands = append(commands, "")
-
-	for _, machineIDStr := range machineIDs {
-		machineID, err := strconv.ParseUint(machineIDStr, 10, 64)
-		if err != nil {
-			continue
-		}
-		node, err := headscale.GlobalClient.Service.GetNode(queryCtx, &v1.GetNodeRequest{
-			NodeId: machineID,
-		})
-		if err != nil {
-			continue
-		}
-		if err := ensureActorCanAccessNode(actorUserID, node.Node); err != nil {
-			continue
-		}
-
-		if len(node.Node.IpAddresses) > 0 {
-			ipAddress := node.Node.IpAddresses[0]
-			commands = append(commands, fmt.Sprintf("# Connect to %s", node.Node.Name))
-			commands = append(commands, fmt.Sprintf("ssh %s@%s", sshUser, ipAddress))
-			commands = append(commands, "")
+			"sudo tailscale up --login-server " + loginServer + " --authkey " + key.Key,
 		}
 	}
 
-	if len(commands) <= 2 {
-		return ConnectionCommand{}, unifyerror.NotFound()
-	}
-
-	return ConnectionCommand{
-		Platform:    "SSH",
-		Description: "SSH connection commands",
-		Commands:    commands,
-	}, nil
+	return command, nil
 }
 
-func (s *connectionService) GenerateSSHCommandWithContext(ctx context.Context, actorUserID uint, machineID uint64, sshUser string) (string, error) {
-	commandSet, err := s.generateSSHCommands(ctx, actorUserID, []string{strconv.FormatUint(machineID, 10)}, sshUser)
-	if err != nil {
-		return "", err
-	}
-	for _, command := range commandSet.Commands {
-		trimmed := strings.TrimSpace(command)
-		if strings.HasPrefix(trimmed, "ssh ") {
-			return trimmed, nil
-		}
-	}
-	return "", unifyerror.NotFound()
-}
-
-// GeneratePreAuthKey generates a pre-auth key for device registration.
-// headscaleName selects which bound headscale identity to use. If empty, the first binding is used.
-func (s *connectionService) GeneratePreAuthKey(actorUserID uint, userID uint, reusable bool, ephemeral bool, expiration string, headscaleName string) (string, error) {
-	return s.GeneratePreAuthKeyWithContext(context.Background(), actorUserID, userID, reusable, ephemeral, expiration, headscaleName)
-}
-
-func (s *connectionService) GeneratePreAuthKeyWithContext(ctx context.Context, actorUserID uint, userID uint, reusable bool, ephemeral bool, expiration string, headscaleName string) (string, error) {
-	if err := RequirePermission(actorUserID, "headscale:preauthkey:create"); err != nil {
-		return "", err
-	}
-	if err := ensureActorCanAccessPanelUser(actorUserID, userID); err != nil {
+// GenerateSSHCommand renders the ssh invocation for one device.
+func (s *connectionService) GenerateSSHCommand(ctx context.Context, actorUserID uint, nodeID uint64, sshUser string) (string, error) {
+	if err := RequireAnyPermission(actorUserID, constants.PermNetworkDeviceRead, constants.PermNetworkDeviceListSelf); err != nil {
 		return "", err
 	}
 
-	// Resolve headscale identity
-	resolvedName, err := s.resolveHeadscaleName(userID, headscaleName)
+	client, err := headscaleRESTClient()
 	if err != nil {
 		return "", err
 	}
@@ -306,69 +171,131 @@ func (s *connectionService) GeneratePreAuthKeyWithContext(ctx context.Context, a
 	queryCtx, cancel := withServiceTimeout(ctx)
 	defer cancel()
 
-	headscaleUserID, err := HeadscaleService.ResolveUserIDByNameWithContext(queryCtx, resolvedName)
-	if err != nil {
-		return "", unifyerror.NotFound()
+	node, getErr := client.GetNode(queryCtx, nodeID)
+	if getErr != nil {
+		return "", unifyerror.HeadscaleAPIError(getErr)
 	}
-
-	resp, err := HeadscaleService.CreatePreAuthKeyWithContext(queryCtx, actorUserID, headscaleUserID, reusable, ephemeral, expiration)
-	if err != nil {
+	if err := ensureActorCanAccessNode(actorUserID, node); err != nil {
 		return "", err
 	}
+	if len(node.IpAddresses) == 0 {
+		return "", unifyerror.New(http.StatusNotFound, unifyerror.CodeNotFound, "device has no IP address yet")
+	}
 
-	key, ok := extractPreAuthKeyString(resp)
-	if !ok {
-		return "", unifyerror.ServerError(fmt.Errorf("failed to extract generated pre-auth key"))
+	user := strings.TrimSpace(sshUser)
+	if user == "" {
+		user = "root"
+	}
+	if !isValidSSHUsername(user) {
+		return "", unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "invalid SSH username")
+	}
+	return fmt.Sprintf("ssh %s@%s", user, node.IpAddresses[0]), nil
+}
+
+func isValidSSHUsername(user string) bool {
+	if len(user) == 0 || len(user) > 64 {
+		return false
+	}
+	for i := 0; i < len(user); i++ {
+		c := user[i]
+		isAlpha := (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
+		isDigit := c >= '0' && c <= '9'
+		isAllowed := isAlpha || isDigit || c == '_' || c == '-' || c == '.'
+		if !isAllowed {
+			return false
+		}
+		if i == 0 && c == '-' {
+			return false
+		}
+	}
+	return true
+}
+
+// CreatePreAuthKeyForIdentity mints a key for an explicit identity.
+//
+// Unlike GenerateCommands this does not render a command: it exists for the
+// "add device" dialog, which wants the bare key.
+func (s *connectionService) CreatePreAuthKeyForIdentity(ctx context.Context, actorUserID uint, hsUserID uint64, reusable, ephemeral bool, expiration string) (*hsapi.PreAuthKey, error) {
+	if err := ensureActorCanOnboardDevice(actorUserID, hsUserID); err != nil {
+		return nil, err
+	}
+
+	client, err := headscaleRESTClient()
+	if err != nil {
+		return nil, err
+	}
+
+	expiry, parseErr := parseExpiration(expiration)
+	if parseErr != nil {
+		return nil, parseErr
+	}
+
+	queryCtx, cancel := withServiceTimeout(ctx)
+	defer cancel()
+
+	key, createErr := client.CreatePreAuthKey(queryCtx, hsUserID, reusable, ephemeral, expiry, nil)
+	if createErr != nil {
+		return nil, unifyerror.HeadscaleAPIError(createErr)
 	}
 	return key, nil
 }
 
-// resolveHeadscaleName resolves which headscale identity to use.
-// If headscaleName is provided, validates it exists in the user's bindings.
-// If empty, returns the first binding's name, or falls back to the panel username.
-func (s *connectionService) resolveHeadscaleName(userID uint, headscaleName string) (string, error) {
-	ids := model.GetHeadscaleIDs(userID)
-	if len(ids) == 0 {
-		// Fallback to panel username
-		var user model.User
-		if err := model.DB.First(&user, userID).Error; err == nil {
-			if name := strings.TrimSpace(user.Username); name != "" {
-				return name, nil
-			}
-		}
-		return "", unifyerror.NotFound()
+// ensureActorCanOnboardDevice checks the two distinct rights involved: permission
+// to create keys, and scope over the identity the key would be issued for.
+func ensureActorCanOnboardDevice(actorUserID uint, hsUserID uint64) error {
+	if hsUserID == 0 {
+		return unifyerror.WrongParam("hs_user_id")
 	}
 
-	hsUsers := listHeadscaleUsersByIDs(ids)
-
-	if headscaleName != "" {
-		for _, u := range hsUsers {
-			if strings.EqualFold(strings.TrimSpace(u.Name), strings.TrimSpace(headscaleName)) {
-				return strings.TrimSpace(u.Name), nil
-			}
-		}
-		return "", unifyerror.NotFound()
+	scope, err := loadActorScope(actorUserID)
+	if err != nil {
+		return err
+	}
+	if !scope.AllowsHeadscaleUser(hsUserID) {
+		return unifyerror.Forbidden()
 	}
 
-	// Return the first one
-	for _, id := range ids {
-		if u, ok := hsUsers[id]; ok {
-			return strings.TrimSpace(u.Name), nil
-		}
+	if scope.isAdmin {
+		return nil
 	}
-	return "", unifyerror.ServerError(fmt.Errorf("failed to resolve headscale identity"))
+	if err := RequireAnyPermission(actorUserID,
+		constants.PermNetworkKeyCreate,
+		constants.PermNetworkKeyCreateSelf); err != nil {
+		return err
+	}
+
+	// A :self holder may only mint keys for a bound identity with a local
+	// binding, which is what the scope check above already established.
+	return nil
 }
 
-func extractPreAuthKeyString(value interface{}) (string, bool) {
-	switch typed := value.(type) {
-	case *v1.PreAuthKey:
-		if typed == nil {
-			return "", false
-		}
-		return typed.Key, true
-	case v1.PreAuthKey:
-		return typed.Key, true
-	default:
-		return "", false
+// parseExpiration accepts a Go duration, an RFC3339 timestamp, or empty (never).
+func parseExpiration(raw string) (*time.Time, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, nil
 	}
+
+	if d, err := time.ParseDuration(raw); err == nil {
+		if d <= 0 {
+			return nil, unifyerror.WrongParam("expiration")
+		}
+		at := time.Now().Add(d)
+		return &at, nil
+	}
+
+	if at, err := time.Parse(time.RFC3339, raw); err == nil {
+		return &at, nil
+	}
+	return nil, unifyerror.WrongParam("expiration")
+}
+
+// currentPanelIssuer is the issuer this panel advertises to headscale.
+func currentPanelIssuer() string {
+	return strings.TrimRight(strings.TrimSpace(conf.Conf.System.BaseURL), "/")
+}
+
+// identitySnapshot is a small helper for the device dialogs.
+func identitySnapshot(ctx context.Context) (*network.Snapshot, error) {
+	return Network.Snapshot(ctx, currentPanelIssuer())
 }

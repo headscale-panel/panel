@@ -1,4 +1,4 @@
-// Copyright (C) 2026 
+// Copyright (C) 2026
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as
@@ -23,23 +23,40 @@ import (
 var L *zap.Logger
 var S *zap.SugaredLogger
 
+// Standard field names. Log lines must use these keys so queries stay stable
+// across features instead of relying on whatever name a call site invents.
+const (
+	FieldRequestID  = "request_id"
+	FieldActorID    = "actor_id"
+	FieldAction     = "action"
+	FieldTarget     = "target"
+	FieldDurationMS = "duration_ms"
+	FieldResult     = "result"
+)
+
+// Result values for FieldResult.
+const (
+	ResultOK    = "ok"
+	ResultError = "error"
+)
+
 func init() {
 	cfg := zap.Config{
 		Level:            zap.NewAtomicLevelAt(zap.InfoLevel),
-		Encoding:         "console",
+		Encoding:         "json",
 		OutputPaths:      []string{"stdout"},
 		ErrorOutputPaths: []string{"stderr"},
 		EncoderConfig: zapcore.EncoderConfig{
-			TimeKey:        "T",
-			LevelKey:       "L",
-			NameKey:        "N",
-			CallerKey:      "C",
-			MessageKey:     "M",
-			StacktraceKey:  "S",
+			TimeKey:        zapcore.OmitKey,
+			LevelKey:       "level",
+			NameKey:        zapcore.OmitKey,
+			CallerKey:      "caller",
+			MessageKey:     "msg",
+			StacktraceKey:  "stacktrace",
 			LineEnding:     zapcore.DefaultLineEnding,
 			EncodeLevel:    zapcore.LowercaseLevelEncoder,
-			EncodeTime:     zapcore.ISO8601TimeEncoder,
-			EncodeDuration: zapcore.StringDurationEncoder,
+			EncodeTime:     zapcore.EpochMillisTimeEncoder,
+			EncodeDuration: zapcore.MillisDurationEncoder,
 			EncodeCaller:   zapcore.ShortCallerEncoder,
 		},
 	}
@@ -49,6 +66,15 @@ func init() {
 		panic(err)
 	}
 	S = L.Sugar()
+}
+
+// WithRequestID returns a logger carrying the request correlation id, or the
+// base logger when there is no id.
+func WithRequestID(requestID string) *zap.Logger {
+	if requestID == "" {
+		return L
+	}
+	return L.With(zap.String(FieldRequestID, requestID))
 }
 
 func Sync() {

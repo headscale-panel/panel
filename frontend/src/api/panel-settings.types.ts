@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2026 
+ * Copyright (C) 2026
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -15,78 +15,112 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-export interface GetConnectionReq {}
+// ─── Headscale connection ────────────────────────────────────────────────────
 
 export interface ConnectionSettings {
-  grpc_addr: string;
-  api_key?: string;
+  api_addr: string;
   insecure: boolean;
   tls_skip_verify?: boolean;
   tls_ca_cert?: string;
+  has_api_key: boolean;
+  is_configured: boolean;
+  /**
+   * Present only when the stored settings predate headscale 0.30. The value is a
+   * gRPC port, which cannot be converted into an HTTP API address, so the
+   * operator has to enter one.
+   */
+  legacy_grpc_addr?: string;
 }
 
 export type GetConnectionRes = ConnectionSettings;
 
 export interface SaveConnectionReq {
-  grpc_addr: string;
+  api_addr: string;
+  /** Omit to keep the stored key. */
   api_key?: string;
   insecure: boolean;
   tls_skip_verify?: boolean;
   tls_ca_cert?: string;
 }
 
-export interface SaveConnectionRes { message: string }
-
-export interface SyncDataReq {}
-export interface SyncDataRes { message: string }
-
-export interface GetBuiltinOIDCReq {}
-
-export interface BuiltinOIDCConfig {
-  enabled?: boolean;
-  client_id?: string;
-  client_secret?: string;
-  redirect_url?: string;
+export interface TestConnectionReq {
+  api_addr?: string;
+  api_key?: string;
+  insecure?: boolean;
+  tls_skip_verify?: boolean;
+  tls_ca_cert?: string;
 }
 
-export type GetBuiltinOIDCRes = BuiltinOIDCConfig;
-export type EnableBuiltinOIDCRes = BuiltinOIDCConfig;
+export type ConnState
+  = | 'ok'
+    | 'unreachable'
+    | 'tls_error'
+    | 'unauthorized'
+    | 'version_mismatch';
 
-export interface EnableBuiltinOIDCReq {}
+export interface TestConnectionRes {
+  state: ConnState;
+  detail?: string;
+  commit?: string;
+  in_baseline: boolean;
+  baseline_commit?: string;
+}
 
-export interface GetOIDCSettingsReq {}
+export interface ReconcileRes {
+  scanned: number;
+  bound: number[] | null;
+  skipped: number[] | null;
+  failed: number[] | null;
+}
 
-export interface OIDCSettingsPayload {
-  enabled?: boolean;
+// ─── Panel SSO (the panel as an OIDC client) ─────────────────────────────────
+
+export type SSOProvisioning = 'disabled' | 'jit';
+
+export interface PanelSSOSettings {
+  enabled: boolean;
+  issuer: string;
+  client_id: string;
+  has_client_secret: boolean;
+  scopes: string[] | null;
+  email_verified_required: boolean;
+  /** No code-level default: an operator must choose. */
+  provisioning: SSOProvisioning | '';
+  default_role_id: number;
+}
+
+export type GetPanelSSORes = PanelSSOSettings;
+
+export interface SavePanelSSOReq {
+  enabled: boolean;
+  issuer: string;
+  client_id: string;
+  /** Omit to keep the stored secret. */
+  client_secret?: string;
+  scopes: string[];
+  email_verified_required: boolean;
+  provisioning: SSOProvisioning;
+  default_role_id: number;
+}
+
+export type SavePanelSSORes = PanelSSOSettings;
+
+// ─── Panel IdP (the panel as an OIDC provider for headscale) ─────────────────
+
+export interface IdPState {
+  enabled: boolean;
+  configured: boolean;
   issuer?: string;
   client_id?: string;
-  client_secret?: string;
-  client_secret_path?: string;
-  scope?: string[];
-  allowed_domains?: string[];
-  allowed_groups?: string[];
-  allowed_users?: string[];
-  strip_email_domain?: boolean;
-  email_verified_required?: boolean;
-  pkce_enabled?: boolean;
-  pkce_method?: string;
-  only_start_if_oidc_is_available?: boolean;
-  expiry?: string;
-  use_expiry_from_token?: boolean;
+  redirect_uri?: string;
+  enrollment_mode: string;
+  auto_bind: boolean;
+  enabled_at?: string;
 }
 
-export type GetOIDCSettingsRes = OIDCSettingsPayload | null;
+export type GetIdPStateRes = IdPState;
 
-export interface SaveOIDCSettingsReq extends OIDCSettingsPayload {}
-export interface SaveOIDCSettingsRes { message: string }
-
-export interface GetOIDCStatusReq {}
-
-export interface OIDCStatusRes {
-  oidc_enabled: boolean;
-  third_party: boolean;
-  builtin: boolean;
-  password_required: boolean;
+export interface SetIdPEnabledReq {
+  enabled: boolean;
 }
-
-export type GetOIDCStatusRes = OIDCStatusRes;
+export type SetIdPEnabledRes = IdPState;

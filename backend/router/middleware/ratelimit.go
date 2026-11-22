@@ -1,4 +1,4 @@
-// Copyright (C) 2026 
+// Copyright (C) 2026
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as
@@ -95,6 +95,29 @@ func (rl *RateLimiter) allow(ip string) bool {
 // RateLimitMiddleware returns a Gin middleware that rate-limits requests by client IP.
 func RateLimitMiddleware(limiter *RateLimiter) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		if !limiter.allow(c.ClientIP()) {
+			unifyerror.Fail(c, unifyerror.New(http.StatusTooManyRequests, 0, "too many requests, please try again later"))
+			c.Abort()
+			return
+		}
+		c.Next()
+	}
+}
+
+// RateLimitWritesMiddleware limits only the mutating methods.
+//
+// Applying one limiter to the whole authenticated group would also throttle reads,
+// so a page that polls for status would exhaust the budget for doing exactly what
+// it is meant to do. Writes are the operations where repetition is either a
+// mistake or an attack.
+func RateLimitWritesMiddleware(limiter *RateLimiter) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		switch c.Request.Method {
+		case http.MethodGet, http.MethodHead, http.MethodOptions:
+			c.Next()
+			return
+		}
+
 		if !limiter.allow(c.ClientIP()) {
 			unifyerror.Fail(c, unifyerror.New(http.StatusTooManyRequests, 0, "too many requests, please try again later"))
 			c.Abort()

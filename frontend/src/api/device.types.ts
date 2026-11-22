@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2026 
+ * Copyright (C) 2026
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -15,67 +15,70 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-import type { HeadscaleMachine } from './entities';
+import type { Device, PreAuthKey } from './entities';
 
 export interface ListDevicesReq {
-  page?: number;
-  pageSize?: number;
-  all?: boolean;
-  userId?: string;
-  status?: string;
+  q?: string;
+  user_id?: number;
+  online?: boolean;
+  tagged?: boolean;
 }
 
-export interface ListDevicesRes {
-  list: HeadscaleMachine[];
-  total: number;
-  page: number;
-  page_size: number;
-  page_count: number;
-}
+export type ListDevicesRes = Device[];
 
 export interface GetDeviceReq {
   id: string;
 }
-export type GetDeviceRes = HeadscaleMachine;
+export type GetDeviceRes = Device;
 
 export interface RenameDeviceReq {
   id: string;
   name: string;
 }
-export type RenameDeviceRes = HeadscaleMachine;
+export type RenameDeviceRes = Device;
 
 export interface DeleteDeviceReq {
   id: string;
 }
-export interface DeleteDeviceRes {}
 
 export interface ExpireDeviceReq {
   id: string;
+  /** RFC3339 timestamp; omit together with disable_expiry to expire now. */
+  expiry?: string;
+  disable_expiry?: boolean;
 }
-export type ExpireDeviceRes = HeadscaleMachine;
+export type ExpireDeviceRes = Device;
 
 export interface SetDeviceTagsReq {
   id: string;
   tags: string[];
 }
-export type SetDeviceTagsRes = HeadscaleMachine;
+export type SetDeviceTagsRes = Device;
 
-export interface GetDeviceRoutesReq {
-  id: string;
-}
-export interface GetDeviceRoutesRes {
-  routes?: Array<{
-    id: number;
-    machine: HeadscaleMachine;
-    prefix: string;
-    advertised: boolean;
-    enabled: boolean;
-    isPrimary: boolean;
-  }>;
-}
-
-export interface RegisterNodeReq {
-  user: string;
+export interface RegisterDeviceReq {
+  hs_user_id: number;
   key: string;
 }
-export type RegisterNodeRes = HeadscaleMachine;
+export type RegisterDeviceRes = Device;
+
+export interface ListPreAuthKeysReq {
+  hs_user_id?: number;
+}
+export type ListPreAuthKeysRes = PreAuthKey[];
+
+export interface CreatePreAuthKeyReq {
+  hs_user_id: number;
+  reusable?: boolean;
+  ephemeral?: boolean;
+  /** A Go duration ("24h") or an RFC3339 timestamp. */
+  expiration?: string;
+}
+export type CreatePreAuthKeyRes = PreAuthKey;
+
+export interface ExpirePreAuthKeyReq {
+  id: string;
+}
+
+export interface DeletePreAuthKeyReq {
+  id: string;
+}

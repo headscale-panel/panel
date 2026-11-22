@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2026 
+ * Copyright (C) 2026
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -20,7 +20,7 @@ import { CloudServerOutlined, DashboardOutlined, GlobalOutlined, PercentageOutli
 import { useRequest } from 'ahooks';
 import { Button, message, Tag, Typography } from 'antd';
 import { useState } from 'react';
-import { dashboardApi, deviceApi, headscaleUserApi } from '@/api';
+import { dashboardApi, deviceApi, networkIdentityApi } from '@/api';
 import DashboardLayout from '@/components/DashboardLayout';
 import NetworkTopology from '@/components/NetworkTopology';
 import PageHeaderStatCards from '@/components/PageHeaderStatCards';
@@ -79,8 +79,8 @@ export default function Dashboard() {
   const fetchDashboardData = async () => {
     // Fetch data from multiple APIs in parallel
     const [devicesRes, usersRes, topologyRes, overviewRes] = await Promise.allSettled([
-      deviceApi.list({ all: true }),
-      headscaleUserApi.list({ all: true }),
+      deviceApi.list(),
+      networkIdentityApi.list(),
       dashboardApi.getTopologyWithACL(),
       dashboardApi.getOverview(),
     ]);

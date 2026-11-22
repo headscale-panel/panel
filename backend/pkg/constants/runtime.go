@@ -1,4 +1,4 @@
-// Copyright (C) 2026 
+// Copyright (C) 2026
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as
@@ -15,21 +15,40 @@
 
 package constants
 
-import "time"
+import (
+	"os"
+	"path/filepath"
+	"time"
+)
+
+func envOr(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
+}
 
 // DataDir is the directory where all persistent application data is stored.
-const DataDir = "data"
+var DataDir = envOr("DATA_DIR", "data")
+
+// DBPath is the SQLite database file. It lives under DataDir by default.
+var DBPath = envOr("DB_PATH", filepath.Join(DataDir, "data.db"))
+
+// JWTKeyDir holds the panel's token signing key. It is kept out of the database
+// so a database backup does not also hand over the ability to forge tokens.
+var JWTKeyDir = envOr("JWT_KEY_DIR", filepath.Join(DataDir, "keys"))
+
+// JWTSigningKeyPath is the RSA private key used to sign access tokens.
+var JWTSigningKeyPath = filepath.Join(JWTKeyDir, "jwt-signing.pem")
 
 // HeadscaleBaseDir is the root directory for all headscale-related panel data.
 const HeadscaleBaseDir = "headscale"
 
-// HeadscaleLibDir holds configuration files managed by the panel (config.yaml, extra records, etc.).
-// It is mounted into the headscale container as /var/lib/headscale.
-const HeadscaleLibDir = HeadscaleBaseDir + "/lib"
+// HeadscaleLibDir holds files shared with the headscale container at /var/lib/headscale.
+var HeadscaleLibDir = envOr("HEADSCALE_LIB_DIR", HeadscaleBaseDir+"/lib")
 
-// HeadscaleEtcDir holds support files such as the custom DERP map.
-// It is mounted into the headscale container as /etc/headscale.
-const HeadscaleEtcDir = HeadscaleBaseDir + "/etc"
+// HeadscaleEtcDir holds files shared with the headscale container at /etc/headscale.
+var HeadscaleEtcDir = envOr("HEADSCALE_ETC_DIR", HeadscaleBaseDir+"/etc")
 
 // Shared filenames for files managed by both the panel and referenced in headscale config.
 const (
@@ -40,10 +59,10 @@ const (
 
 // Panel-side file paths – paths relative to the panel's working directory,
 // used by the panel to read/write these files on disk.
-const (
-	HeadscaleConfigFilePath = HeadscaleEtcDir + "/" + HeadscaleConfigFileName
-	DERPMapFilePath         = HeadscaleEtcDir + "/" + DERPMapFileName
-	ExtraRecordsFilePath    = HeadscaleLibDir + "/" + ExtraRecordsFileName
+var (
+	HeadscaleConfigFilePath = filepath.Join(HeadscaleEtcDir, HeadscaleConfigFileName)
+	DERPMapFilePath         = filepath.Join(HeadscaleEtcDir, DERPMapFileName)
+	ExtraRecordsFilePath    = filepath.Join(HeadscaleLibDir, ExtraRecordsFileName)
 )
 
 // Headscale container-side paths – absolute paths as seen inside the headscale
@@ -59,8 +78,13 @@ const (
 	HSExtraRecordsPath = HSEtcDir + "/" + ExtraRecordsFileName
 )
 
-// FrontendDir is the directory where compiled frontend static files are served from.
-const FrontendDir = "frontend"
+// FrontendDir is where compiled frontend assets live, relative to the binary
+// unless FRONTEND_DIR says otherwise.
+//
+// It is read from the environment because the same binary is used in the
+// container (assets next to the executable) and in local development (assets in
+// the source tree), and the README has always documented the variable.
+var FrontendDir = envOr("FRONTEND_DIR", "frontend")
 
 const (
 	DefaultPage     = 1
@@ -69,15 +93,22 @@ const (
 
 	SetupWindow = 30 * time.Minute
 
+	// Rate limits are per client IP, per window.
+	//
+	// Login is the tightest because it is the only endpoint where guessing is
+	// useful. Setup is tighter than ordinary writes because those endpoints are
+	// reachable before the panel has any accounts at all, so there is no identity
+	// to attribute an attempt to.
 	AuthRateLimitCount  = 20
 	AuthRateLimitWindow = 1 * time.Minute
 
-	ServiceRequestTimeout = 30 * time.Second
+	SetupRateLimitCount  = 10
+	SetupRateLimitWindow = 1 * time.Minute
 
-	// GRPCConnectionTTL is the maximum lifetime of a single gRPC connection to
-	// Headscale. After this duration the connection is transparently recreated
-	// on the next service call to prevent stale connections.
-	GRPCConnectionTTL = 24 * time.Hour
+	WriteRateLimitCount  = 60
+	WriteRateLimitWindow = 1 * time.Minute
+
+	ServiceRequestTimeout = 30 * time.Second
 
 	OIDCAuthCodeTTL     = 10 * time.Minute
 	OIDCTokenTTL        = 1 * time.Hour

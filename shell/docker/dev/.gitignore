@@ -4,3 +4,6 @@
 # Runtime data directory
 data/
 cert/
+
+# Generated API key / pre-auth keys
+.state/

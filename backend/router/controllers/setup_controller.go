@@ -21,6 +21,7 @@ import (
 	"crypto/subtle"
 	"encoding/base64"
 	"fmt"
+	"headscale-panel/internal/account"
 	"headscale-panel/model"
 	"headscale-panel/pkg/conf"
 	"headscale-panel/pkg/constants"
@@ -28,7 +29,9 @@ import (
 	"headscale-panel/router/services"
 	"net"
 	"net/http"
+	"net/url"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -83,7 +86,7 @@ func (s *SetupController) GetStatus(ctx *gin.Context) {
 }
 
 type SetupPreflightRequest struct {
-	HeadscaleGRPCAddr string `json:"headscale_grpc_addr"`
+	HeadscaleAPIAddr  string `json:"headscale_api_addr"`
 	SkipNetworkChecks bool   `json:"skip_network_checks"`
 }
 
@@ -96,6 +99,15 @@ type SetupPreflightRequest struct {
 // @Success 200 {object} unifyerror.Response{data=object}
 // @Router /setup/preflight [post]
 func (s *SetupController) Preflight(ctx *gin.Context) {
+	if err := requireSetupBootstrap(ctx); err != nil {
+		unifyerror.Fail(ctx, err)
+		return
+	}
+	if _, err := services.SetupStateService.RequireSetupWindow(); err != nil {
+		unifyerror.Fail(ctx, err)
+		return
+	}
+
 	var req SetupPreflightRequest
 	if ctx.Request.ContentLength > 0 {
 		if err := ctx.ShouldBindJSON(&req); err != nil {
@@ -107,11 +119,11 @@ func (s *SetupController) Preflight(ctx *gin.Context) {
 	checks := []gin.H{}
 
 	if !req.SkipNetworkChecks {
-		grpcAddr := normalizeGRPCAddress(req.HeadscaleGRPCAddr)
-		ok, detail := checkTCPConnect(ctx.Request.Context(), grpcAddr)
+		apiAddr := normalizeAPIAddr(req.HeadscaleAPIAddr)
+		ok, detail := checkTCPConnect(ctx.Request.Context(), apiAddr)
 		checks = append(checks, gin.H{
-			"name":      "headscale_grpc",
-			"address":   grpcAddr,
+			"name":      "headscale_api",
+			"address":   apiAddr,
 			"reachable": ok,
 			"detail":    detail,
 		})
@@ -125,23 +137,23 @@ func (s *SetupController) Preflight(ctx *gin.Context) {
 
 // ConnectivityCheckRequest holds the parameters for checking Headscale connectivity.
 type ConnectivityCheckRequest struct {
-	HeadscaleGRPCAddr string `json:"headscale_grpc_addr"`
-	APIKey            string `json:"api_key"`
-	StrictAPI         bool   `json:"strict_api"`
-	GRPCAllowInsecure *bool  `json:"grpc_allow_insecure"`
-	GRPCTLSSkipVerify *bool  `json:"grpc_tls_skip_verify"`
-	GRPCTLSCACert     string `json:"grpc_tls_ca_cert"`
+	HeadscaleAPIAddr string `json:"headscale_api_addr"`
+	APIKey           string `json:"api_key"`
+	StrictAPI        bool   `json:"strict_api"`
+	APIAllowInsecure *bool  `json:"api_allow_insecure"`
+	APITLSSkipVerify *bool  `json:"api_tls_skip_verify"`
+	APITLSCACert     string `json:"api_tls_ca_cert"`
 }
 
 // ConnectivityPollRequest holds the parameters for polling Headscale connectivity.
 type ConnectivityPollRequest struct {
-	HeadscaleGRPCAddr string `json:"headscale_grpc_addr"`
-	APIKey            string `json:"api_key"`
-	GRPCAllowInsecure *bool  `json:"grpc_allow_insecure"`
-	GRPCTLSSkipVerify *bool  `json:"grpc_tls_skip_verify"`
-	GRPCTLSCACert     string `json:"grpc_tls_ca_cert"`
-	MaxAttempts       int    `json:"max_attempts"`
-	IntervalSeconds   int    `json:"interval_seconds"`
+	HeadscaleAPIAddr string `json:"headscale_api_addr"`
+	APIKey           string `json:"api_key"`
+	APIAllowInsecure *bool  `json:"api_allow_insecure"`
+	APITLSSkipVerify *bool  `json:"api_tls_skip_verify"`
+	APITLSCACert     string `json:"api_tls_ca_cert"`
+	MaxAttempts      int    `json:"max_attempts"`
+	IntervalSeconds  int    `json:"interval_seconds"`
 }
 
 // ConnectivityCheck godoc
@@ -154,6 +166,15 @@ type ConnectivityPollRequest struct {
 // @Router /setup/connectivity-check [post]
 // ConnectivityCheck validates gRPC reachability and optional API access.
 func (s *SetupController) ConnectivityCheck(ctx *gin.Context) {
+	if err := requireSetupBootstrap(ctx); err != nil {
+		unifyerror.Fail(ctx, err)
+		return
+	}
+	if _, err := services.SetupStateService.RequireSetupWindow(); err != nil {
+		unifyerror.Fail(ctx, err)
+		return
+	}
+
 	var req ConnectivityCheckRequest
 	if ctx.Request.ContentLength > 0 {
 		if err := ctx.ShouldBindJSON(&req); err != nil {
@@ -162,30 +183,30 @@ func (s *SetupController) ConnectivityCheck(ctx *gin.Context) {
 		}
 	}
 
-	grpcAddr := normalizeGRPCAddress(req.HeadscaleGRPCAddr)
+	apiAddr := normalizeAPIAddr(req.HeadscaleAPIAddr)
 	results := []gin.H{}
 
-	ok, detail := checkTCPConnect(ctx.Request.Context(), grpcAddr)
+	ok, detail := checkTCPConnect(ctx.Request.Context(), apiAddr)
 	results = append(results, gin.H{
-		"name":      "headscale_grpc",
-		"address":   grpcAddr,
+		"name":      "headscale_api",
+		"address":   apiAddr,
 		"reachable": ok,
 		"detail":    detail,
 	})
 
 	if req.StrictAPI {
 		allowInsecure := true
-		if req.GRPCAllowInsecure != nil {
-			allowInsecure = *req.GRPCAllowInsecure
+		if req.APIAllowInsecure != nil {
+			allowInsecure = *req.APIAllowInsecure
 		}
 		tlsSkipVerify := false
-		if req.GRPCTLSSkipVerify != nil {
-			tlsSkipVerify = *req.GRPCTLSSkipVerify
+		if req.APITLSSkipVerify != nil {
+			tlsSkipVerify = *req.APITLSSkipVerify
 		}
-		ok, detail = services.CheckHeadscaleConnectivityWithConfig(ctx.Request.Context(), grpcAddr, req.APIKey, allowInsecure, tlsSkipVerify, req.GRPCTLSCACert)
+		ok, detail = services.CheckHeadscaleConnectivityWithConfig(ctx.Request.Context(), apiAddr, req.APIKey, allowInsecure, tlsSkipVerify, req.APITLSCACert)
 		results = append(results, gin.H{
 			"name":      "headscale_api",
-			"address":   grpcAddr,
+			"address":   apiAddr,
 			"reachable": ok,
 			"detail":    detail,
 		})
@@ -215,20 +236,29 @@ func (s *SetupController) ConnectivityCheck(ctx *gin.Context) {
 // @Router /setup/connectivity-poll [post]
 // ConnectivityPoll retries Headscale API access for a short period.
 func (s *SetupController) ConnectivityPoll(ctx *gin.Context) {
+	if err := requireSetupBootstrap(ctx); err != nil {
+		unifyerror.Fail(ctx, err)
+		return
+	}
+	if _, err := services.SetupStateService.RequireSetupWindow(); err != nil {
+		unifyerror.Fail(ctx, err)
+		return
+	}
+
 	var req ConnectivityPollRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {
 		unifyerror.Fail(ctx, unifyerror.ErrBind)
 		return
 	}
 
-	grpcAddr := normalizeGRPCAddress(req.HeadscaleGRPCAddr)
+	apiAddr := normalizeAPIAddr(req.HeadscaleAPIAddr)
 	allowInsecure := true
-	if req.GRPCAllowInsecure != nil {
-		allowInsecure = *req.GRPCAllowInsecure
+	if req.APIAllowInsecure != nil {
+		allowInsecure = *req.APIAllowInsecure
 	}
 	tlsSkipVerify := false
-	if req.GRPCTLSSkipVerify != nil {
-		tlsSkipVerify = *req.GRPCTLSSkipVerify
+	if req.APITLSSkipVerify != nil {
+		tlsSkipVerify = *req.APITLSSkipVerify
 	}
 
 	maxAttempts := req.MaxAttempts
@@ -242,7 +272,7 @@ func (s *SetupController) ConnectivityPoll(ctx *gin.Context) {
 
 	var lastDetail string
 	for i := 0; i < maxAttempts; i++ {
-		ok, detail := services.CheckHeadscaleConnectivityWithConfig(ctx.Request.Context(), grpcAddr, req.APIKey, allowInsecure, tlsSkipVerify, req.GRPCTLSCACert)
+		ok, detail := services.CheckHeadscaleConnectivityWithConfig(ctx.Request.Context(), apiAddr, req.APIKey, allowInsecure, tlsSkipVerify, req.APITLSCACert)
 		lastDetail = detail
 		if ok {
 			unifyerror.Success(ctx, gin.H{
@@ -276,11 +306,11 @@ func (s *SetupController) ConnectivityPoll(ctx *gin.Context) {
 // @Router /setup/initialize [post]
 // Initialize saves the Headscale connection settings and creates the first admin.
 type InitializeRequest struct {
-	HeadscaleGRPCAddr string `json:"headscale_grpc_addr"`
-	APIKey            string `json:"api_key"`
-	EnableTLS         *bool  `json:"enable_tls"`
-	TLSSkipVerify     *bool  `json:"tls_skip_verify"`
-	TLSCACert         string `json:"tls_ca_cert"`
+	HeadscaleAPIAddr string `json:"headscale_api_addr"`
+	APIKey           string `json:"api_key"`
+	EnableTLS        *bool  `json:"enable_tls"`
+	TLSSkipVerify    *bool  `json:"tls_skip_verify"`
+	TLSCACert        string `json:"tls_ca_cert"`
 
 	Username string `json:"username"`
 	Password string `json:"password"`
@@ -314,7 +344,7 @@ func (s *SetupController) Initialize(ctx *gin.Context) {
 	}
 
 	var count int64
-	if err := model.DB.Model(&model.User{}).Count(&count).Error; err != nil {
+	if err := model.DB.Model(&account.Account{}).Count(&count).Error; err != nil {
 		unifyerror.Fail(ctx, unifyerror.DbError(err))
 		return
 	}
@@ -329,7 +359,7 @@ func (s *SetupController) Initialize(ctx *gin.Context) {
 		return
 	}
 
-	grpcAddr := normalizeGRPCAddress(req.HeadscaleGRPCAddr)
+	apiAddr := normalizeAPIAddr(req.HeadscaleAPIAddr)
 	apiKey := strings.TrimSpace(req.APIKey)
 	if apiKey == "" {
 		unifyerror.Fail(ctx, unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "headscale api key is required"))
@@ -346,12 +376,12 @@ func (s *SetupController) Initialize(ctx *gin.Context) {
 		tlsSkipVerify = *req.TLSSkipVerify
 	}
 
-	if ok, detail := services.CheckHeadscaleConnectivityWithConfig(ctx.Request.Context(), grpcAddr, apiKey, allowInsecure, tlsSkipVerify, req.TLSCACert); !ok {
-		unifyerror.Fail(ctx, unifyerror.New(http.StatusOK, unifyerror.CodeGRPCErr, detail))
+	if ok, detail := services.CheckHeadscaleConnectivityWithConfig(ctx.Request.Context(), apiAddr, apiKey, allowInsecure, tlsSkipVerify, req.TLSCACert); !ok {
+		unifyerror.Fail(ctx, unifyerror.New(http.StatusOK, unifyerror.CodeHeadscaleAPIErr, detail))
 		return
 	}
 
-	if err := services.SaveConnectionAndInitialize(ctx.Request.Context(), grpcAddr, apiKey, allowInsecure, tlsSkipVerify, req.TLSCACert); err != nil {
+	if err := services.SaveConnectionAndInitialize(ctx.Request.Context(), apiAddr, apiKey, allowInsecure, tlsSkipVerify, req.TLSCACert); err != nil {
 		unifyerror.Fail(ctx, err)
 		return
 	}
@@ -359,17 +389,6 @@ func (s *SetupController) Initialize(ctx *gin.Context) {
 	username := strings.TrimSpace(req.Username)
 	if username == "" {
 		unifyerror.Fail(ctx, unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "username is required"))
-		return
-	}
-
-	// Check if admin already exists
-	var adminCount int64
-	if err := model.DB.Model(&model.User{}).Where("is_admin = ?", true).Count(&adminCount).Error; err != nil {
-		unifyerror.Fail(ctx, unifyerror.DbError(err))
-		return
-	}
-	if adminCount > 0 {
-		unifyerror.Fail(ctx, unifyerror.Conflict("admin user already exists"))
 		return
 	}
 
@@ -385,59 +404,50 @@ func (s *SetupController) Initialize(ctx *gin.Context) {
 		passwordGenerated = true
 	}
 
-	var adminGroup model.Group
-	if err := model.DB.Where("name = ?", constants.GROUP_ADMIN).First(&adminGroup).Error; err != nil {
-		unifyerror.Fail(ctx, unifyerror.New(http.StatusInternalServerError, unifyerror.CodeServerErr, "admin group not found, please check database initialization"))
+	adminRole, roleErr := services.Accounts.RoleByName(constants.SystemAdminRoleName)
+	if roleErr != nil {
+		unifyerror.Fail(ctx, unifyerror.New(http.StatusInternalServerError, unifyerror.CodeServerErr,
+			"the system administrator role is missing; the database is not correctly initialized"))
 		return
 	}
 
-	user := model.User{
-		Username: username,
-		Password: password,
-		Email:    strings.TrimSpace(req.Email),
-		GroupID:  adminGroup.ID,
-		IsAdmin:  true,
-		Provider: "local",
-	}
-
-	if err := model.DB.Create(&user).Error; err != nil {
-		unifyerror.Fail(ctx, unifyerror.DbError(err))
+	created, createErr := services.CreateAccount(services.AccountCreateInput{
+		Username:    username,
+		Password:    password,
+		Email:       strings.TrimSpace(req.Email),
+		DisplayName: username,
+		RoleID:      adminRole.ID,
+	})
+	if createErr != nil {
+		unifyerror.Fail(ctx, createErr)
 		return
 	}
 
-	// Best-effort: create matching headscale user and binding
-	if services.PanelSettingsService.IsThirdPartyOIDCEnabled() == false {
-		client, err := services.HeadscaleService.CreateUserWithContext(ctx, 1, username, username, strings.TrimSpace(req.Email), "")
-		if err == nil && client != nil {
-			model.DB.Create(&model.UserIdentityBinding{
-				UserID:      user.ID,
-				HeadscaleID: client.ID,
-			})
-		}
-	}
-
+	// Panel initialization deliberately stops here.
+	//
+	// Creating a matching headscale user is not part of bringing the panel up: it
+	// is a network decision the operator makes later, once they have chosen where
+	// network identities come from. Doing it here is how the two concepts became
+	// entangled in the first place.
 	if err := services.SetupStateService.MarkInitialized(); err != nil {
 		unifyerror.Fail(ctx, err)
 		return
 	}
 
-	// Sync resources from Headscale ACL into local database during initialization
-	_ = services.HeadscaleService.SyncACL()
-
 	services.SetupGuardService.RevokeAllTokens()
 
 	resp := gin.H{
 		"message": "setup completed",
-		"user": gin.H{
-			"id":       user.ID,
-			"username": user.Username,
-			"email":    user.Email,
+		"account": gin.H{
+			"id":       created.ID,
+			"username": created.Username,
+			"email":    created.Email,
 		},
 		"connection": gin.H{
-			"headscale_grpc_addr": grpcAddr,
-			"enable_tls":          enableTLS,
-			"tls_skip_verify":     tlsSkipVerify,
-			"has_ca_cert":         req.TLSCACert != "",
+			"headscale_api_addr": apiAddr,
+			"enable_tls":         enableTLS,
+			"tls_skip_verify":    tlsSkipVerify,
+			"has_ca_cert":        req.TLSCACert != "",
 		},
 		"password_generated": passwordGenerated,
 	}
@@ -516,28 +526,90 @@ func readSetupBootstrapCredential(ctx *gin.Context) string {
 	return ""
 }
 
-func normalizeGRPCAddress(raw string) string {
-	grpcAddr := strings.TrimSpace(raw)
-	if grpcAddr == "" {
-		grpcAddr = conf.Conf.Headscale.GRPCAddr
+// normalizeAPIAddr coerces user input into an absolute http(s) URL.
+//
+// Accepts a bare host ("headscale.example.com"), a host:port, a full URL, or
+// nothing at all (falls back to the configured address). A scheme is inferred:
+// plain http for loopback and private addresses, https otherwise, because
+// headscale's default deployment is TLS-terminated.
+func normalizeAPIAddr(raw string) string {
+	apiAddr := strings.TrimSpace(raw)
+	if apiAddr == "" {
+		apiAddr = strings.TrimSpace(conf.Conf.Headscale.APIAddr)
 	}
-	if strings.TrimSpace(grpcAddr) == "" {
-		grpcAddr = "127.0.0.1:50443"
+	if apiAddr == "" {
+		return "http://127.0.0.1:8080"
 	}
-	if !strings.Contains(grpcAddr, ":") {
-		grpcAddr += ":50443"
+
+	if !strings.Contains(apiAddr, "://") {
+		scheme := "https"
+		if isLoopbackOrPrivateHost(apiAddr) {
+			scheme = "http"
+		}
+		apiAddr = scheme + "://" + apiAddr
 	}
-	return grpcAddr
+
+	parsed, err := url.Parse(apiAddr)
+	if err != nil || parsed.Host == "" {
+		return apiAddr
+	}
+
+	return strings.TrimRight(parsed.String(), "/")
 }
 
-func checkTCPConnect(ctx context.Context, addr string) (bool, string) {
+// isLoopbackOrPrivateHost inspects the host portion of a host[:port] string.
+func isLoopbackOrPrivateHost(addr string) bool {
+	host := addr
+	if h, _, err := net.SplitHostPort(addr); err == nil {
+		host = h
+	}
+	host = strings.Trim(host, "[]")
+
+	if host == "localhost" {
+		return true
+	}
+
+	ip := net.ParseIP(host)
+	return ip != nil && (ip.IsLoopback() || ip.IsPrivate())
+}
+
+// checkTCPConnect reports whether the host:port behind an API URL accepts TCP
+// connections. It only proves the listener exists; authentication is verified
+// separately by the API probe.
+func checkTCPConnect(ctx context.Context, apiAddr string) (bool, string) {
+	parsed, err := url.Parse(apiAddr)
+	if err != nil || parsed.Host == "" {
+		return false, "invalid API address: " + apiAddr
+	}
+
+	host := parsed.Host
+	if _, _, splitErr := net.SplitHostPort(host); splitErr != nil {
+		if parsed.Scheme == "https" {
+			host = net.JoinHostPort(parsed.Hostname(), "443")
+		} else {
+			host = net.JoinHostPort(parsed.Hostname(), "80")
+		}
+	}
+
 	connectCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
-	var d net.Dialer
-	conn, err := d.DialContext(connectCtx, "tcp", addr)
+	d := net.Dialer{
+		Control: func(_, address string, _ syscall.RawConn) error {
+			h, _, splitErr := net.SplitHostPort(address)
+			if splitErr != nil {
+				return fmt.Errorf("blocked address")
+			}
+			ip := net.ParseIP(h)
+			if ip != nil && (ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsUnspecified()) {
+				return fmt.Errorf("address is not permitted")
+			}
+			return nil
+		},
+	}
+	conn, err := d.DialContext(connectCtx, "tcp", host)
 	if err != nil {
-		return false, fmt.Sprintf("connection failed: %v", err)
+		return false, "connection failed"
 	}
 	_ = conn.Close()
 	return true, "reachable"

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2026 
+ * Copyright (C) 2026
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -28,7 +28,7 @@ import request from '@/lib/request';
 
 export const dashboardApi = {
   getOverview: (_req?: DashboardOverviewReq) =>
-    request<RespType<DashboardOverviewRes>>({ url: '/dashboard/overview', method: 'GET' }),
+    request<RespType<DashboardOverviewRes>>({ url: '/overview', method: 'GET' }),
 
   getTopology: (_req?: DashboardTopologyReq) =>
     request<RespType<DashboardTopologyRes>>({ url: '/topology', method: 'GET' }),

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2026 
+ * Copyright (C) 2026
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -232,24 +232,24 @@ export default function GuideTour() {
     },
     {
       id: 'users-actions',
-      pageKey: 'users',
-      path: '/users',
+      pageKey: 'networkIdentities',
+      path: '/network-identities',
       targetId: 'users-actions',
       title: gt.usersActionsTitle,
       description: gt.usersActionsDesc,
     },
     {
       id: 'users-create',
-      pageKey: 'users',
-      path: '/users',
+      pageKey: 'networkIdentities',
+      path: '/network-identities',
       targetId: 'users-create',
       title: gt.usersCreateTitle,
       description: gt.usersCreateDesc,
     },
     {
       id: 'users-tree',
-      pageKey: 'users',
-      path: '/users',
+      pageKey: 'networkIdentities',
+      path: '/network-identities',
       targetId: 'users-tree',
       title: gt.usersTreeTitle,
       description: gt.usersTreeDesc,
@@ -351,26 +351,26 @@ export default function GuideTour() {
       description: gt.metricsChartsDesc,
     },
     {
-      id: 'panel-accounts-create',
-      pageKey: 'panelAccounts',
-      path: '/panel-accounts',
-      targetId: 'panel-accounts-create',
+      id: 'accounts-create',
+      pageKey: 'accounts',
+      path: '/accounts',
+      targetId: 'accounts-create',
       title: gt.panelAccountsCreateTitle,
       description: gt.panelAccountsCreateDesc,
     },
     {
-      id: 'panel-accounts-filters',
-      pageKey: 'panelAccounts',
-      path: '/panel-accounts',
-      targetId: 'panel-accounts-filters',
+      id: 'accounts-filters',
+      pageKey: 'accounts',
+      path: '/accounts',
+      targetId: 'accounts-filters',
       title: gt.panelAccountsFiltersTitle,
       description: gt.panelAccountsFiltersDesc,
     },
     {
-      id: 'panel-accounts-table',
-      pageKey: 'panelAccounts',
-      path: '/panel-accounts',
-      targetId: 'panel-accounts-table',
+      id: 'accounts-table',
+      pageKey: 'accounts',
+      path: '/accounts',
+      targetId: 'accounts-table',
       title: gt.panelAccountsTableTitle,
       description: gt.panelAccountsTableDesc,
     },

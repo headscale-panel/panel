@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2026 
+ * Copyright (C) 2026
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -15,7 +15,7 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-import type { User } from './entities';
+import type { MeView } from './entities';
 
 export interface LoginReq {
   username: string;
@@ -25,27 +25,33 @@ export interface LoginReq {
 
 export interface LoginRes {
   token: string;
-  user: User;
-  permissions?: string[];
+  account: MeView;
+  permissions: string[];
 }
 
 export interface RegisterReq {
   username: string;
   password: string;
   email: string;
+  display_name?: string;
 }
 
 export interface RegisterRes {
-  id?: number;
-  username: string;
+  message: string;
 }
 
-export interface UserInfoReq {}
-export type UserInfoRes = User;
-export interface MarkGuideTourSeenReq {}
-export interface MarkGuideTourSeenRes {}
+/** Which sign-in methods the deployment offers. */
+export interface AuthStatusRes {
+  password_login: boolean;
+  panel_sso: boolean;
+  registration: boolean;
+}
 
-export interface GenerateTOTPReq {}
+export interface ChangePasswordReq {
+  current_password: string;
+  new_password: string;
+}
+
 export interface GenerateTOTPRes {
   secret: string;
   url: string;
@@ -54,41 +60,10 @@ export interface GenerateTOTPRes {
 export interface EnableTOTPReq {
   code: string;
 }
-export interface EnableTOTPRes {}
 
-export interface OidcCallbackReq {
+export interface MeRes extends MeView {}
+
+export interface SSOCallbackReq {
   code: string;
   state: string;
-}
-
-export interface OidcCallbackRes {
-  token?: string;
-  user?: User;
-  permissions?: string[];
-}
-
-export interface OidcCreateHeadscaleUserCallbackRes {
-  created: boolean;
-  updated_existing: boolean;
-  user?: {
-    id?: number;
-    name?: string;
-    display_name?: string;
-    email?: string;
-    provider?: string;
-  };
-}
-
-export interface OidcStatusReq {}
-
-export interface OidcStatusRes {
-  enabled: boolean;
-  builtin?: boolean;
-  provider_name?: string;
-  issuer?: string;
-}
-
-export interface OidcLoginReq {}
-export interface OidcLoginRes {
-  redirect_url: string;
 }

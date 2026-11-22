@@ -1,4 +1,4 @@
-// Copyright (C) 2026 
+// Copyright (C) 2026
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as
@@ -17,22 +17,23 @@ package unifyerror
 
 // Error type constants used to determine logging behavior and user-facing message.
 const (
-	ErrTypeServer = iota // Server-side error – logged, generic message shown to user
-	ErrTypeUser          // Client/user error – not logged, specific message shown to user
-	ErrTypeDb            // Database error – logged, generic message shown to user
-	ErrTypeGRPC          // gRPC / third-party service error – logged, specific message shown
-	ErrTypeHttp          // HTTP-semantic error (404, etc.) – not logged, message shown as-is
+	ErrTypeServer       = iota // Server-side error – logged, generic message shown to user
+	ErrTypeUser                // Client/user error – not logged, specific message shown to user
+	ErrTypeDb                  // Database error – logged, generic message shown to user
+	ErrTypeHeadscaleAPI        // headscale REST API / third-party service error - logged, specific message shown
+	ErrTypeHttp                // HTTP-semantic error (404, etc.) – not logged, message shown as-is
 )
 
 // UniErr is the base error value type. It carries HTTP status, an application
 // error code, and the user-facing message. Create instances via the constructor
 // functions (ServerError, WrongParam, etc.) rather than directly.
 type UniErr struct {
-	HttpCode int    `json:"-"`
-	Code     int    `json:"code"`
-	Msg      string `json:"msg"`
-	Data     any    `json:"data,omitempty"`
-	Request  string `json:"request"`
+	HttpCode  int    `json:"-"`
+	Code      int    `json:"code"`
+	Msg       string `json:"msg"`
+	Data      any    `json:"data,omitempty"`
+	Request   string `json:"request"`
+	RequestID string `json:"request_id,omitempty"`
 }
 
 // ApiException wraps UniErr to satisfy the error interface and is returned as
@@ -49,11 +50,12 @@ func (e *ApiException) Error() string {
 // gin JSON response.
 func (e *UniErr) Handle() *ApiException {
 	return &ApiException{UniErr{
-		HttpCode: e.HttpCode,
-		Code:     e.Code,
-		Msg:      e.Msg,
-		Data:     e.Data,
-		Request:  e.Request,
+		HttpCode:  e.HttpCode,
+		Code:      e.Code,
+		Msg:       e.Msg,
+		Data:      e.Data,
+		Request:   e.Request,
+		RequestID: e.RequestID,
 	}}
 }
 

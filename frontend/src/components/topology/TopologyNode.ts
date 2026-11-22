@@ -9,6 +9,7 @@
 
 import type { BaseNodeStyleProps } from '@antv/g6';
 import { Badge, Circle, Label } from '@antv/g6';
+import { nodeTexts } from './topologyGraph';
 
 interface TopologyNodeStyle extends BaseNodeStyleProps {
   kind?: 'server' | 'identity' | 'device';
@@ -17,6 +18,8 @@ interface TopologyNodeStyle extends BaseNodeStyleProps {
   online?: boolean;
   deviceType?: string;
   accent?: string;
+  // detailLevel 0 shows the glyph only, 1 adds the name, 2 also adds the meta line.
+  detailLevel?: number;
   textColor?: string;
   mutedColor?: string;
   iconSurface?: string;
@@ -54,10 +57,14 @@ export class TopologyNode extends Circle {
       pointerEvents: 'none',
     }, container);
 
+    const texts = nodeTexts(attributes.detailLevel ?? 2, attributes.name, attributes.meta ?? '');
+
     this.upsert('title', Label, {
       x: 0,
       y: height / 2 + 13,
-      text: attributes.name,
+      // At the widest zoom only the icon survives; a label nobody can read still
+      // costs a text layout pass per node.
+      text: texts.name,
       fontSize: isServer ? 10 : 9,
       fontWeight: isServer || isIdentity ? 600 : 500,
       fill: attributes.textColor,
@@ -78,7 +85,7 @@ export class TopologyNode extends Circle {
     this.upsert('meta', Label, {
       x: 0,
       y: height / 2 + (isServer || isIdentity ? 31 : 27),
-      text: attributes.meta,
+      text: texts.meta,
       fontSize: 8,
       fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
       fill: attributes.mutedColor,

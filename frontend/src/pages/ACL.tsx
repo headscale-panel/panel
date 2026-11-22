@@ -19,7 +19,7 @@ import type {
   DragEndEvent,
 } from '@dnd-kit/core';
 import type { GrantRuleValue } from '@/components/acl/GrantModal';
-import type { ACLPolicy, HeadscaleUserOption, NormalizedResource } from '@/lib/normalizers';
+import type { ACLPolicy, IdentityOption, NormalizedResource } from '@/lib/normalizers';
 import {
   CheckCircleFilled,
   CloseCircleFilled,
@@ -52,7 +52,7 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { useRequest } from 'ahooks';
 import { Alert, Button, Card, Empty, message, Space, Spin, Tag, theme, Tooltip, Typography } from 'antd';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useLocation } from 'wouter';
 import { aclApi } from '@/api';
 import GrantModal from '@/components/acl/GrantModal';
@@ -62,8 +62,9 @@ import RuleModal from '@/components/acl/RuleModal';
 import DashboardLayout from '@/components/DashboardLayout';
 import PageHeaderStatCards from '@/components/PageHeaderStatCards';
 
+import { useTheme } from '@/contexts/ThemeContext';
 import { useTranslation } from '@/i18n/index';
-import { ACLAction } from '@/lib/enums';
+import { ACLAction, ThemeMode } from '@/lib/enums';
 import { loadACLPageData } from '@/lib/page-data';
 
 const { Text, Title } = Typography;
@@ -86,7 +87,7 @@ interface DeviceItem {
 }
 
 type ResourceItem = NormalizedResource;
-type HeadscaleUser = HeadscaleUserOption;
+type HeadscaleUser = IdentityOption;
 
 /* -- SortableRuleCard -- */
 
@@ -141,6 +142,9 @@ export default function ACL() {
   const [saving, setSaving] = useState(false);
   const [rules, setRules] = useState<ACLRule[]>([]);
   const [policy, setPolicy] = useState<ACLPolicy | null>(null);
+  // The token from the last read. Sent back on save so a concurrent edit is
+  // detected instead of silently overwritten.
+  const [policyUpdatedAt, setPolicyUpdatedAt] = useState('');
 
   const [aclGroups, setAclGroups] = useState<Record<string, string[]>>({});
   const [devices, setDevices] = useState<DeviceItem[]>([]);
@@ -156,20 +160,11 @@ export default function ACL() {
   const [editingGrant, setEditingGrant] = useState<GrantRuleValue | null>(null);
   const [editingGrantIndex, setEditingGrantIndex] = useState(-1);
 
-  const [isDarkMode, setIsDarkMode] = useState(
-    document.documentElement.classList.contains('dark'),
-  );
-
-  useEffect(() => {
-    const observer = new MutationObserver(() => {
-      setIsDarkMode(document.documentElement.classList.contains('dark'));
-    });
-    observer.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ['class'],
-    });
-    return () => observer.disconnect();
-  }, []);
+  // The theme context already knows whether it is dark. Observing the <html> class
+  // to find out meant a MutationObserver per page and a value that could disagree
+  // with whatever antd was rendering.
+  const { resolvedTheme } = useTheme();
+  const isDarkMode = resolvedTheme === ThemeMode.Dark;
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -178,8 +173,9 @@ export default function ACL() {
   const { loading, refreshAsync } = useRequest(
     async () => loadACLPageData(),
     {
-      onSuccess: ({ policy, devices, resources, headscaleUsers }) => {
+      onSuccess: ({ policy, policyUpdatedAt: token, devices, resources, identities }) => {
         setInitialLoading(false);
+        setPolicyUpdatedAt(token ?? '');
         if (policy) {
           setPolicy(policy);
           setAclGroups(policy.groups || {});
@@ -209,7 +205,7 @@ export default function ACL() {
           })),
         );
         setResources(resources);
-        setHeadscaleUsers(headscaleUsers);
+        setHeadscaleUsers(identities);
       },
       onError: (error) => {
         setInitialLoading(false);
@@ -249,7 +245,7 @@ export default function ACL() {
     try {
       const grants = [...(policy.grants || [])];
       grants.splice(index, 1);
-      await aclApi.updatePolicy({ ...policy, grants });
+      await aclApi.updatePolicy({ ...policy, grants, expectedUpdatedAt: policyUpdatedAt });
       message.success(t.acl.grantDeleted);
       loadData();
     } catch {
@@ -263,7 +259,10 @@ export default function ACL() {
     try {
       const res = await aclApi.getPolicy();
       if (res) {
-        setJsonContent(JSON.stringify(res, null, 2));
+        const policyDoc = res && typeof res === 'object' && 'policy' in res
+          ? (res as { policy?: unknown }).policy ?? {}
+          : res;
+        setJsonContent(JSON.stringify(policyDoc, null, 2));
         setShowJsonEditor(true);
       }
     } catch {
@@ -305,7 +304,7 @@ export default function ACL() {
         'dst': rule.destinations,
       }));
       try {
-        await aclApi.updatePolicy(newPolicy);
+        await aclApi.updatePolicy({ ...newPolicy, expectedUpdatedAt: policyUpdatedAt });
         message.success(t.acl.orderUpdated);
         loadData();
       } catch {
@@ -653,7 +652,7 @@ export default function ACL() {
           aclGroups={aclGroups}
           devices={devices}
           resources={resources}
-          headscaleUsers={headscaleUsers}
+          identities={headscaleUsers}
           onCancel={() => { setShowAddDialog(false); setEditingRule(null); setEditingIndex(-1); }}
           onSuccess={loadData}
         />
@@ -663,6 +662,7 @@ export default function ACL() {
           editingGrant={editingGrant}
           editingIndex={editingGrantIndex}
           policy={policy}
+          policyUpdatedAt={policyUpdatedAt}
           onCancel={() => { setShowGrantDialog(false); setEditingGrant(null); setEditingGrantIndex(-1); }}
           onSuccess={loadData}
         />

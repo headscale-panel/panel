@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2026 
+ * Copyright (C) 2026
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -43,8 +43,8 @@ export const resourceApi = {
     request<RespType<CreateResourceRes>>({ url: '/resources', method: 'POST', data: req }),
 
   update: (req: UpdateResourceReq) =>
-    request<RespType<void>>({ url: '/resources', method: 'PUT', data: req }),
+    request<RespType<void>>({ url: `/resources/${req.id}`, method: 'PUT', data: req }),
 
   delete: (req: DeleteResourceReq) =>
-    request<RespType<void>>({ url: '/resources', method: 'DELETE', params: req }),
+    request<RespType<void>>({ url: `/resources/${req.id}`, method: 'DELETE' }),
 };

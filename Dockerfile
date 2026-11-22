@@ -1,8 +1,9 @@
 ARG ALPINE_MIRROR=
 
-FROM node:24-alpine AS frontend-builder
+FROM node:26-alpine AS frontend-builder
 
-RUN corepack enable && corepack prepare pnpm@latest --activate
+ARG PNPM_VERSION=10.33.1
+RUN npm install -g "pnpm@${PNPM_VERSION}"
 
 WORKDIR /build
 
@@ -13,7 +14,7 @@ COPY frontend/ .
 RUN pnpm build && \
     find dist -name '*.map' -delete
 
-FROM golang:1.26-alpine AS backend-builder
+FROM golang:1.27-alpine AS backend-builder
 
 ARG ALPINE_MIRROR
 ARG VERSION_CODE
@@ -52,7 +53,10 @@ COPY --from=frontend-builder /build/dist ./frontend/
 
 RUN mkdir -p /app/data && chown -R appuser:appgroup /app
 
+ENV GIN_MODE=release
 ENV FRONTEND_DIR=/app/frontend
 EXPOSE 8080
+
+USER appuser:appgroup
 
 ENTRYPOINT ["./headscale-panel"]

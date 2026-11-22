@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2026 
+ * Copyright (C) 2026
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -25,53 +25,53 @@ import type { RespType } from '@/lib/request';
 import request from '@/lib/request';
 
 export const derpApi = {
-  /** GET /headscale/derp — retrieve the full DERP map */
+  /** GET /system/derp — retrieve the full DERP map */
   get: () =>
-    request<RespType<GetDERPMapRes>>({ url: '/headscale/derp', method: 'GET' }),
+    request<RespType<GetDERPMapRes>>({ url: '/system/derp', method: 'GET' }),
 
-  /** PUT /headscale/derp — replace the entire DERP map */
+  /** PUT /system/derp — replace the entire DERP map */
   update: (derpMap: DERPMap) =>
-    request<RespType<void>>({ url: '/headscale/derp', method: 'PUT', data: derpMap }),
+    request<RespType<void>>({ url: '/system/derp', method: 'PUT', data: derpMap }),
 
-  /** POST /headscale/derp/regions — add a new region */
+  /** POST /system/derp/regions — add a new region */
   addRegion: (region: DERPRegion) =>
-    request<RespType<void>>({ url: '/headscale/derp/regions', method: 'POST', data: region }),
+    request<RespType<void>>({ url: '/system/derp/regions', method: 'POST', data: region }),
 
-  /** PUT /headscale/derp/regions/:regionId — update an existing region */
+  /** PUT /system/derp/regions/:regionId — update an existing region */
   updateRegion: (regionId: number, region: DERPRegion) =>
     request<RespType<void>>({
-      url: `/headscale/derp/regions/${regionId}`,
+      url: `/system/derp/regions/${regionId}`,
       method: 'PUT',
       data: region,
     }),
 
-  /** DELETE /headscale/derp/regions/:regionId — delete a region */
+  /** DELETE /system/derp/regions/:regionId — delete a region */
   deleteRegion: (regionId: number) =>
     request<RespType<void>>({
-      url: `/headscale/derp/regions/${regionId}`,
+      url: `/system/derp/regions/${regionId}`,
       method: 'DELETE',
     }),
 
-  /** POST /headscale/derp/regions/:regionId/nodes — add a node to a region */
+  /** POST /system/derp/regions/:regionId/nodes — add a node to a region */
   addNode: (regionId: number, node: DERPNode) =>
     request<RespType<void>>({
-      url: `/headscale/derp/regions/${regionId}/nodes`,
+      url: `/system/derp/regions/${regionId}/nodes`,
       method: 'POST',
       data: node,
     }),
 
-  /** PUT /headscale/derp/regions/:regionId/nodes/:nodeIndex — update a node */
+  /** PUT /system/derp/regions/:regionId/nodes/:nodeIndex — update a node */
   updateNode: (regionId: number, nodeIndex: number, node: DERPNode) =>
     request<RespType<void>>({
-      url: `/headscale/derp/regions/${regionId}/nodes/${nodeIndex}`,
+      url: `/system/derp/regions/${regionId}/nodes/${nodeIndex}`,
       method: 'PUT',
       data: node,
     }),
 
-  /** DELETE /headscale/derp/regions/:regionId/nodes/:nodeIndex — delete a node */
+  /** DELETE /system/derp/regions/:regionId/nodes/:nodeIndex — delete a node */
   deleteNode: (regionId: number, nodeIndex: number) =>
     request<RespType<void>>({
-      url: `/headscale/derp/regions/${regionId}/nodes/${nodeIndex}`,
+      url: `/system/derp/regions/${regionId}/nodes/${nodeIndex}`,
       method: 'DELETE',
     }),
 };

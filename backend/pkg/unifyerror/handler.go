@@ -1,4 +1,4 @@
-// Copyright (C) 2026 
+// Copyright (C) 2026
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as
@@ -32,8 +32,8 @@ func newUniErr(errorType int, httpCode int, code int, msg string) *UniErr {
 		log.L.Error("[Server] "+msg, zap.Int("code", code))
 	case ErrTypeDb:
 		log.L.Error("[Database] "+msg, zap.Int("code", code))
-	case ErrTypeGRPC:
-		log.L.Warn("[gRPC] "+msg, zap.Int("code", code))
+	case ErrTypeHeadscaleAPI:
+		log.L.Warn("[headscale-api] "+msg, zap.Int("code", code))
 	}
 	return &UniErr{
 		HttpCode: httpCode,
@@ -56,8 +56,8 @@ func newUniErrWithServer(errorType int, httpCode int, code int, userMsg string, 
 		log.L.Error(fmt.Sprintf("[Server] %s | internal: %s", userMsg, serverMsg), fields...)
 	case ErrTypeDb:
 		log.L.Error(fmt.Sprintf("[Database] %s | internal: %s", userMsg, serverMsg), fields...)
-	case ErrTypeGRPC:
-		log.L.Warn(fmt.Sprintf("[gRPC] %s | internal: %s", userMsg, serverMsg), fields...)
+	case ErrTypeHeadscaleAPI:
+		log.L.Warn(fmt.Sprintf("[headscale-api] %s | internal: %s", userMsg, serverMsg), fields...)
 	case ErrTypeUser:
 		log.L.Debug(fmt.Sprintf("[User] %s | context: %s", userMsg, serverMsg), fields...)
 	}

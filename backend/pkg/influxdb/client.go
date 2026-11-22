@@ -24,8 +24,8 @@ import (
 
 	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
 	"github.com/influxdata/influxdb-client-go/v2/api"
-	"headscale-panel/pkg/log"
 	"go.uber.org/zap"
+	"headscale-panel/pkg/log"
 )
 
 var (

@@ -18,11 +18,11 @@ package services
 import (
 	"context"
 	"encoding/json"
-	"fmt"
-	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"headscale-panel/model"
 	"headscale-panel/pkg/acl"
+	"headscale-panel/pkg/constants"
 	"headscale-panel/pkg/unifyerror"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -79,104 +79,76 @@ func (s *topologyService) GetTopology(actorUserID uint) (*TopologyResponse, erro
 }
 
 func (s *topologyService) GetTopologyWithContext(ctx context.Context, actorUserID uint) (*TopologyResponse, error) {
-	if err := RequirePermission(actorUserID, "topology:view"); err != nil {
+	if err := RequirePermission(actorUserID, constants.PermTopologyView); err != nil {
 		return nil, err
 	}
 
 	queryCtx, cancel := withServiceTimeout(ctx)
 	defer cancel()
 
-	client, err := headscaleServiceClient()
-	if err != nil {
-		return nil, unifyerror.GRPCError(err)
-	}
 	scope, err := loadActorScope(actorUserID)
 	if err != nil {
 		return nil, err
 	}
 
-	// Get all users from Headscale
-	usersResp, grpcErr := client.ListUsers(queryCtx, &v1.ListUsersRequest{})
-	if grpcErr != nil {
-		return nil, unifyerror.GRPCError(grpcErr)
+	// One snapshot for the whole view. Building users and devices from separate
+	// upstream reads lets a device be reparented between two calls, which shows a
+	// node under one owner and counts it against another.
+	snapshot, err := Network.Snapshot(queryCtx, currentPanelIssuer())
+	if err != nil {
+		return nil, unifyerror.HeadscaleAPIError(err)
 	}
 
-	// Get all nodes from Headscale
-	nodesResp, grpcErr := client.ListNodes(queryCtx, &v1.ListNodesRequest{})
-	if grpcErr != nil {
-		return nil, unifyerror.GRPCError(grpcErr)
-	}
-
-	accessibleNodes := make([]*v1.Node, 0, len(nodesResp.Nodes))
-	accessibleUsers := make(map[string]struct{})
-	for _, node := range nodesResp.Nodes {
-		if !actorCanAccessNode(scope, node) {
+	userViews := make([]TopologyUser, 0, len(snapshot.Identities))
+	for _, identity := range snapshot.Identities {
+		if !scope.isAdmin && !scope.AllowsHeadscaleUser(identity.HSUserID) {
 			continue
 		}
-		accessibleNodes = append(accessibleNodes, node)
-		if node.User != nil {
-			accessibleUsers[node.User.Name] = struct{}{}
-		}
-	}
-
-	// Build user map for device count
-	deviceCountByUser := make(map[string]int)
-	for _, node := range accessibleNodes {
-		if node.User != nil {
-			deviceCountByUser[node.User.Name]++
-		}
-	}
-
-	// Build users list
-	users := make([]TopologyUser, 0, len(usersResp.Users))
-	for _, user := range usersResp.Users {
-		if !scope.isAdmin {
-			if _, ok := accessibleUsers[user.Name]; !ok {
-				continue
-			}
-		}
-		users = append(users, TopologyUser{
-			ID:          fmt.Sprintf("%d", user.Id),
-			Name:        user.Name,
-			Email:       user.Email,
-			Provider:    user.Provider,
-			DeviceCount: deviceCountByUser[user.Name],
+		userViews = append(userViews, TopologyUser{
+			ID:          strconv.FormatUint(identity.HSUserID, 10),
+			Name:        identity.Name,
+			Email:       identity.Email,
+			Provider:    identity.Provider,
+			DeviceCount: identity.DeviceCount,
 		})
 	}
 
-	// Build devices list
-	devices := make([]TopologyDevice, 0, len(accessibleNodes))
-	for _, node := range accessibleNodes {
-		userName := ""
-		if node.User != nil {
-			userName = node.User.Name
+	devices := make([]TopologyDevice, 0, len(snapshot.Nodes()))
+	for _, node := range snapshot.Nodes() {
+		if !scope.isAdmin && !scope.AllowsHeadscaleUser(parseHSUserID(node.User.Id)) {
+			continue
 		}
 
-		// Determine online status
 		online := node.Online
 		if !online && node.LastSeen != nil {
-			lastSeen := node.LastSeen.AsTime()
-			online = time.Since(lastSeen) < 5*time.Minute
+			// headscale's online flag is authoritative for "connected now", but a
+			// node that dropped a moment ago still reads as present to a user.
+			online = time.Since(*node.LastSeen) < 5*time.Minute
 		}
 
-		lastSeenStr := ""
+		lastSeen := ""
 		if node.LastSeen != nil {
-			lastSeenStr = node.LastSeen.AsTime().Format(time.RFC3339)
+			lastSeen = node.LastSeen.Format(time.RFC3339)
+		}
+
+		name := node.GivenName
+		if name == "" {
+			name = node.Name
 		}
 
 		devices = append(devices, TopologyDevice{
-			ID:          fmt.Sprintf("%d", node.Id),
-			Name:        node.GivenName,
-			User:        userName,
+			ID:          node.Id,
+			Name:        name,
+			User:        node.User.Name,
 			Online:      online,
 			IPAddresses: node.IpAddresses,
-			LastSeen:    lastSeenStr,
-			Tags:        extractNodeTags(node),
+			LastSeen:    lastSeen,
+			Tags:        node.Tags,
 		})
 	}
 
 	return &TopologyResponse{
-		Users:   users,
+		Users:   userViews,
 		Devices: devices,
 		ACL:     []TopologyACL{}, // Empty for basic topology
 	}, nil
@@ -188,7 +160,7 @@ func (s *topologyService) GetACLMatrix(actorUserID uint) (map[string]map[string]
 }
 
 func (s *topologyService) GetACLMatrixWithContext(ctx context.Context, actorUserID uint) (map[string]map[string]string, error) {
-	if err := RequirePermission(actorUserID, "topology:acl_matrix:view"); err != nil {
+	if err := RequirePermission(actorUserID, constants.PermTopologyACLView); err != nil {
 		return nil, err
 	}
 
@@ -199,18 +171,18 @@ func (s *topologyService) GetACLMatrixWithContext(ctx context.Context, actorUser
 
 	// Build matrix - same user devices can always communicate
 	matrix := make(map[string]map[string]string)
-	for _, source := range nodesResp {
-		sourceID := fmt.Sprintf("%d", source.Id)
-		matrix[sourceID] = make(map[string]string)
+	for i := range nodesResp {
+		source := &nodesResp[i]
+		matrix[source.Id] = make(map[string]string)
 
-		for _, target := range nodesResp {
-			targetID := fmt.Sprintf("%d", target.Id)
-			// Default to unknown
-			matrix[sourceID][targetID] = "unknown"
+		for j := range nodesResp {
+			target := &nodesResp[j]
+			matrix[source.Id][target.Id] = "unknown"
 
-			// Same user devices can always communicate
-			if source.User != nil && target.User != nil && source.User.Id == target.User.Id {
-				matrix[sourceID][targetID] = "accept"
+			// Devices owned by the same headscale user can always talk, which
+			// headscale enforces before policy is even consulted.
+			if source.User.Id != "" && source.User.Id == target.User.Id {
+				matrix[source.Id][target.Id] = "accept"
 			}
 		}
 	}
@@ -224,7 +196,7 @@ func (s *topologyService) GetTopologyWithACL(actorUserID uint) (*TopologyRespons
 }
 
 func (s *topologyService) GetTopologyWithACLContext(ctx context.Context, actorUserID uint) (*TopologyResponse, error) {
-	if err := RequirePermission(actorUserID, "topology:with_acl:view"); err != nil {
+	if err := RequirePermission(actorUserID, constants.PermTopologyACLView); err != nil {
 		return nil, err
 	}
 
@@ -240,18 +212,18 @@ func (s *topologyService) GetTopologyWithACLContext(ctx context.Context, actorUs
 	// Get ACL policy from Headscale
 	queryCtx, cancel := withServiceTimeout(ctx)
 	defer cancel()
-	aclClient, err := headscaleServiceClient()
+	aclClient, err := headscaleRESTClient()
 	if err != nil {
 		return topology, nil
 	}
-	policyResp, grpcErr := aclClient.GetPolicy(queryCtx, &v1.GetPolicyRequest{})
-	if grpcErr != nil {
-		// If ACL fails, return topology without ACL
+	policyResp, policyErr := aclClient.GetPolicy(queryCtx)
+	if policyErr != nil {
+		// A missing or unreadable policy degrades the view to "no edges" rather
+		// than failing the whole topology render.
 		return topology, nil
 	}
 
 	var policy model.ACLPolicyStructure
-
 	if err := json.Unmarshal([]byte(policyResp.Policy), &policy); err != nil {
 		return topology, nil
 	}

@@ -26,6 +26,7 @@ header:
     - '**/*.json'
     - '**/*.yml'
     - '**/*.yaml'
+    - 'mise.toml'
     - '**/LICENSE'
     - 'dist/**'
 

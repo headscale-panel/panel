@@ -1,4 +1,4 @@
-// Copyright (C) 2026 
+// Copyright (C) 2026
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as
@@ -17,6 +17,7 @@ package services
 
 import (
 	"errors"
+	"headscale-panel/internal/account"
 	"headscale-panel/model"
 	"headscale-panel/pkg/constants"
 	"headscale-panel/pkg/unifyerror"
@@ -128,14 +129,14 @@ func (s *setupStateService) loadOrCreateLocked() (*model.SetupState, error) {
 }
 
 func (s *setupStateService) refreshLocked(state *model.SetupState, now time.Time) error {
-	var userCount int64
-	if err := model.DB.Model(&model.User{}).Count(&userCount).Error; err != nil {
+	var accountCount int64
+	if err := model.DB.Model(&account.Account{}).Count(&accountCount).Error; err != nil {
 		return unifyerror.DbError(err)
 	}
 
 	changed := false
 
-	if userCount > 0 {
+	if accountCount > 0 {
 		if state.State != model.SetupStateInitialized {
 			state.State = model.SetupStateInitialized
 			changed = true
@@ -183,4 +184,13 @@ func (s *setupStateService) refreshLocked(state *model.SetupState, now time.Time
 		}
 	}
 	return nil
+}
+
+// IsInitialized reports whether the panel has completed first-run setup.
+func (s *setupStateService) IsInitialized() (bool, error) {
+	state, err := s.GetState()
+	if err != nil {
+		return false, err
+	}
+	return state.State == model.SetupStateInitialized, nil
 }

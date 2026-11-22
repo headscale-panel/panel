@@ -1,4 +1,4 @@
-// Copyright (C) 2026 
+// Copyright (C) 2026
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as
@@ -17,38 +17,49 @@ package services
 
 import (
 	"context"
+	"headscale-panel/internal/account"
+	"headscale-panel/internal/network"
 	"headscale-panel/model"
+	"headscale-panel/pkg/constants"
 	"headscale-panel/pkg/unifyerror"
-
-	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 )
 
 type dashboardService struct{}
 
+// DashboardService owns the overview counters and the topology tree.
 var DashboardService = new(dashboardService)
 
+// OverviewResponse is the dashboard summary card payload.
 type OverviewResponse struct {
-	UserCount         int64 `json:"user_count"`
-	GroupCount        int64 `json:"group_count"`
+	AccountCount      int64 `json:"account_count"`
+	RoleCount         int64 `json:"role_count"`
 	ResourceCount     int64 `json:"resource_count"`
+	IdentityCount     int64 `json:"identity_count"`
 	DeviceCount       int64 `json:"device_count"`
 	OnlineDeviceCount int64 `json:"online_device_count"`
 	DNSRecordCount    int64 `json:"dns_record_count"`
 }
 
-type DashboardTopologyNode struct {
-	Name     string                   `json:"name"`
-	Type     string                   `json:"type"` // server, group, user, device
-	Children []*DashboardTopologyNode `json:"children,omitempty"`
-	Info     interface{}              `json:"info,omitempty"`
+// TopologyNode is one node of the dashboard tree.
+type TopologyNode struct {
+	Name     string          `json:"name"`
+	Type     string          `json:"type"` // server, owner, device
+	Children []*TopologyNode `json:"children,omitempty"`
+	Info     map[string]any  `json:"info,omitempty"`
 }
 
+// GetOverview returns the dashboard counters.
 func (s *dashboardService) GetOverview(actorUserID uint) (*OverviewResponse, error) {
 	return s.GetOverviewWithContext(context.Background(), actorUserID)
 }
 
+// GetOverviewWithContext returns the dashboard counters.
+//
+// Non-administrators see the shape of the system but only their own resources:
+// a count that includes resources the actor cannot open is worse than useless,
+// because it invites them to look for a page they will be refused.
 func (s *dashboardService) GetOverviewWithContext(ctx context.Context, actorUserID uint) (*OverviewResponse, error) {
-	if err := RequirePermission(actorUserID, "dashboard:view"); err != nil {
+	if err := RequirePermission(actorUserID, constants.PermDashboardView); err != nil {
 		return nil, err
 	}
 
@@ -62,165 +73,157 @@ func (s *dashboardService) GetOverviewWithContext(ctx context.Context, actorUser
 		return nil, err
 	}
 
-	deviceCount := int64(len(nodes))
-	var onlineDeviceCount int64
-	for _, node := range nodes {
-		if node.Online {
-			onlineDeviceCount++
+	out := &OverviewResponse{DeviceCount: int64(len(nodes))}
+	for _, n := range nodes {
+		if n.Online {
+			out.OnlineDeviceCount++
 		}
 	}
 
-	var userCount, groupCount, resourceCount, dnsRecordCount int64
 	if scope.isAdmin {
-		if err := model.DB.Model(&model.User{}).Count(&userCount).Error; err != nil {
+		if err := model.DB.Model(&account.Account{}).Count(&out.AccountCount).Error; err != nil {
 			return nil, unifyerror.DbError(err)
 		}
-		if err := model.DB.Model(&model.Group{}).Count(&groupCount).Error; err != nil {
+		if err := model.DB.Model(&account.Role{}).Count(&out.RoleCount).Error; err != nil {
 			return nil, unifyerror.DbError(err)
 		}
-		if err := model.DB.Model(&model.Resource{}).Count(&resourceCount).Error; err != nil {
+		if err := model.DB.Model(&model.Resource{}).Count(&out.ResourceCount).Error; err != nil {
 			return nil, unifyerror.DbError(err)
 		}
-		_ = model.DB.Model(&model.DNSRecord{}).Count(&dnsRecordCount).Error
 	} else {
-		var actor model.User
-		if err := model.DB.Preload("Group").First(&actor, actorUserID).Error; err != nil {
-			return nil, unifyerror.DbError(err)
-		}
-		userCount = 1
-		if actor.GroupID != 0 {
-			groupCount = 1
-		}
-		if err := model.DB.Model(&model.Resource{}).Where("creator_id = ?", actorUserID).Count(&resourceCount).Error; err != nil {
+		out.AccountCount = 1
+		out.RoleCount = 1
+		if err := model.DB.Model(&model.Resource{}).
+			Where("creator_id = ?", actorUserID).
+			Count(&out.ResourceCount).Error; err != nil {
 			return nil, unifyerror.DbError(err)
 		}
 	}
 
-	return &OverviewResponse{
-		UserCount:         userCount,
-		GroupCount:        groupCount,
-		ResourceCount:     resourceCount,
-		DeviceCount:       deviceCount,
-		OnlineDeviceCount: onlineDeviceCount,
-		DNSRecordCount:    dnsRecordCount,
-	}, nil
+	_ = model.DB.Model(&model.DNSRecord{}).Count(&out.DNSRecordCount).Error
+
+	snap, snapErr := identitySnapshot(ctx)
+	if snapErr == nil {
+		out.IdentityCount = visibleIdentityCount(snap, scope)
+	}
+	return out, nil
 }
 
-func (s *dashboardService) GetTopology(actorUserID uint) (*DashboardTopologyNode, error) {
+// GetTopology returns the dashboard tree.
+func (s *dashboardService) GetTopology(actorUserID uint) (*TopologyNode, error) {
 	return s.GetTopologyWithContext(context.Background(), actorUserID)
 }
 
-func (s *dashboardService) GetTopologyWithContext(ctx context.Context, actorUserID uint) (*DashboardTopologyNode, error) {
-	if err := RequirePermission(actorUserID, "dashboard:view"); err != nil {
+// GetTopologyWithContext builds the dashboard tree.
+//
+// The tree is driven entirely by the network snapshot, so a device can only
+// appear under the owner headscale actually reports. Tagged devices appear under
+// their own owner rather than silently vanishing or being attributed to the
+// previous human owner.
+func (s *dashboardService) GetTopologyWithContext(ctx context.Context, actorUserID uint) (*TopologyNode, error) {
+	if err := RequirePermission(actorUserID, constants.PermDashboardView); err != nil {
 		return nil, err
 	}
 
-	// Root: Headscale Server
-	root := &DashboardTopologyNode{
-		Name:     "Headscale Server",
-		Type:     "server",
-		Children: []*DashboardTopologyNode{},
-	}
-
-	nodesResp, scope, err := listAccessibleNodes(ctx, actorUserID)
+	scope, err := loadActorScope(actorUserID)
 	if err != nil {
 		return nil, err
 	}
 
-	// Group nodes by user
-	nodesByUser := make(map[string][]*v1.Node)
-	for _, node := range nodesResp {
-		if node.User != nil {
-			nodesByUser[node.User.Name] = append(nodesByUser[node.User.Name], node)
-		}
+	snap, err := identitySnapshot(ctx)
+	if err != nil {
+		return nil, unifyerror.HeadscaleAPIError(err)
 	}
 
-	if !scope.isAdmin {
-		var actor model.User
-		if err := model.DB.Preload("Group").First(&actor, actorUserID).Error; err != nil {
-			return nil, unifyerror.DbError(err)
-		}
-
-		groupName := "Ungrouped"
-		if actor.GroupID != 0 && actor.Group.Name != "" {
-			groupName = actor.Group.Name
-		}
-
-		groupNode := &DashboardTopologyNode{
-			Name:     groupName,
-			Type:     "group",
-			Children: []*DashboardTopologyNode{},
-		}
-		userNode := &DashboardTopologyNode{
-			Name:     actor.Username,
-			Type:     "user",
-			Children: []*DashboardTopologyNode{},
-		}
-		for name := range scope.headscaleNames {
-			if nodes, ok := nodesByUser[name]; ok {
-				for _, node := range nodes {
-					userNode.Children = append(userNode.Children, &DashboardTopologyNode{
-						Name: node.Name,
-						Type: "device",
-						Info: map[string]interface{}{
-							"ip":     node.IpAddresses,
-							"id":     node.Id,
-							"online": node.Online,
-						},
-					})
-				}
-			}
-		}
-		groupNode.Children = append(groupNode.Children, userNode)
-		root.Children = append(root.Children, groupNode)
-		return root, nil
+	root := &TopologyNode{
+		Name:     "Headscale server",
+		Type:     "server",
+		Children: []*TopologyNode{},
 	}
 
-	// Level 2: Groups
-	var groups []model.Group
-	if err := model.DB.Preload("Users").Find(&groups).Error; err != nil {
-		return nil, unifyerror.DbError(err)
+	for i := range snap.Identities {
+		ident := &snap.Identities[i]
+		if !scope.AllowsHeadscaleUser(ident.HSUserID) {
+			continue
+		}
+
+		owner := &TopologyNode{
+			Name:     ownerLabel(ident.Name, ident.Tagged),
+			Type:     "owner",
+			Children: []*TopologyNode{},
+			Info: map[string]any{
+				"hs_user_id": ident.HSUserID,
+				"origin":     string(ident.Origin),
+				"tagged":     ident.Tagged,
+				"devices":    ident.DeviceCount,
+			},
+		}
+		if ident.Binding != nil {
+			owner.Info["account_id"] = ident.Binding.AccountID
+		}
+
+		for _, node := range snap.DevicesOf(ident.HSUserID) {
+			owner.Children = append(owner.Children, &TopologyNode{
+				Name: node.Name,
+				Type: "device",
+				Info: map[string]any{
+					"id":     parseHSUserID(node.Id),
+					"ip":     node.IpAddresses,
+					"online": node.Online,
+					"tags":   node.Tags,
+				},
+			})
+		}
+		root.Children = append(root.Children, owner)
 	}
 
-	for _, g := range groups {
-		groupNode := &DashboardTopologyNode{
-			Name:     g.Name,
-			Type:     "group",
-			Children: []*DashboardTopologyNode{},
+	// Owners referenced by a device but absent from the user list must still be
+	// reachable, or their devices would become invisible in the UI.
+	for _, orphan := range snap.Unlisted {
+		if !scope.AllowsHeadscaleUser(orphan.HSUserID) {
+			continue
 		}
-
-		// Level 3: Users
-		for _, u := range g.Users {
-			userNode := &DashboardTopologyNode{
-				Name:     u.Username,
-				Type:     "user",
-				Children: []*DashboardTopologyNode{},
-			}
-
-			// Level 4: Devices (matched by all bound headscale identities)
-			matchedNames := resolveHeadscaleNamesForUser(u.ID)
-			for name := range matchedNames {
-				if nodes, ok := nodesByUser[name]; ok {
-					for _, node := range nodes {
-						deviceNode := &DashboardTopologyNode{
-							Name: node.Name,
-							Type: "device",
-							Info: map[string]interface{}{
-								"ip":     node.IpAddresses,
-								"id":     node.Id,
-								"online": node.Online,
-							},
-						}
-						userNode.Children = append(userNode.Children, deviceNode)
-					}
-				}
-			}
-
-			groupNode.Children = append(groupNode.Children, userNode)
-		}
-
-		root.Children = append(root.Children, groupNode)
+		root.Children = append(root.Children, &TopologyNode{
+			Name: ownerLabel(orphan.Name, orphan.Tagged),
+			Type: "owner",
+			Info: map[string]any{
+				"hs_user_id": orphan.HSUserID,
+				"tagged":     orphan.Tagged,
+				"devices":    orphan.DeviceCount,
+				"unlisted":   true,
+			},
+		})
 	}
 
 	return root, nil
+}
+
+// ownerLabel renders an owner name, making the synthetic tagged owner explicit
+// so an operator never reads it as a real person.
+func ownerLabel(name string, tagged bool) string {
+	if tagged && name == "" {
+		return network.TaggedDevicesName
+	}
+	if name == "" {
+		return "(unnamed)"
+	}
+	return name
+}
+
+// visibleIdentityCount counts the identities inside the actor's scope.
+func visibleIdentityCount(snap *network.Snapshot, scope *actorScope) int64 {
+	if snap == nil {
+		return 0
+	}
+	if scope == nil || scope.isAdmin {
+		return int64(len(snap.Identities))
+	}
+
+	var count int64
+	for i := range snap.Identities {
+		if scope.AllowsHeadscaleUser(snap.Identities[i].HSUserID) {
+			count++
+		}
+	}
+	return count
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2026 
+ * Copyright (C) 2026
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -58,10 +58,10 @@ export const dnsApi = {
     request<RespType<void>>({ url: '/dns/records', method: 'DELETE', params: req }),
 
   sync: () =>
-    request<RespType<SyncDnsRes>>({ url: '/dns/sync', method: 'POST' }),
+    request<RespType<SyncDnsRes>>({ url: '/dns/apply', method: 'POST' }),
 
   import: () =>
-    request<RespType<void>>({ url: '/dns/import', method: 'POST' }),
+    request<RespType<void>>({ url: '/dns/records/import', method: 'POST' }),
 
   getFile: () =>
     request<RespType<GetDnsFileRes>>({ url: '/dns/file', method: 'GET' }),

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2026 
+ * Copyright (C) 2026
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -57,7 +57,7 @@ export default function SetupWelcome() {
   const [setupWindowOpen, setSetupWindowOpen] = useState(true);
   const [setupWindowDeadline, setSetupWindowDeadline] = useState('');
 
-  const [grpcAddr, setGrpcAddr] = useState('127.0.0.1:50443');
+  const [apiAddr, setApiAddr] = useState('http://127.0.0.1:8080');
   const [apiKey, setApiKey] = useState('');
   const [enableTLS, setEnableTLS] = useState(false);
   const [tlsSkipVerify, setTlsSkipVerify] = useState(false);
@@ -110,12 +110,12 @@ export default function SetupWelcome() {
     async () => {
       syncSetupTokens();
       return setupApi.connectivityCheck({
-        headscale_grpc_addr: grpcAddr.trim(),
+        headscale_api_addr: apiAddr.trim(),
         api_key: apiKey.trim(),
         strict_api: true,
-        grpc_allow_insecure: !enableTLS,
-        grpc_tls_skip_verify: enableTLS ? tlsSkipVerify : false,
-        grpc_tls_ca_cert: (enableTLS && !tlsSkipVerify && useCACert) ? tlsCACert.trim() : '',
+        api_allow_insecure: !enableTLS,
+        api_tls_skip_verify: enableTLS ? tlsSkipVerify : false,
+        api_tls_ca_cert: (enableTLS && !tlsSkipVerify && useCACert) ? tlsCACert.trim() : '',
       });
     },
     {
@@ -143,7 +143,7 @@ export default function SetupWelcome() {
     async () => {
       syncSetupTokens();
       return setupApi.init({
-        headscale_grpc_addr: grpcAddr.trim(),
+        headscale_api_addr: apiAddr.trim(),
         api_key: apiKey.trim(),
         enable_tls: enableTLS,
         tls_skip_verify: enableTLS ? tlsSkipVerify : false,
@@ -170,7 +170,7 @@ export default function SetupWelcome() {
   const handleCheckConnection = async () => {
     if (!setupWindowOpen) { message.error(t.setupWelcome.toastSetupWindowClosed); return; }
     if (bootstrapConfigured && !bootstrapToken.trim()) { message.error(t.setupWelcome.toastBootstrapRequired); return; }
-    if (!grpcAddr.trim()) { message.error(t.setupWelcome.toastGrpcRequired); return; }
+    if (!apiAddr.trim()) { message.error(t.setupWelcome.toastApiAddrRequired); return; }
     if (!apiKey.trim()) { message.error(t.setupWelcome.toastApiKeyRequired); return; }
 
     setConnectResults([]);
@@ -276,8 +276,8 @@ export default function SetupWelcome() {
                 )}
 
                 <div>
-                  <Text className="form-label">{t.setupWelcome.grpcAddressLabel}</Text>
-                  <Input value={grpcAddr} onChange={(e) => setGrpcAddr(e.target.value)} placeholder={t.setupWelcome.grpcAddressPlaceholder} />
+                  <Text className="form-label">{t.setupWelcome.apiAddressLabel}</Text>
+                  <Input value={apiAddr} onChange={(e) => setApiAddr(e.target.value)} placeholder={t.setupWelcome.apiAddressPlaceholder} />
                 </div>
 
                 <div>

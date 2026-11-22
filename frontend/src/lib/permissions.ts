@@ -18,40 +18,62 @@
 import type { User } from './store';
 import { UserRole } from './enums';
 
+export const PermissionCode = {
+  DashboardView: 'dashboard:view',
+  TopologyView: 'topology:view',
+  TopologyACLView: 'topology:acl:view',
+  NetworkIdentityList: 'network:identity:list',
+  NetworkIdentityRead: 'network:identity:read',
+  NetworkIdentityCreate: 'network:identity:create',
+  NetworkIdentityUpdate: 'network:identity:update',
+  NetworkIdentityDelete: 'network:identity:delete',
+  NetworkBindingManage: 'network:binding:manage',
+  NetworkDeviceList: 'network:device:list',
+  NetworkDeviceRead: 'network:device:read',
+  NetworkDeviceCreate: 'network:device:create',
+  NetworkDeviceUpdate: 'network:device:update',
+  NetworkDeviceDelete: 'network:device:delete',
+  NetworkDeviceTags: 'network:device:tags',
+  NetworkDeviceListSelf: 'network:device:list:self',
+  NetworkDeviceCreateSelf: 'network:device:create:self',
+  NetworkDeviceUpdateSelf: 'network:device:update:self',
+  NetworkDeviceDeleteSelf: 'network:device:delete:self',
+  NetworkRouteList: 'network:route:list',
+  NetworkRouteUpdate: 'network:route:update',
+  NetworkKeyList: 'network:key:list',
+  NetworkKeyCreate: 'network:key:create',
+  NetworkKeyCreateSelf: 'network:key:create:self',
+  AccountList: 'account:list',
+  AccountCreate: 'account:create',
+  AccountDelete: 'account:delete',
+  MetricsView: 'metrics:view',
+} as const;
+
 export const SELF_DEVICE_PERMISSIONS = [
-  'headscale:machine:list',
-  'headscale:machine:create',
-  'headscale:machine:update',
-  'headscale:machine:delete',
-  'headscale:preauthkey:create',
+  PermissionCode.NetworkDeviceList,
+  PermissionCode.NetworkDeviceListSelf,
+  PermissionCode.NetworkDeviceCreate,
+  PermissionCode.NetworkDeviceCreateSelf,
 ] as const;
 
 export const DASHBOARD_PERMISSIONS = [
-  'dashboard:view',
-  'topology:with_acl:view',
-  'headscale:machine:list',
-  'headscale:user:list',
+  PermissionCode.DashboardView,
 ] as const;
 
 export const METRICS_PERMISSIONS = [
-  'metrics:online_duration:view',
-  'metrics:online_duration_stats:view',
-  'metrics:device_status:view',
-  'metrics:device_status_history:view',
-  'metrics:traffic:view',
-  'metrics:influxdb:view',
+  PermissionCode.MetricsView,
 ] as const;
 
 export type AppSectionKey
   = | 'dashboard'
     | 'devices'
-    | 'users'
+    | 'networkIdentities'
     | 'routes'
     | 'resources'
     | 'acl'
     | 'dns'
     | 'metrics'
-    | 'panelAccounts'
+    | 'accounts'
     | 'settings';
 
 export type TourSectionKey = AppSectionKey | 'profile';
@@ -64,6 +86,13 @@ function isAdmin(user: User | null | undefined): boolean {
   return user?.role === UserRole.Admin;
 }
 
+/**
+ * Checks one permission code.
+ *
+ * Holding the full form of a code implies its `:self` variant, mirroring the
+ * server: a role that may manage every device may also manage its own. Without
+ * this the UI hides actions the API would accept.
+ */
 export function hasPermission(user: User | null | undefined, permission: string): boolean {
   if (!user) {
     return false;
@@ -71,7 +100,15 @@ export function hasPermission(user: User | null | undefined, permission: string)
   if (isAdmin(user)) {
     return true;
   }
-  return getPermissionSet(user).has(permission);
+
+  const codes = getPermissionSet(user);
+  if (codes.has(permission)) {
+    return true;
+  }
+  if (permission.endsWith(':self')) {
+    return codes.has(permission.slice(0, -':self'.length));
+  }
+  return false;
 }
 
 export function hasAnyPermission(
@@ -94,10 +131,11 @@ export function canAccessSection(user: User | null | undefined, section: AppSect
       return hasAnyPermission(user, DASHBOARD_PERMISSIONS);
     case 'devices':
       return !isAdmin(user) && hasAnyPermission(user, SELF_DEVICE_PERMISSIONS);
-    case 'users':
-      return isAdmin(user);
+    case 'networkIdentities':
+      return hasPermission(user, PermissionCode.NetworkIdentityList)
+        || hasPermission(user, PermissionCode.NetworkDeviceListSelf);
     case 'routes':
-      return hasPermission(user, 'headscale:route:list');
+      return hasPermission(user, PermissionCode.NetworkRouteList);
     case 'resources':
       return isAdmin(user);
     case 'acl':
@@ -106,8 +144,8 @@ export function canAccessSection(user: User | null | undefined, section: AppSect
       return isAdmin(user);
     case 'metrics':
       return hasAnyPermission(user, METRICS_PERMISSIONS);
-    case 'panelAccounts':
-      return isAdmin(user);
+    case 'accounts':
+      return hasPermission(user, PermissionCode.AccountList);
     case 'settings':
       return isAdmin(user);
     default:
@@ -128,8 +166,8 @@ export function getDefaultRouteForUser(user: User | null | undefined): string {
     'devices',
     'routes',
     'metrics',
-    'users',
-    'panelAccounts',
+    'networkIdentities',
+    'accounts',
     'resources',
     'acl',
     'dns',
@@ -143,8 +181,8 @@ export function getDefaultRouteForUser(user: User | null | undefined): string {
           return '/';
         case 'devices':
           return '/devices';
-        case 'users':
-          return '/users';
+        case 'networkIdentities':
+          return '/network-identities';
         case 'routes':
           return '/routes';
         case 'resources':
@@ -155,8 +193,8 @@ export function getDefaultRouteForUser(user: User | null | undefined): string {
           return '/dns';
         case 'metrics':
           return '/metrics';
-        case 'panelAccounts':
-          return '/panel-accounts';
+        case 'accounts':
+          return '/accounts';
         case 'settings':
           return '/settings';
       }

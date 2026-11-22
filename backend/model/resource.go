@@ -1,4 +1,4 @@
-// Copyright (C) 2026 
+// Copyright (C) 2026
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as
@@ -24,6 +24,10 @@ type Resource struct {
 	IPAddress   string `json:"ip_address" gorm:"not null"`       // IP address or CIDR, e.g., "192.168.1.100" or "192.168.1.0/24"
 	Port        string `json:"port"`                             // Optional port(s), e.g., "80,443" or "22,80,443,3000-9000"
 	Description string `json:"description"`
-	CreatorID   uint   `json:"creator_id"`
-	Creator     User   `json:"-" gorm:"foreignKey:CreatorID"`
+
+	// CreatorID is the panel account that created the resource. It is nullable
+	// because deleting an account must not delete the hosts it published: those
+	// are referenced by name from live ACL policy, and removing them would break
+	// every rule that uses them.
+	CreatorID *uint `json:"creator_id"`
 }

@@ -1,3 +1,4 @@
 .vscode/
 .gitlab-ci.yml
 llms-full.txt
+dev-data/

@@ -9,5 +9,10 @@ frontend/.prettierignore
 
 backend/headscale-panel
 backend/data.db
+backend/data/
 backend/.env
+backend/.env.*
 backend/headscale/
+dev-data/
+**/*.pem
+**/*.key

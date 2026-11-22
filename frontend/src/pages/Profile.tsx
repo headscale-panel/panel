@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2026 
+ * Copyright (C) 2026
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -27,6 +27,7 @@ import {
   Button,
   Card,
   Descriptions,
+  Divider,
   Input,
   message,
   Modal,
@@ -37,6 +38,7 @@ import {
 } from 'antd';
 import { QRCodeSVG } from 'qrcode.react';
 import { useCallback, useState } from 'react';
+import { useLocation } from 'wouter';
 import { authApi } from '@/api';
 import DashboardLayout from '@/components/DashboardLayout';
 import { useTranslation } from '@/i18n/index';
@@ -44,11 +46,20 @@ import { useAuthStore, useUIStore } from '@/lib/store';
 
 const { Title, Text, Paragraph } = Typography;
 
+const MIN_PASSWORD_LENGTH = 12;
+
 export default function Profile() {
   const t = useTranslation();
   const pr = t.profile;
-  const { user } = useAuthStore();
+  const { user, clearAuth } = useAuthStore();
   const { setGuideTourOpen } = useUIStore();
+  const [, setLocation] = useLocation();
+
+  // Change password state
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [changingPassword, setChangingPassword] = useState(false);
 
   // TOTP setup state
   const [totpModalOpen, setTotpModalOpen] = useState(false);
@@ -98,6 +109,39 @@ export default function Profile() {
     });
   }, [totpSecret, pr]);
 
+  const handleChangePassword = useCallback(async () => {
+    if (!currentPassword) {
+      message.warning(pr.password.currentRequired);
+      return;
+    }
+    if (newPassword.length < MIN_PASSWORD_LENGTH) {
+      message.warning(pr.password.tooShort);
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      message.warning(pr.password.mismatch);
+      return;
+    }
+
+    setChangingPassword(true);
+    try {
+      await authApi.changePassword({
+        current_password: currentPassword,
+        new_password: newPassword,
+      });
+      message.success(pr.password.success);
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+      clearAuth();
+      setLocation('/login');
+    } catch (error: unknown) {
+      message.error((error as Error)?.message || pr.password.failed);
+    } finally {
+      setChangingPassword(false);
+    }
+  }, [currentPassword, newPassword, confirmPassword, pr, clearAuth, setLocation]);
+
   return (
     <DashboardLayout>
       <div className="max-w-640px">
@@ -145,6 +189,41 @@ export default function Profile() {
                 {pr.totp.setup}
               </Button>
             )}
+          </div>
+
+          <Divider className="my-16px" />
+
+          <div className="flex flex-col gap-12px">
+            <Text strong>{pr.password.title}</Text>
+            <div>
+              <Text className="block mb-4px text-13px">{pr.password.currentLabel}</Text>
+              <Input.Password
+                value={currentPassword}
+                onChange={(e) => setCurrentPassword(e.target.value)}
+                placeholder={pr.password.currentPlaceholder}
+              />
+            </div>
+            <div>
+              <Text className="block mb-4px text-13px">{pr.password.newLabel}</Text>
+              <Input.Password
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                placeholder={pr.password.newPlaceholder}
+              />
+            </div>
+            <div>
+              <Text className="block mb-4px text-13px">{pr.password.confirmLabel}</Text>
+              <Input.Password
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                placeholder={pr.password.confirmPlaceholder}
+              />
+            </div>
+            <div>
+              <Button type="primary" loading={changingPassword} onClick={() => void handleChangePassword()}>
+                {pr.password.submit}
+              </Button>
+            </div>
           </div>
         </Card>
 

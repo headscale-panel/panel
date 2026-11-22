@@ -16,8 +16,7 @@
 package conf
 
 import (
-	"crypto/rand"
-	"encoding/base64"
+	"errors"
 	"fmt"
 	"headscale-panel/pkg/log"
 	"net"
@@ -34,7 +33,20 @@ type Config struct {
 	JWT       JWTConfig       `mapstructure:"jwt"`
 	Headscale HeadscaleConfig `mapstructure:"headscale"`
 	InfluxDB  InfluxDBConfig  `mapstructure:"influxdb"`
-	Docker    DockerConfig    `mapstructure:"docker"`
+	Lifecycle LifecycleConfig `mapstructure:"lifecycle"`
+}
+
+// LifecycleConfig controls whether the panel may start, stop and restart the
+// headscale container.
+type LifecycleConfig struct {
+	// Enabled is the master switch. Off by default: letting a web application
+	// control a container is a deliberate deployment decision.
+	Enabled bool `mapstructure:"enabled"`
+	// Mode is the only supported value today; anything else disables the feature
+	// with a warning rather than guessing.
+	Mode string `mapstructure:"mode"`
+	// ContainerName must match ^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$.
+	ContainerName string `mapstructure:"container_name"`
 }
 
 type SystemConfig struct {
@@ -42,6 +54,7 @@ type SystemConfig struct {
 	Debug               bool   `mapstructure:"debug"`
 	BaseURL             string `mapstructure:"base_url"`
 	SetupBootstrapToken string `mapstructure:"setup_bootstrap_token"`
+	TrustedProxies      string `mapstructure:"trusted_proxies"`
 }
 
 type JWTConfig struct {
@@ -50,12 +63,11 @@ type JWTConfig struct {
 }
 
 type HeadscaleConfig struct {
-	GRPCAddr         string `mapstructure:"grpc_addr"`
-	APIKey           string `mapstructure:"api_key"`
-	Insecure         bool   `mapstructure:"insecure"`
-	TLSSkipVerify    bool   `mapstructure:"tls_skip_verify"`
-	TLSCACert        string `mapstructure:"tls_ca_cert"` // PEM content of custom CA cert
-	ExtraRecordsPath string `mapstructure:"extra_records_path"`
+	APIAddr       string `mapstructure:"api_addr"`
+	APIKey        string `mapstructure:"api_key"`
+	Insecure      bool   `mapstructure:"insecure"`
+	TLSSkipVerify bool   `mapstructure:"tls_skip_verify"`
+	TLSCACert     string `mapstructure:"tls_ca_cert"` // PEM content of custom CA cert
 }
 
 type InfluxDBConfig struct {
@@ -63,18 +75,6 @@ type InfluxDBConfig struct {
 	Token  string `mapstructure:"token"`
 	Org    string `mapstructure:"org"`
 	Bucket string `mapstructure:"bucket"`
-}
-
-// DockerConfig holds Docker-in-Docker (DinD) settings used to restart the
-// Headscale container when configuration changes require a reload.
-type DockerConfig struct {
-	// DinDEnabled controls whether the panel is allowed to restart the
-	// Headscale container automatically after config file changes.
-	// Set DOCKER_DIND_ENABLED=true to enable.
-	DinDEnabled bool `mapstructure:"dind_enabled"`
-	// HeadscaleContainerName is the name of the Headscale Docker container
-	// to restart. Set via DOCKER_HEADSCALE_CONTAINER_NAME.
-	HeadscaleContainerName string `mapstructure:"headscale_container_name"`
 }
 
 var Conf Config
@@ -99,6 +99,7 @@ func Init(path string) {
 	viper.SetDefault("system.port", ":8080")
 	viper.SetDefault("system.base_url", "http://localhost:8080")
 	viper.SetDefault("system.setup_bootstrap_token", "")
+	viper.SetDefault("system.trusted_proxies", "")
 	viper.SetDefault("jwt.expire", 24)
 	viper.SetDefault("influxdb.url", "")
 	viper.SetDefault("influxdb.token", "")
@@ -109,6 +110,7 @@ func Init(path string) {
 	viper.BindEnv("system.debug", "SYSTEM_DEBUG")
 	viper.BindEnv("system.base_url", "SYSTEM_BASE_URL")
 	viper.BindEnv("system.setup_bootstrap_token", "SYSTEM_SETUP_BOOTSTRAP_TOKEN")
+	viper.BindEnv("system.trusted_proxies", "SYSTEM_TRUSTED_PROXIES")
 	viper.BindEnv("jwt.secret", "JWT_SECRET")
 	viper.BindEnv("jwt.expire", "JWT_EXPIRE")
 	viper.BindEnv("influxdb.url", "INFLUXDB_URL")
@@ -116,10 +118,9 @@ func Init(path string) {
 	viper.BindEnv("influxdb.org", "INFLUXDB_ORG")
 	viper.BindEnv("influxdb.bucket", "INFLUXDB_BUCKET")
 	viper.BindEnv("headscale.extra_records_path", "HEADSCALE_EXTRA_RECORDS_PATH")
-	viper.BindEnv("docker.dind_enabled", "DOCKER_DIND_ENABLED")
-	viper.BindEnv("docker.headscale_container_name", "DOCKER_HEADSCALE_CONTAINER_NAME")
-	viper.SetDefault("docker.dind_enabled", false)
-	viper.SetDefault("docker.headscale_container_name", "")
+	viper.BindEnv("lifecycle.enabled", "HS_LIFECYCLE_ENABLED")
+	viper.BindEnv("lifecycle.mode", "HS_LIFECYCLE_MODE")
+	viper.BindEnv("lifecycle.container_name", "HS_CONTAINER_NAME")
 
 	if err := viper.Unmarshal(&Conf); err != nil {
 		log.L.Fatal("Unable to decode into struct", zap.Error(err))
@@ -137,13 +138,11 @@ func Init(path string) {
 func validateSecurityConfig(cfg Config) error {
 	secret := strings.TrimSpace(cfg.JWT.Secret)
 	if secret == "" {
-		buf := make([]byte, 48)
-		if _, err := rand.Read(buf); err != nil {
-			return fmt.Errorf("failed to auto-generate JWT_SECRET: %w", err)
-		}
-		Conf.JWT.Secret = base64.RawURLEncoding.EncodeToString(buf)[:48]
-		log.L.Info("JWT_SECRET not set, auto-generated for this session (tokens will be invalidated on restart)")
-		return nil
+		// Not auto-generated on purpose. This value encrypts the headscale API key
+		// stored in the database; a per-session random key would make every stored
+		// credential permanently unreadable on the next restart, which looks like
+		// data loss and is silent about its cause.
+		return errors.New("JWT_SECRET is required: it encrypts stored credentials, so it must survive a restart")
 	}
 
 	lowered := strings.ToLower(secret)
@@ -161,6 +160,15 @@ func validateSecurityConfig(cfg Config) error {
 		return fmt.Errorf("JWT_SECRET must be at least 32 characters")
 	}
 
+	if !isLocalBaseURL(cfg.System.BaseURL) {
+		devOnlySecrets := map[string]struct{}{
+			"dev-only-jwt-secret-change-me-0123456789abcdef": {},
+		}
+		if _, found := devOnlySecrets[lowered]; found {
+			return fmt.Errorf("JWT_SECRET uses a dev-only default in a non-local deployment")
+		}
+	}
+
 	bootstrapToken := strings.TrimSpace(cfg.System.SetupBootstrapToken)
 	if bootstrapToken != "" {
 		loweredBootstrap := strings.ToLower(bootstrapToken)
@@ -173,12 +181,39 @@ func validateSecurityConfig(cfg Config) error {
 		if _, found := insecureBootstrapDefaults[loweredBootstrap]; found {
 			return fmt.Errorf("SYSTEM_SETUP_BOOTSTRAP_TOKEN uses an insecure default or placeholder value")
 		}
+		if !isLocalBaseURL(cfg.System.BaseURL) {
+			devOnlyBootstrap := map[string]struct{}{
+				"dev-bootstrap-token-change-me-0123456789": {},
+			}
+			if _, found := devOnlyBootstrap[loweredBootstrap]; found {
+				return fmt.Errorf("SYSTEM_SETUP_BOOTSTRAP_TOKEN uses a dev-only default in a non-local deployment")
+			}
+		}
 		if len(bootstrapToken) < 32 {
 			return fmt.Errorf("SYSTEM_SETUP_BOOTSTRAP_TOKEN must be at least 32 characters when configured")
 		}
 	}
 
 	return nil
+}
+
+func isLocalBaseURL(baseURL string) bool {
+	trimmed := strings.TrimSpace(baseURL)
+	if trimmed == "" {
+		return true
+	}
+	parsed, err := url.Parse(trimmed)
+	if err != nil || parsed.Host == "" {
+		return false
+	}
+	hostname := strings.TrimSpace(parsed.Hostname())
+	if strings.EqualFold(hostname, "localhost") || strings.EqualFold(hostname, "127.0.0.1") || strings.EqualFold(hostname, "::1") {
+		return true
+	}
+	if ip := net.ParseIP(hostname); ip != nil && ip.IsLoopback() {
+		return true
+	}
+	return false
 }
 
 func shouldWarnInsecureBaseURL(baseURL string) bool {

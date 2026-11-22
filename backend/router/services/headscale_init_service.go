@@ -17,23 +17,15 @@ package services
 
 import (
 	"context"
-	"crypto/tls"
-	"crypto/x509"
-	"fmt"
+	"errors"
 	"headscale-panel/pkg/conf"
 	"headscale-panel/pkg/headscale"
+	"headscale-panel/pkg/hsapi"
 	"headscale-panel/pkg/unifyerror"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
-
-	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
-
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials"
-	"google.golang.org/grpc/credentials/insecure"
-	"google.golang.org/grpc/metadata"
 )
 
 type headscaleInitService struct {
@@ -42,72 +34,74 @@ type headscaleInitService struct {
 
 var HeadscaleInitService = &headscaleInitService{}
 
-// CheckHeadscaleConnectivityWithConfig verifies the provided Headscale config can make API calls.
-func CheckHeadscaleConnectivityWithConfig(ctx context.Context, addr, apiKey string, allowInsecure, tlsSkipVerify bool, caCert string) (bool, string) {
-	targetAddr := strings.TrimSpace(addr)
-	if targetAddr == "" {
-		return false, "headscale gRPC address is required"
+// probeConfig builds a throwaway client for the supplied settings and probes it.
+//
+// The gate is the presence of /api/v1/health, not the version string: dev builds
+// report an empty or Go pseudo-version even for a 0.30 commit, so a version
+// comparison would reject a perfectly usable server.
+func probeConfig(ctx context.Context, addr, apiKey string, insecure, tlsSkipVerify bool, caCert string) (hsapi.ProbeResult, string) {
+	target := strings.TrimSpace(addr)
+	if target == "" {
+		return hsapi.ProbeResult{State: hsapi.StateUnreachable}, "headscale API address is required"
+	}
+	if strings.TrimSpace(apiKey) == "" {
+		return hsapi.ProbeResult{State: hsapi.StateUnauthorized}, "headscale api key is required"
 	}
 
-	token := strings.TrimSpace(apiKey)
-	if token == "" {
-		return false, "headscale api key is required"
-	}
-
-	var transport credentials.TransportCredentials
-	if allowInsecure {
-		transport = insecure.NewCredentials()
-	} else {
-		tlsCfg := &tls.Config{
-			MinVersion:         tls.VersionTLS12,
-			InsecureSkipVerify: tlsSkipVerify, //nolint:gosec // user-opt-in for self-signed certs
-		}
-		if caCert != "" && !tlsSkipVerify {
-			pool := x509.NewCertPool()
-			if !pool.AppendCertsFromPEM([]byte(caCert)) {
-				return false, "failed to parse CA certificate PEM"
-			}
-			tlsCfg.RootCAs = pool
-		}
-		transport = credentials.NewTLS(tlsCfg)
-	}
-
-	conn, err := grpc.NewClient(targetAddr, grpc.WithTransportCredentials(transport))
+	client, err := hsapi.New(hsapi.Config{
+		BaseURL:       target,
+		APIKey:        apiKey,
+		Insecure:      insecure,
+		TLSSkipVerify: tlsSkipVerify,
+		TLSCACert:     caCert,
+		Timeout:       5 * time.Second,
+	})
 	if err != nil {
-		return false, fmt.Sprintf("grpc client init failed: %v", err)
+		return hsapi.ProbeResult{State: hsapi.StateUnreachable}, err.Error()
 	}
-	defer conn.Close()
 
-	client := v1.NewHeadscaleServiceClient(conn)
-	queryCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	probeCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	queryCtx = metadata.AppendToOutgoingContext(queryCtx, "authorization", "Bearer "+token)
 
-	if _, err := client.ListUsers(queryCtx, &v1.ListUsersRequest{}); err != nil {
-		return false, fmt.Sprintf("headscale api request failed: %v", err)
+	res := client.Probe(probeCtx)
+	if res.State == hsapi.StateOK {
+		return res, "headscale API reachable"
 	}
 
-	return true, "headscale api reachable"
+	detail := res.Detail
+	if detail == "" {
+		detail = string(res.State)
+	}
+	return res, detail
 }
 
-// CheckCurrentConfigConnectivity verifies whether current runtime Headscale configuration is reachable.
+// CheckHeadscaleConnectivityWithConfig verifies that the supplied settings can
+// make authenticated API calls to headscale.
+func CheckHeadscaleConnectivityWithConfig(ctx context.Context, addr, apiKey string, insecure, tlsSkipVerify bool, caCert string) (bool, string) {
+	res, detail := probeConfig(ctx, addr, apiKey, insecure, tlsSkipVerify, caCert)
+	return res.State == hsapi.StateOK, detail
+}
+
+// CheckCurrentConfigConnectivity verifies whether the current runtime Headscale
+// configuration is reachable.
 func (s *headscaleInitService) CheckCurrentConfigConnectivity(ctx context.Context) error {
-	ok, detail := CheckHeadscaleConnectivityWithConfig(
+	res, detail := probeConfig(
 		ctx,
-		conf.Conf.Headscale.GRPCAddr,
+		conf.Conf.Headscale.APIAddr,
 		conf.Conf.Headscale.APIKey,
 		conf.Conf.Headscale.Insecure,
 		conf.Conf.Headscale.TLSSkipVerify,
 		conf.Conf.Headscale.TLSCACert,
 	)
-	if !ok {
-		return unifyerror.New(http.StatusOK, unifyerror.CodeGRPCErr, detail)
+	if res.State != hsapi.StateOK {
+		return unifyerror.New(http.StatusOK, unifyerror.CodeHeadscaleAPIErr, detail)
 	}
 
 	return nil
 }
 
-// InitializeFromCurrentConfig runs all startup tasks that require a live Headscale connection.
+// InitializeFromCurrentConfig runs all startup tasks that require a live
+// Headscale connection.
 func (s *headscaleInitService) InitializeFromCurrentConfig(ctx context.Context) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -118,22 +112,23 @@ func (s *headscaleInitService) InitializeFromCurrentConfig(ctx context.Context) 
 
 	headscale.Close()
 	if err := headscale.Init(); err != nil {
-		return unifyerror.New(http.StatusOK, unifyerror.CodeGRPCErr, "failed to initialize headscale client")
+		return unifyerror.New(http.StatusOK, unifyerror.CodeHeadscaleAPIErr, "failed to initialize headscale client")
 	}
 
 	if err := ACLService.InitPolicyWithContext(ctx); err != nil {
-		return unifyerror.New(http.StatusOK, unifyerror.CodeGRPCErr, "failed to initialize ACL policy")
+		return unifyerror.New(http.StatusOK, unifyerror.CodeHeadscaleAPIErr, "failed to initialize ACL policy")
 	}
 
 	return nil
 }
 
-// SaveConnectionAndInitialize persists Headscale connection settings, then initializes runtime clients.
-// If persistence or initialization fails, runtime config is rolled back to the previous values.
-func SaveConnectionAndInitialize(ctx context.Context, grpcAddr, apiKey string, insecure, tlsSkipVerify bool, caCert string) error {
-	grpcAddr = strings.TrimSpace(grpcAddr)
-	if grpcAddr == "" {
-		return unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "headscale grpc address is required")
+// SaveConnectionAndInitialize persists Headscale connection settings, then
+// initializes runtime clients. If either step fails, the runtime config is
+// rolled back to its previous values.
+func SaveConnectionAndInitialize(ctx context.Context, apiAddr, apiKey string, insecure, tlsSkipVerify bool, caCert string) error {
+	apiAddr = strings.TrimSpace(apiAddr)
+	if apiAddr == "" {
+		return unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "headscale API address is required")
 	}
 
 	apiKey = strings.TrimSpace(apiKey)
@@ -142,13 +137,13 @@ func SaveConnectionAndInitialize(ctx context.Context, grpcAddr, apiKey string, i
 	}
 
 	old := conf.Conf.Headscale
-	conf.Conf.Headscale.GRPCAddr = grpcAddr
+	conf.Conf.Headscale.APIAddr = apiAddr
 	conf.Conf.Headscale.APIKey = apiKey
 	conf.Conf.Headscale.Insecure = insecure
 	conf.Conf.Headscale.TLSSkipVerify = tlsSkipVerify
 	conf.Conf.Headscale.TLSCACert = caCert
 
-	if err := PersistHeadscaleConnection(grpcAddr, apiKey, insecure, tlsSkipVerify, caCert); err != nil {
+	if err := Persist(apiAddr, apiKey, insecure, tlsSkipVerify, caCert); err != nil {
 		conf.Conf.Headscale = old
 		return unifyerror.New(http.StatusInternalServerError, unifyerror.CodeDBErr, "failed to persist Headscale connection settings to DB")
 	}
@@ -161,4 +156,14 @@ func SaveConnectionAndInitialize(ctx context.Context, grpcAddr, apiKey string, i
 	}
 
 	return nil
+}
+
+// isNoPolicy reports whether err means the policy has never been stored, as
+// opposed to a failed read.
+//
+// headscale answers HTTP 500 for both cases, so mistaking one for the other is
+// how a transient database error turns into a wiped ACL. Only the documented
+// sentinel counts.
+func isNoPolicy(err error) bool {
+	return errors.Is(err, hsapi.ErrNoPolicy)
 }

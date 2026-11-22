@@ -1,4 +1,4 @@
-// Copyright (C) 2026 
+// Copyright (C) 2026
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as
@@ -22,127 +22,91 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// ConnectionController renders the "add a device" onboarding flow.
 type ConnectionController struct{}
 
-// GenerateConnectionCommandsRequest is the request body for GenerateConnectionCommands.
-type GenerateConnectionCommandsRequest struct {
-	MachineIDs    []string `json:"machine_ids" binding:"required"`
-	Platform      string   `json:"platform" binding:"required"`
-	HeadscaleName string   `json:"headscale_name"` // optional, selects which bound headscale identity to use
+// NewConnectionController builds the controller.
+func NewConnectionController() *ConnectionController {
+	return &ConnectionController{}
 }
 
-// GenerateConnectionPreAuthKeyRequest is the request body for GeneratePreAuthKey.
-type GenerateConnectionPreAuthKeyRequest struct {
-	UserID        uint   `json:"user_id" binding:"required"`
-	Reusable      bool   `json:"reusable"`
-	Ephemeral     bool   `json:"ephemeral"`
-	Expiration    string `json:"expiration"`
-	HeadscaleName string `json:"headscale_name"` // optional, selects which bound headscale identity to use
-}
-
-// GenerateSSHCommandRequest is the request body for GenerateSSHCommand.
-type GenerateSSHCommandRequest struct {
-	MachineID uint64 `json:"machine_id" binding:"required"`
-	User      string `json:"user"`
-}
-
-// ListHeadscaleIdentities godoc
-// @Summary List available headscale identities for the current user
+// ListIdentities godoc
+// @Summary List the identities a device can be attached to
 // @Tags connection
 // @Produce json
-// @Success 200 {object} unifyerror.Response{data=[]services.HeadscaleIdentity}
+// @Success 200 {object} unifyerror.Response{data=array}
 // @Security BearerAuth
 // @Router /connection/identities [get]
-func (c *ConnectionController) ListHeadscaleIdentities(ctx *gin.Context) {
-	userID := ctx.GetUint("userID")
-	identities := services.ConnectionService.ListHeadscaleIdentities(userID)
+func (c *ConnectionController) ListIdentities(ctx *gin.Context) {
+	identities, err := services.ConnectionService.ListIdentities(ctx.Request.Context(), ctx.GetUint("userID"))
+	if err != nil {
+		unifyerror.Fail(ctx, err)
+		return
+	}
 	unifyerror.Success(ctx, identities)
 }
 
-// GenerateConnectionCommands godoc
-// @Summary Generate connection commands
-// @Tags connection
-// @Accept json
-// @Produce json
-// @Param body body GenerateConnectionCommandsRequest true "Connection command parameters"
-// @Success 200 {object} unifyerror.Response{data=object} "commands object"
-// @Failure 400 {object} unifyerror.Response
-// @Security BearerAuth
-// @Router /connection/generate [post]
-func (c *ConnectionController) GenerateConnectionCommands(ctx *gin.Context) {
-	var req GenerateConnectionCommandsRequest
-
-	if err := ctx.ShouldBindJSON(&req); err != nil {
-		unifyerror.Fail(ctx, unifyerror.ErrBind)
-		return
-	}
-
-	userID := ctx.GetUint("userID")
-	commands, err := services.ConnectionService.GenerateConnectionCommandsWithContext(ctx.Request.Context(), userID, req.MachineIDs, req.Platform, req.HeadscaleName)
-	if err != nil {
-		unifyerror.Fail(ctx, err)
-		return
-	}
-
-	unifyerror.Success(ctx, commands)
+// GenerateCommandsRequest is the onboarding payload.
+type GenerateCommandsRequest struct {
+	HSUserID uint64 `json:"hs_user_id" binding:"required"`
+	Platform string `json:"platform"`
 }
 
-// GeneratePreAuthKey godoc
-// @Summary Generate a pre-auth key
+// GenerateCommands godoc
+// @Summary Produce the commands that attach a device
 // @Tags connection
 // @Accept json
 // @Produce json
-// @Param body body GenerateConnectionPreAuthKeyRequest true "Pre-auth key parameters"
-// @Success 200 {object} unifyerror.Response{data=object} "key string"
-// @Failure 400 {object} unifyerror.Response
+// @Success 200 {object} unifyerror.Response{data=object}
 // @Security BearerAuth
-// @Router /connection/pre-auth-key [post]
-func (c *ConnectionController) GeneratePreAuthKey(ctx *gin.Context) {
-	var req GenerateConnectionPreAuthKeyRequest
-
+// @Router /connection/commands [post]
+// GenerateCommands mints a pre-auth key and renders it into a command block.
+//
+// The key appears in the response only, never in the database: it is shown once
+// and cannot be retrieved again, which is why the response carries expires_at and
+// show_once.
+func (c *ConnectionController) GenerateCommands(ctx *gin.Context) {
+	var req GenerateCommandsRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {
 		unifyerror.Fail(ctx, unifyerror.ErrBind)
 		return
 	}
 
-	userID := ctx.GetUint("userID")
-	key, err := services.ConnectionService.GeneratePreAuthKeyWithContext(ctx.Request.Context(), userID, req.UserID, req.Reusable, req.Ephemeral, req.Expiration, req.HeadscaleName)
+	command, err := services.ConnectionService.GenerateCommands(ctx.Request.Context(),
+		ctx.GetUint("userID"), req.HSUserID, req.Platform)
 	if err != nil {
 		unifyerror.Fail(ctx, err)
 		return
 	}
+	unifyerror.Success(ctx, command)
+}
 
-	unifyerror.Success(ctx, gin.H{
-		"key": key,
-	})
+// GenerateSSHCommandRequest is the SSH payload.
+type GenerateSSHCommandRequest struct {
+	NodeID  uint64 `json:"node_id" binding:"required"`
+	SSHUser string `json:"ssh_user"`
 }
 
 // GenerateSSHCommand godoc
-// @Summary Generate an SSH command for a machine
+// @Summary Produce an ssh command targeting a device
 // @Tags connection
 // @Accept json
 // @Produce json
-// @Param body body GenerateSSHCommandRequest true "SSH command parameters"
-// @Success 200 {object} unifyerror.Response{data=object} "command string"
-// @Failure 400 {object} unifyerror.Response
+// @Success 200 {object} unifyerror.Response{data=object}
 // @Security BearerAuth
 // @Router /connection/ssh-command [post]
 func (c *ConnectionController) GenerateSSHCommand(ctx *gin.Context) {
 	var req GenerateSSHCommandRequest
-
 	if err := ctx.ShouldBindJSON(&req); err != nil {
 		unifyerror.Fail(ctx, unifyerror.ErrBind)
 		return
 	}
 
-	userID := ctx.GetUint("userID")
-	command, err := services.ConnectionService.GenerateSSHCommandWithContext(ctx.Request.Context(), userID, req.MachineID, req.User)
+	command, err := services.ConnectionService.GenerateSSHCommand(ctx.Request.Context(),
+		ctx.GetUint("userID"), req.NodeID, req.SSHUser)
 	if err != nil {
 		unifyerror.Fail(ctx, err)
 		return
 	}
-
-	unifyerror.Success(ctx, gin.H{
-		"command": command,
-	})
+	unifyerror.Success(ctx, gin.H{"command": command})
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2026 
+ * Copyright (C) 2026
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -16,58 +16,87 @@
  */
 
 import type {
-  EnableBuiltinOIDCReq,
-  EnableBuiltinOIDCRes,
-  GetBuiltinOIDCReq,
-  GetBuiltinOIDCRes,
-  GetConnectionReq,
   GetConnectionRes,
-  GetOIDCSettingsReq,
-  GetOIDCSettingsRes,
-  GetOIDCStatusReq,
-  GetOIDCStatusRes,
+  GetIdPStateRes,
+  GetPanelSSORes,
+  ReconcileRes,
   SaveConnectionReq,
-  SaveConnectionRes,
-  SaveOIDCSettingsReq,
-  SaveOIDCSettingsRes,
-  SyncDataReq,
-  SyncDataRes,
+  SavePanelSSOReq,
+  SavePanelSSORes,
+  SetIdPEnabledReq,
+  SetIdPEnabledRes,
+  TestConnectionReq,
+  TestConnectionRes,
 } from './panel-settings.types';
 import type { RespType } from '@/lib/request';
 import request from '@/lib/request';
 
-export const panelSettingsApi = {
-  getConnection: (_req?: GetConnectionReq) =>
-    request<RespType<GetConnectionRes>>({ url: '/panel/connection', method: 'GET' }),
+/**
+ * Connection to headscale, and the two authentication planes.
+ *
+ * These are three separate things that used to share one settings page and one
+ * set of endpoints:
+ *
+ *  - how the panel reaches headscale (connection);
+ *  - how people sign in to the panel (panel SSO — the panel is a client);
+ *  - how headscale authenticates its users (panel IdP — the panel is a provider).
+ *
+ * Keeping them apart is the point: they have different failure modes and
+ * different owners.
+ */
+export const connectionApi = {
+  get: () =>
+    request<RespType<GetConnectionRes>>({ url: '/system/config/connection', method: 'GET' }),
 
-  saveConnection: (req: SaveConnectionReq) =>
-    request<RespType<SaveConnectionRes>>({
-      url: '/panel/connection',
+  save: (req: SaveConnectionReq) =>
+    request<RespType<{ message: string }>>({
+      url: '/system/config/connection',
       method: 'PUT',
-      data: {
-        grpc_addr: req.grpc_addr,
-        api_key: req.api_key,
-        insecure: req.insecure,
-        tls_skip_verify: req.tls_skip_verify,
-        tls_ca_cert: req.tls_ca_cert,
-      },
+      data: req,
     }),
 
-  syncData: (_req?: SyncDataReq) =>
-    request<RespType<SyncDataRes>>({ url: '/panel/sync', method: 'POST' }),
+  /** Probe a configuration without persisting it. */
+  test: (req?: TestConnectionReq) =>
+    request<RespType<TestConnectionRes>>({
+      url: '/system/config/connection/test',
+      method: 'POST',
+      data: req ?? {},
+    }),
 
-  getBuiltinOIDC: (_req?: GetBuiltinOIDCReq) =>
-    request<RespType<GetBuiltinOIDCRes>>({ url: '/panel/builtin-oidc', method: 'GET' }),
-
-  enableBuiltinOIDC: (_req?: EnableBuiltinOIDCReq) =>
-    request<RespType<EnableBuiltinOIDCRes>>({ url: '/panel/builtin-oidc', method: 'POST' }),
-
-  getOIDCSettings: (_req?: GetOIDCSettingsReq) =>
-    request<RespType<GetOIDCSettingsRes>>({ url: '/panel/oidc-settings', method: 'GET' }),
-
-  saveOIDCSettings: (req: SaveOIDCSettingsReq) =>
-    request<RespType<SaveOIDCSettingsRes>>({ url: '/panel/oidc-settings', method: 'PUT', data: req }),
-
-  getOIDCStatus: (_req?: GetOIDCStatusReq) =>
-    request<RespType<GetOIDCStatusRes>>({ url: '/panel/oidc-status', method: 'GET' }),
+  /** Re-sync ACL hosts and create the bindings the panel IdP can prove. */
+  reconcile: () =>
+    request<RespType<ReconcileRes>>({ url: '/system/reconcile', method: 'POST' }),
 };
+
+export const panelSSOApi = {
+  get: () =>
+    request<RespType<GetPanelSSORes>>({ url: '/system/auth/panel-sso', method: 'GET' }),
+
+  save: (req: SavePanelSSOReq) =>
+    request<RespType<SavePanelSSORes>>({
+      url: '/system/auth/panel-sso',
+      method: 'PUT',
+      data: req,
+    }),
+};
+
+export const idpApi = {
+  state: () => request<RespType<GetIdPStateRes>>({ url: '/system/auth/idp', method: 'GET' }),
+
+  /**
+   * Turn the provider on or off.
+   *
+   * Disabling takes effect immediately: /idp/* starts refusing regardless of what
+   * the headscale config file still says, which is what stops a stale `oidc:`
+   * block from reviving the flow.
+   */
+  setEnabled: (req: SetIdPEnabledReq) =>
+    request<RespType<SetIdPEnabledRes>>({
+      url: '/system/auth/idp',
+      method: 'PUT',
+      data: req,
+    }),
+};
+
+/** Kept as an alias so the settings page has one obvious import. */
+export const panelSettingsApi = connectionApi;

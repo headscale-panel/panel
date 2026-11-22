@@ -69,12 +69,12 @@ export default defineConfig({
     'stat-label': 'text-13px',
     'stat-value': 'text-24px font-700 mt-1',
     'stat-subtext': 'text-12px',
-    'stat-icon-primary': 'text-28px text-#1677ff',
-    'stat-icon-success': 'text-28px text-#52c41a',
-    'stat-icon-accent': 'text-28px text-#722ed1',
-    'stat-icon-warn': 'text-28px text-#fa8c16',
-    'stat-icon-cyan': 'text-28px text-#13c2c2',
-    'stat-icon-muted': 'text-28px text-#8c8c8c',
+    'stat-icon-primary': 'text-28px text-[var(--accent-primary)]',
+    'stat-icon-success': 'text-28px text-[var(--accent-success)]',
+    'stat-icon-accent': 'text-28px text-[var(--accent-accent)]',
+    'stat-icon-warn': 'text-28px text-[var(--accent-warn)]',
+    'stat-icon-cyan': 'text-28px text-[var(--accent-cyan)]',
+    'stat-icon-muted': 'text-28px text-[var(--accent-muted)]',
 
     // ── Metrics ───────────────────────────────────────────────────────────────────
     'metric-chart-grid': 'grid gap-4 grid-cols-[repeat(auto-fill,minmax(400px,1fr))]',

@@ -22,6 +22,7 @@ import (
 	"net/http"
 	"os"
 	"path"
+	"path/filepath"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -30,8 +31,7 @@ import (
 
 const frontendContentSecurityPolicy = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: https:; connect-src 'self' ws: wss:; worker-src 'self' blob:; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
 
-func setFrontendSecurityHeaders(header http.Header) {
-	header.Set("Content-Security-Policy", frontendContentSecurityPolicy)
+func setBaselineSecurityHeaders(header http.Header) {
 	header.Set("Referrer-Policy", "strict-origin-when-cross-origin")
 	header.Set("X-Content-Type-Options", "nosniff")
 	header.Set("X-Frame-Options", "DENY")
@@ -40,6 +40,20 @@ func setFrontendSecurityHeaders(header http.Header) {
 	if strings.HasPrefix(strings.ToLower(strings.TrimSpace(conf.Conf.System.BaseURL)), "https://") {
 		header.Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
 	}
+}
+
+// SecurityHeadersMiddleware attaches baseline security headers to every HTTP
+// response (including API, auth, SSO, and IdP endpoints).
+func SecurityHeadersMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		setBaselineSecurityHeaders(c.Writer.Header())
+		c.Next()
+	}
+}
+
+func setFrontendSecurityHeaders(header http.Header) {
+	setBaselineSecurityHeaders(header)
+	header.Set("Content-Security-Policy", frontendContentSecurityPolicy)
 }
 
 // FrontendMiddleware serves compiled frontend static files under the /panel path prefix
@@ -51,7 +65,9 @@ func FrontendMiddleware(staticDir string) gin.HandlerFunc {
 		return func(c *gin.Context) { c.Next() }
 	}
 
-	fileServer := http.StripPrefix("/panel", http.FileServer(http.Dir(staticDir)))
+	cleanStaticDir := filepath.Clean(staticDir)
+	staticDirPrefix := cleanStaticDir + string(filepath.Separator)
+	fileServer := http.StripPrefix("/panel", http.FileServer(http.Dir(cleanStaticDir)))
 
 	return func(c *gin.Context) {
 		reqPath := c.Request.URL.Path
@@ -80,10 +96,10 @@ func FrontendMiddleware(staticDir string) gin.HandlerFunc {
 		if cleanPath == "" {
 			cleanPath = "/"
 		}
-		filePath := path.Join(staticDir, cleanPath)
+		filePath := filepath.Join(cleanStaticDir, filepath.FromSlash(path.Clean("/"+cleanPath)))
 
-		// Prevent path traversal
-		if !strings.HasPrefix(filePath, staticDir) {
+		// Prevent path traversal (including sibling directories sharing a name prefix)
+		if filePath != cleanStaticDir && !strings.HasPrefix(filePath, staticDirPrefix) {
 			c.Next()
 			return
 		}

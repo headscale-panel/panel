@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2026 
+ * Copyright (C) 2026
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -15,20 +15,19 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
+export * from './account';
 export * from './acl';
 export * from './auth';
 export * from './dashboard';
 export * from './derp';
 export * from './device';
 export * from './dns';
-export * from './group';
 export * from './headscale-config';
-export * from './headscale-user';
 export * from './metrics';
-export * from './panel-account';
+export * from './network-identity';
 export * from './panel-settings';
 export * from './resource';
+export * from './role';
 export * from './route';
 export * from './setup';
 export * from './status';
-export * from './system-user';

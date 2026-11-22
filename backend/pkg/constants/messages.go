@@ -17,19 +17,19 @@ package constants
 
 // ---- Validation & Parameter ----
 const (
-	MsgParamErr          = "Invalid request parameters"
-	MsgParamBindFailed   = "Request parameter binding failed"
+	MsgParamErr            = "Invalid request parameters"
+	MsgParamBindFailed     = "Request parameter binding failed"
 	MsgParamValidateFailed = "Parameter validation failed"
-	MsgCannotBeEmpty     = "cannot be empty"
-	MsgValueTooSmall     = "value too small"
-	MsgValueTooLarge     = "value too large"
-	MsgInvalidEmail      = "must be a valid email address"
-	MsgInvalidURL        = "must be a valid URL"
-	MsgInvalidFormat     = "invalid format"
-	MsgInvalidID         = "Invalid ID"
-	MsgInvalidIndex      = "Invalid index"
-	MsgMissingInput      = "Required input is missing"
-	MsgInvalidQuery      = "Invalid query"
+	MsgCannotBeEmpty       = "cannot be empty"
+	MsgValueTooSmall       = "value too small"
+	MsgValueTooLarge       = "value too large"
+	MsgInvalidEmail        = "must be a valid email address"
+	MsgInvalidURL          = "must be a valid URL"
+	MsgInvalidFormat       = "invalid format"
+	MsgInvalidID           = "Invalid ID"
+	MsgInvalidIndex        = "Invalid index"
+	MsgMissingInput        = "Required input is missing"
+	MsgInvalidQuery        = "Invalid query"
 )
 
 // ---- Resource ----
@@ -41,10 +41,10 @@ const (
 
 // ---- Server ----
 const (
-	MsgServerErr   = "An internal server error occurred. Please contact the administrator."
-	MsgDBErr       = "A database error occurred. Please contact the administrator."
-	MsgGRPCErr     = "Failed to communicate with Headscale service"
-	MsgFileResolve = "Failed to process the uploaded file"
+	MsgServerErr       = "An internal server error occurred. Please contact the administrator."
+	MsgDBErr           = "A database error occurred. Please contact the administrator."
+	MsgHeadscaleAPIErr = "Failed to communicate with Headscale service"
+	MsgFileResolve     = "Failed to process the uploaded file"
 )
 
 // ---- Auth ----
@@ -83,7 +83,7 @@ const (
 	MsgYAMLSerializeFailed   = "YAML serialization failed"
 	MsgConfigDirCreateFailed = "Failed to create config directory"
 	MsgConfigWriteFailed     = "Failed to write config file"
-	MsgGRPCAddrEmpty         = "gRPC address cannot be empty"
+	MsgAPIAddrEmpty          = "Headscale API address cannot be empty"
 	MsgAPIKeyEmpty           = "API Key cannot be empty"
 	MsgBaseURLRequired       = "Please configure BASE_URL in environment variables first"
 )

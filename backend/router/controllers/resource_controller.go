@@ -1,4 +1,4 @@
-// Copyright (C) 2026 
+// Copyright (C) 2026
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as
@@ -16,10 +16,9 @@
 package controllers
 
 import (
-	"net/http"
 	"headscale-panel/pkg/unifyerror"
 	"headscale-panel/router/services"
-	"strconv"
+	"net/http"
 
 	"github.com/gin-gonic/gin"
 )
@@ -65,9 +64,8 @@ func (r *ResourceController) Create(c *gin.Context) {
 // @Security BearerAuth
 // @Router /resources/detail [get]
 func (r *ResourceController) Get(c *gin.Context) {
-	idStr := c.Query("id")
-	id, err := strconv.ParseUint(idStr, 10, 64)
-	if err != nil || id == 0 {
+	id, err := parseUintParam(c, "id")
+	if err != nil {
 		unifyerror.Fail(c, unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "invalid resource ID"))
 		return
 	}
@@ -122,11 +120,22 @@ func (r *ResourceController) List(c *gin.Context) {
 // @Security BearerAuth
 // @Router /resources [put]
 func (r *ResourceController) Update(c *gin.Context) {
+	id, err := parseUintParam(c, "id")
+	if err != nil {
+		unifyerror.Fail(c, unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "invalid resource ID"))
+		return
+	}
+
 	var req services.UpdateResourceRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		unifyerror.Fail(c, unifyerror.ErrBind)
 		return
 	}
+	if req.ID != 0 && req.ID != uint(id) {
+		unifyerror.Fail(c, unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "resource ID mismatch"))
+		return
+	}
+	req.ID = uint(id)
 
 	userID := c.GetUint("userID")
 	if err := services.ResourceService.Update(userID, &req); err != nil {
@@ -137,29 +146,24 @@ func (r *ResourceController) Update(c *gin.Context) {
 	unifyerror.Success(c, nil)
 }
 
-// DeleteResourceQuery is the query parameter struct for Delete.
-type DeleteResourceQuery struct {
-	ID uint `form:"id" binding:"required"`
-}
-
 // Delete godoc
 // @Summary Delete a resource
 // @Tags resources
 // @Produce json
-// @Param id query int true "Resource ID"
+// @Param id path int true "Resource ID"
 // @Success 200 {object} unifyerror.Response
 // @Failure 400 {object} unifyerror.Response
 // @Security BearerAuth
-// @Router /resources [delete]
+// @Router /resources/{id} [delete]
 func (r *ResourceController) Delete(c *gin.Context) {
-	var q DeleteResourceQuery
-	if err := c.ShouldBindQuery(&q); err != nil {
+	id, err := parseUintParam(c, "id")
+	if err != nil {
 		unifyerror.Fail(c, unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "invalid ID"))
 		return
 	}
 
 	userID := c.GetUint("userID")
-	if err := services.ResourceService.Delete(userID, q.ID); err != nil {
+	if err := services.ResourceService.Delete(userID, uint(id)); err != nil {
 		unifyerror.Fail(c, err)
 		return
 	}

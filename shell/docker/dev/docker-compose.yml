@@ -1,29 +1,104 @@
 name: panel-dev
 
+x-tailscale-base: &tailscale-base
+  image: ${TAILSCALE_IMAGE:-tailscale/tailscale:stable}
+  restart: unless-stopped
+  entrypoint: ["/bin/sh", "/usr/local/bin/dev-entrypoint.sh"]
+  command:
+    - "--state=/var/lib/tailscale/tailscaled.state"
+    - "--socket=/var/run/tailscale/tailscaled.sock"
+  cap_add:
+    - NET_ADMIN
+    - SYS_MODULE
+  devices:
+    - /dev/net/tun:/dev/net/tun
+  sysctls:
+    net.ipv4.ip_forward: "1"
+    net.ipv6.conf.all.forwarding: "1"
+  depends_on:
+    headscale:
+      condition: service_healthy
+
 services:
 
   headscale:
-    image: headscale/headscale:v0.28.0
+    image: ${HEADSCALE_IMAGE:-ghcr.io/juanfont/headscale:main}
     container_name: panel-dev-headscale
+    hostname: headscale
     restart: unless-stopped
     command: serve
     volumes:
-      - ../../../backend/data/headscale/lib:/var/lib/headscale
-      - ../../../backend/data/headscale/etc:/etc/headscale:ro
-      - ../../../shell/docker/dev/cert:/etc/cert:ro
+      - ${DEV_DATA_DIR:-../../../dev-data}/headscale/lib:/var/lib/headscale
+      - ${DEV_DATA_DIR:-../../../dev-data}/headscale/etc:/etc/headscale:ro
       - /etc/localtime:/etc/localtime:ro
-      - /etc/timezone:/etc/timezone:ro
     ports:
-      - "${HEADSCALE_HTTP_PORT:-5080}:8080"   # Headscale HTTP API
-      - "${HEADSCALE_GRPC_PORT:-50443}:50443" # Headscale gRPC for local backend access from host
+      - "${HEADSCALE_HTTP_PORT:-5080}:8080"
+    sysctls:
+      # headscale attaches to core, net-a, and net-b; disable forwarding so it cannot
+      # route traffic between isolated client bridges.
+      net.ipv4.ip_forward: "0"
+      net.ipv6.conf.all.forwarding: "0"
     healthcheck:
       test: ["CMD", "headscale", "health"]
       interval: 5s
       timeout: 5s
-      retries: 12
+      retries: 24
       start_period: 10s
     networks:
-      - panel-dev
+      core:
+      net-a:
+      net-b:
+
+  panel:
+    image: ${PANEL_IMAGE:-headscale-panel:dev}
+    build:
+      context: ../../..
+      dockerfile: Dockerfile
+      args:
+        ALPINE_MIRROR: ${ALPINE_MIRROR:-}
+    container_name: panel-dev-panel
+    hostname: panel
+    restart: unless-stopped
+    depends_on:
+      headscale:
+        condition: service_healthy
+    environment:
+      SYSTEM_PORT: ":8080"
+      SYSTEM_BASE_URL: ${PANEL_BASE_URL:-http://localhost:8090/panel}
+      SYSTEM_SETUP_BOOTSTRAP_TOKEN: ${SETUP_BOOTSTRAP_TOKEN:-dev-bootstrap-token-change-me-0123456789}
+      JWT_SECRET: ${JWT_SECRET:-dev-only-jwt-secret-change-me-0123456789abcdef}
+      JWT_EXPIRE: "24"
+      DB_PATH: /app/data/data.db
+      HEADSCALE_ETC_DIR: /app/headscale/etc
+      HEADSCALE_LIB_DIR: /app/headscale/lib
+      # Connection settings are stored in the database by the setup wizard, not
+      # read from the environment. Leave lifecycle off here too, so development
+      # exercises the manual-restart path that production uses by default.
+      HS_LIFECYCLE_ENABLED: "${HS_LIFECYCLE_ENABLED:-false}"
+      HS_LIFECYCLE_MODE: docker
+      HS_CONTAINER_NAME: panel-dev-headscale
+      INFLUXDB_URL: http://influxdb:8086
+      INFLUXDB_TOKEN: ${INFLUXDB_TOKEN:-dev-influxdb-token}
+      INFLUXDB_ORG: ${INFLUXDB_ORG:-headscale-panel}
+      INFLUXDB_BUCKET: ${INFLUXDB_BUCKET:-metrics}
+    volumes:
+      - ${DEV_DATA_DIR:-../../../dev-data}/headscale/etc:/app/headscale/etc
+      - ${DEV_DATA_DIR:-../../../dev-data}/headscale/lib:/app/headscale/lib
+      - ${DEV_DATA_DIR:-../../../dev-data}/panel:/app/data
+      # Do not mount /var/run/docker.sock by default: read-write access to the
+      # host Docker socket is equivalent to host root. Use a separate override
+      # with a restricted socket proxy if HS_LIFECYCLE_ENABLED=true is required.
+      - /etc/localtime:/etc/localtime:ro
+    ports:
+      - "${PANEL_HTTP_PORT:-8090}:8080"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/panel/api/v1/healthz"]
+      interval: 5s
+      timeout: 5s
+      retries: 24
+      start_period: 5s
+    networks:
+      core:
 
   influxdb:
     image: influxdb:2
@@ -37,63 +112,79 @@ services:
       DOCKER_INFLUXDB_INIT_BUCKET: ${INFLUXDB_BUCKET:-metrics}
       DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: ${INFLUXDB_TOKEN:-dev-influxdb-token}
     volumes:
-      - ./data/influxdb:/var/lib/influxdb2
+      - ${DEV_DATA_DIR:-../../../dev-data}/influxdb:/var/lib/influxdb2
       - /etc/localtime:/etc/localtime:ro
-      - /etc/timezone:/etc/timezone:ro
-    ports:
-      - "${INFLUXDB_HOST_PORT:-8086}:8086"   # InfluxDB UI & API
     healthcheck:
       test: ["CMD", "influx", "ping"]
       interval: 5s
       timeout: 5s
-      retries: 12
+      retries: 24
       start_period: 20s
     networks:
-      - panel-dev
+      core:
 
-  tailscale-router:
-    image: tailscale/tailscale:stable
-    container_name: panel-dev-tailscale-router
-    restart: unless-stopped
-    environment:
-      SSL_CERT_FILE: /etc/cert/selfsigned.crt
+  client-a:
+    <<: *tailscale-base
+    container_name: panel-dev-client-a
+    hostname: client-a
     volumes:
-      - ../../../shell/docker/dev/cert:/etc/cert:ro
+      - ./tailscale/entrypoint.sh:/usr/local/bin/dev-entrypoint.sh:ro
       - /etc/localtime:/etc/localtime:ro
-      - /etc/timezone:/etc/timezone:ro
-    cap_add:
-      - NET_ADMIN
-      - SYS_MODULE
-    devices:
-      - /dev/net/tun:/dev/net/tun
-    sysctls:
-      net.ipv4.ip_forward: "1"
-      net.ipv6.conf.all.forwarding: "1"
-    depends_on:
-      headscale:
-        condition: service_healthy
+      - ts-state-a:/var/lib/tailscale
     networks:
-      - panel-dev
+      net-a:
+        ipv4_address: 172.31.0.20
 
-  tailnet-nginx:
+  client-b:
+    <<: *tailscale-base
+    container_name: panel-dev-client-b
+    hostname: client-b
+    volumes:
+      - ./tailscale/entrypoint.sh:/usr/local/bin/dev-entrypoint.sh:ro
+      - /etc/localtime:/etc/localtime:ro
+      - ts-state-b:/var/lib/tailscale
+    networks:
+      net-b:
+        ipv4_address: 172.32.0.20
+
+  target-a:
     image: nginx:1.27-alpine
-    container_name: panel-dev-tailnet-nginx
+    container_name: panel-dev-target-a
     restart: unless-stopped
     volumes:
-      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
-      - ./nginx/index.html:/usr/share/nginx/html/index.html:ro
+      - ./nginx/target.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./nginx/target-a.html:/usr/share/nginx/html/index.html:ro
       - /etc/localtime:/etc/localtime:ro
-      - /etc/timezone:/etc/timezone:ro
-    depends_on:
-      tailscale-router:
-        condition: service_started
     networks:
-      panel-dev:
-        ipv4_address: 172.30.0.10
+      net-a:
+        ipv4_address: 172.31.0.10
+
+  target-b:
+    image: nginx:1.27-alpine
+    container_name: panel-dev-target-b
+    restart: unless-stopped
+    volumes:
+      - ./nginx/target.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./nginx/target-b.html:/usr/share/nginx/html/index.html:ro
+      - /etc/localtime:/etc/localtime:ro
+    networks:
+      net-b:
+        ipv4_address: 172.32.0.10
 
 networks:
-  panel-dev:
+  core:
+    driver: bridge
+  net-a:
     driver: bridge
     ipam:
       config:
-        - subnet: 172.30.0.0/24
+        - subnet: 172.31.0.0/24
+  net-b:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.32.0.0/24
+
+volumes:
+  ts-state-a:
+  ts-state-b:

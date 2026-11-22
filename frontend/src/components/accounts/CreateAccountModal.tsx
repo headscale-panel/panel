@@ -1,0 +1,139 @@
+/*
+ * Copyright (C) 2026
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program. If not, see <http://www.gnu.org/licenses/>.
+ */
+
+import type { Role } from '@/api/entities';
+import { UserAddOutlined } from '@ant-design/icons';
+import { Input, message, Modal, Select, Typography } from 'antd';
+import { useState } from 'react';
+import { accountApi } from '@/api';
+import { useTranslation } from '@/i18n/index';
+
+const { Text } = Typography;
+
+interface Props {
+  open: boolean;
+  roles: Role[];
+  onCancel: () => void;
+  onSuccess: () => void;
+}
+
+const DEFAULT_FORM = {
+  username: '',
+  email: '',
+  password: '',
+  role_id: undefined as number | undefined,
+};
+
+export default function CreateAccountModal({ open, roles, onCancel, onSuccess }: Props) {
+  const t = useTranslation();
+  const pa = t.panelAccounts;
+  const [form, setForm] = useState(DEFAULT_FORM);
+  const [saving, setSaving] = useState(false);
+
+  const handleAfterOpenChange = (nextOpen: boolean) => {
+    if (nextOpen)
+      setForm(DEFAULT_FORM);
+  };
+
+  const handleOk = async () => {
+    if (!form.username) {
+      message.warning(pa.create.usernameLabel);
+      return;
+    }
+    if (!form.password) {
+      message.warning(pa.create.passwordLabel);
+      return;
+    }
+    if (!form.role_id) {
+      message.warning(pa.create.groupLabel);
+      return;
+    }
+    setSaving(true);
+    try {
+      await accountApi.create({
+        username: form.username,
+        password: form.password,
+        email: form.email || undefined,
+        role_id: form.role_id,
+      });
+      message.success(pa.toast.createSuccess.replace('{username}', form.username));
+      onSuccess();
+    } catch (error: any) {
+      message.error(error?.message || pa.toast.loadFailed);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal
+      open={open}
+      title={(
+        <span>
+          <UserAddOutlined className="mr-2" />
+          {pa.create.title}
+        </span>
+      )}
+      onCancel={onCancel}
+      afterOpenChange={handleAfterOpenChange}
+      onOk={handleOk}
+      confirmLoading={saving}
+      width={480}
+      destroyOnHidden
+    >
+      <Text type="secondary" className="block mb-16px">{pa.create.description}</Text>
+
+      <div className="flex flex-col gap-12px">
+        <div>
+          <Text className="block mb-4px">{pa.create.usernameLabel}</Text>
+          <Input
+            value={form.username}
+            onChange={(e) => setForm({ ...form, username: e.target.value })}
+            placeholder={pa.create.usernamePlaceholder}
+          />
+        </div>
+        <div>
+          <Text className="block mb-4px">{pa.create.passwordLabel}</Text>
+          <Input.Password
+            value={form.password}
+            onChange={(e) => setForm({ ...form, password: e.target.value })}
+            placeholder={pa.create.passwordPlaceholder}
+          />
+        </div>
+        <div>
+          <Text className="block mb-4px">{pa.create.emailLabel}</Text>
+          <Input
+            value={form.email}
+            onChange={(e) => setForm({ ...form, email: e.target.value })}
+            placeholder={pa.create.emailPlaceholder}
+          />
+        </div>
+        <div>
+          <Text className="block mb-4px">{pa.create.groupLabel}</Text>
+          <Select
+            value={form.role_id}
+            onChange={(v) => setForm({ ...form, role_id: v })}
+            placeholder={pa.create.groupPlaceholder}
+            allowClear
+            style={{ width: '100%' }}
+            options={roles.map((role) => ({ label: role.name, value: role.id }))}
+          />
+        </div>
+      </div>
+    </Modal>
+  );
+}

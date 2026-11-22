@@ -16,6 +16,9 @@
 package controllers
 
 import (
+	"encoding/json"
+	"io"
+
 	"headscale-panel/model"
 	"headscale-panel/pkg/constants"
 	"headscale-panel/pkg/unifyerror"
@@ -46,7 +49,13 @@ func (c *ACLController) GetPolicy(ctx *gin.Context) {
 		unifyerror.Fail(ctx, err)
 		return
 	}
-	unifyerror.Success(ctx, policy)
+
+	// updatedAt is the optimistic-lock token: the client sends it back on save so a
+	// concurrent edit is detected instead of silently overwritten.
+	unifyerror.Success(ctx, gin.H{
+		"policy":    policy,
+		"updatedAt": services.ACLService.PolicyUpdatedAt(ctx.Request.Context()),
+	})
 }
 
 // UpdatePolicy godoc
@@ -54,25 +63,69 @@ func (c *ACLController) GetPolicy(ctx *gin.Context) {
 // @Tags acl
 // @Accept json
 // @Produce json
-// @Param body body model.ACLPolicyStructure true "ACL policy"
+// @Param body body ACLPolicyUpdateRequest true "ACL policy"
 // @Success 200 {object} unifyerror.Response
 // @Failure 400 {object} unifyerror.Response
+// @Failure 409 {object} unifyerror.Response
 // @Security BearerAuth
 // @Router /headscale/acl/policy [put]
 // UpdatePolicy updates the ACL policy in Headscale
 func (c *ACLController) UpdatePolicy(ctx *gin.Context) {
-	var policy model.ACLPolicyStructure
-	if err := ctx.ShouldBindJSON(&policy); err != nil {
+	const maxPolicyBodyBytes = 2 << 20 // 2 MiB
+	ctx.Request.Body = http.MaxBytesReader(ctx.Writer, ctx.Request.Body, maxPolicyBodyBytes)
+	raw, err := io.ReadAll(ctx.Request.Body)
+	if err != nil {
 		unifyerror.Fail(ctx, unifyerror.ErrBind)
 		return
 	}
 
+	policy, expectedUpdatedAt, err := decodePolicyUpdate(raw)
+	if err != nil {
+		unifyerror.Fail(ctx, err)
+		return
+	}
+
 	userID := ctx.GetUint("userID")
-	if err := services.ACLService.UpdatePolicyWithContext(ctx.Request.Context(), userID, &policy); err != nil {
+	if err := services.ACLService.UpdatePolicyWithContext(ctx.Request.Context(), userID, policy, expectedUpdatedAt); err != nil {
 		unifyerror.Fail(ctx, err)
 		return
 	}
 	unifyerror.Success(ctx, nil)
+}
+
+// policyUpdateEnvelope is the shape that carries the optimistic-lock token.
+type policyUpdateEnvelope struct {
+	Policy            json.RawMessage `json:"policy"`
+	ExpectedUpdatedAt string          `json:"expectedUpdatedAt"`
+}
+
+// decodePolicyUpdate accepts both contracts.
+//
+// The envelope `{"policy": {...}, "expectedUpdatedAt": "..."}` is the current one.
+// A bare policy object is still accepted because the ACL editor historically sent
+// that, and rejecting it would break a client purely for not knowing about the lock.
+// The two are distinguished by whether a `policy` key is present, which is why this
+// decodes twice rather than relying on struct embedding (an embedded policy type plus
+// an explicit `Policy` field makes JSON decoding ambiguous).
+func decodePolicyUpdate(raw []byte) (*model.ACLPolicyStructure, string, error) {
+	var envelope policyUpdateEnvelope
+	if err := json.Unmarshal(raw, &envelope); err != nil {
+		return nil, "", unifyerror.ErrBind
+	}
+
+	if len(envelope.Policy) > 0 && string(envelope.Policy) != "null" {
+		var policy model.ACLPolicyStructure
+		if err := json.Unmarshal(envelope.Policy, &policy); err != nil {
+			return nil, "", unifyerror.ErrBind
+		}
+		return &policy, envelope.ExpectedUpdatedAt, nil
+	}
+
+	var policy model.ACLPolicyStructure
+	if err := json.Unmarshal(raw, &policy); err != nil {
+		return nil, "", unifyerror.ErrBind
+	}
+	return &policy, envelope.ExpectedUpdatedAt, nil
 }
 
 // SetPolicyRaw godoc
@@ -87,7 +140,8 @@ func (c *ACLController) UpdatePolicy(ctx *gin.Context) {
 // @Router /headscale/acl/policy/raw [post]
 // SetPolicyRaw sets the ACL policy from raw JSON
 type SetPolicyRawRequest struct {
-	Policy string `json:"policy" binding:"required"`
+	Policy            string `json:"policy" binding:"required"`
+	ExpectedUpdatedAt string `json:"expectedUpdatedAt"`
 }
 
 func (c *ACLController) SetPolicyRaw(ctx *gin.Context) {
@@ -98,7 +152,7 @@ func (c *ACLController) SetPolicyRaw(ctx *gin.Context) {
 	}
 
 	userID := ctx.GetUint("userID")
-	if err := services.ACLService.SetPolicyRawWithContext(ctx.Request.Context(), userID, req.Policy); err != nil {
+	if err := services.ACLService.SetPolicyRawWithLock(ctx.Request.Context(), userID, req.Policy, req.ExpectedUpdatedAt); err != nil {
 		unifyerror.Fail(ctx, err)
 		return
 	}
@@ -312,14 +366,26 @@ type ApplyPolicyRequest struct {
 // @Security BearerAuth
 // @Router /headscale/acl/apply [post]
 func (c *ACLController) Apply(ctx *gin.Context) {
-	var req ApplyPolicyRequest
-	if err := ctx.ShouldBindJSON(&req); err != nil {
-		unifyerror.Fail(ctx, unifyerror.ErrBind)
+	id, err := parseUintParam(ctx, "id")
+	if err != nil {
+		unifyerror.Fail(ctx, err)
 		return
 	}
 
+	if ctx.Request.ContentLength > 0 {
+		var req ApplyPolicyRequest
+		if bindErr := ctx.ShouldBindJSON(&req); bindErr != nil {
+			unifyerror.Fail(ctx, unifyerror.ErrBind)
+			return
+		}
+		if req.ID != 0 && req.ID != uint(id) {
+			unifyerror.Fail(ctx, unifyerror.New(http.StatusBadRequest, unifyerror.CodeParamErr, "policy revision ID mismatch"))
+			return
+		}
+	}
+
 	userID := ctx.GetUint("userID")
-	if err := services.ACLService.ApplyWithContext(ctx.Request.Context(), userID, req.ID); err != nil {
+	if err := services.ACLService.ApplyWithContext(ctx.Request.Context(), userID, uint(id)); err != nil {
 		unifyerror.Fail(ctx, err)
 		return
 	}

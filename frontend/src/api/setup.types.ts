@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2026 
+ * Copyright (C) 2026
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -26,12 +26,12 @@ export interface GetSetupStatusRes {
 }
 
 export interface ConnectivityCheckReq {
-  headscale_grpc_addr?: string;
+  headscale_api_addr?: string;
   api_key?: string;
   strict_api?: boolean;
-  grpc_allow_insecure?: boolean;
-  grpc_tls_skip_verify?: boolean;
-  grpc_tls_ca_cert?: string;
+  api_allow_insecure?: boolean;
+  api_tls_skip_verify?: boolean;
+  api_tls_ca_cert?: string;
 }
 
 export interface ConnectivityCheckRes {
@@ -45,7 +45,7 @@ export interface ConnectivityCheckRes {
 }
 
 export interface InitSetupReq {
-  headscale_grpc_addr?: string;
+  headscale_api_addr?: string;
   api_key?: string;
   enable_tls?: boolean;
   tls_skip_verify?: boolean;

@@ -15,7 +15,7 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-import type { ACLPolicy, HeadscaleUserOption, NormalizedResource } from '@/lib/normalizers';
+import type { ACLPolicy, IdentityOption, NormalizedResource } from '@/lib/normalizers';
 import {
   CheckOutlined,
   DatabaseOutlined,
@@ -158,7 +158,7 @@ interface RuleModalProps {
   aclGroups: Record<string, string[]>;
   devices: DeviceItem[];
   resources: NormalizedResource[];
-  headscaleUsers: HeadscaleUserOption[];
+  identities: IdentityOption[];
   onCancel: () => void;
   onSuccess: () => void;
 }
@@ -178,7 +178,7 @@ export default function RuleModal({
   aclGroups,
   devices,
   resources,
-  headscaleUsers,
+  identities,
   onCancel,
   onSuccess,
 }: RuleModalProps) {
@@ -336,20 +336,22 @@ export default function RuleModal({
         })),
       });
     }
-    if (headscaleUsers.length > 0) {
+    if (identities.length > 0) {
       groups.push({
         label: t.acl.headscaleUsersHeading,
-        options: headscaleUsers.map((user) => ({
-          key: `user-src-${user.name}`,
+        options: identities.map((identity) => ({
+          key: `user-src-${identity.id}`,
           label: (
             <span>
               <UserOutlined className="mr-2" />
-              {user.name}
+              {identity.name}
               @
             </span>
           ),
-          value: `${user.name}@`,
-          selected: !!rule.sources?.includes(`${user.name}@`),
+          // The policy alias is the email when headscale has one, so using the
+          // display name here would produce a rule that matches nothing.
+          value: `${identity.policyUsername}@`,
+          selected: !!rule.sources?.includes(`${identity.policyUsername}@`),
         })),
       });
     }

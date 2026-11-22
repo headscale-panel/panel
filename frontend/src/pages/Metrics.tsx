@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2026 
+ * Copyright (C) 2026
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -89,18 +89,6 @@ function buildRangeWindow(key: SummaryRangeKey): RangeWindow {
   return { end };
 }
 
-function normalizeDurationSummary(records: any[]): DurationSummary {
-  const totalHours = records.reduce((sum, record) => sum + Number(record?.online_hours || 0), 0);
-  const deviceCount = records.length;
-  const activeDeviceCount = records.filter((record) => Number(record?.online_hours || 0) > 0).length;
-  return {
-    totalHours,
-    avgHours: deviceCount > 0 ? totalHours / deviceCount : 0,
-    deviceCount,
-    onlineRate: deviceCount > 0 ? (activeDeviceCount / deviceCount) * 100 : 0,
-  };
-}
-
 function normalizeDeviceStatus(records: any[]): DeviceMetricsStatus[] {
   return records.map((record) => ({
     machineId: String(record?.machine_id || ''),
@@ -123,7 +111,7 @@ function normalizeHistory(records: any[]): DeviceHistoryPoint[] {
 }
 
 function buildTimelineSegments(history: DeviceHistoryPoint[], start: Date, end: Date, segmentsCount = TIMELINE_SEGMENTS) {
-  const segments = Array.from({ length: segmentsCount }, () => false);
+  const segments = Array.from<boolean>({ length: segmentsCount }).fill(false);
   const rangeMs = Math.max(end.getTime() - start.getTime(), 1);
   const bucketMs = rangeMs / segmentsCount;
   let historyIndex = 0;

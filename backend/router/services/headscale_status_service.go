@@ -1,4 +1,4 @@
-// Copyright (C) 2026 
+// Copyright (C) 2026
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as
@@ -17,32 +17,33 @@ package services
 
 import (
 	"context"
-	"headscale-panel/pkg/headscale"
-	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"time"
+
+	"headscale-panel/pkg/headscale"
 )
 
 type headscaleStatusService struct{}
 
 var HeadscaleStatusService = new(headscaleStatusService)
 
-// HeadscaleServerStatus represents the liveness status of the Headscale gRPC
-// service as observed from the panel.
+// HeadscaleServerStatus represents the liveness of the Headscale API as observed
+// from the panel.
 type HeadscaleServerStatus struct {
 	Running bool `json:"running"`
 }
 
-// GetHeadscaleServerStatus performs a lightweight gRPC probe (ListUsers with
-// a 5-second timeout) to determine whether the Headscale server is reachable.
+// GetHeadscaleServerStatus performs a lightweight authenticated health check.
+//
+// /api/v1/health is used rather than a data call: it answers whether the server is
+// up and its database usable without pulling a list that grows with the deployment.
 func (s *headscaleStatusService) GetHeadscaleServerStatus() HeadscaleServerStatus {
 	client, err := headscale.GetOrRefreshClient()
-	if err != nil || client == nil || client.Service == nil {
+	if err != nil || client == nil || client.REST == nil {
 		return HeadscaleServerStatus{Running: false}
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	_, err = client.Service.ListUsers(ctx, &v1.ListUsersRequest{})
-	return HeadscaleServerStatus{Running: err == nil}
+	return HeadscaleServerStatus{Running: client.REST.Health(ctx) == nil}
 }

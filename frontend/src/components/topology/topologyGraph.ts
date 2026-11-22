@@ -169,7 +169,7 @@ export function normalizeTopology(
     })
     .filter((identity) => identity.deviceCount > 0)
     .sort((a, b) => b.deviceCount - a.deviceCount || a.name.localeCompare(b.name))
-    .map((identity, colorIndex) => ({ ...identity, colorIndex }));
+    .map((identity) => ({ ...identity, colorIndex: identityColorIndex(identity.id) }));
 
   return {
     server: { id: 'server', name: 'Headscale Server' },
@@ -181,6 +181,18 @@ export function normalizeTopology(
 
 export function identityColor(index: number) {
   return IDENTITY_COLORS[index % IDENTITY_COLORS.length];
+}
+
+// identityColorIndex maps an identity id onto a colour slot.
+//
+// Deriving the slot from the id rather than from the position in the sorted list is
+// what keeps a user's colour stable: the list is ordered by device count, so an index
+// would shift every other identity whenever anyone adds or removes a device.
+export function identityColorIndex(identityId: string): number {
+  let hash = 0;
+  for (let i = 0; i < identityId.length; i++)
+    hash = (hash * 31 + identityId.charCodeAt(i)) >>> 0;
+  return hash % IDENTITY_COLORS.length;
 }
 
 export function buildACLIndex(data: TopologyData) {
@@ -248,12 +260,65 @@ export function deviceRingRank(index: number) {
   return 90 - ring;
 }
 
-export function buildGraphData(data: TopologyData): GraphData {
+// MAX_DEVICES_PER_IDENTITY bounds how many devices one identity draws.
+//
+// Past roughly two ring's worth of nodes the cluster is unreadable at any zoom, and
+// the layout cost grows with every extra node. The rest are collapsed into a `+N`
+// badge the operator can widen by searching or selecting.
+export const MAX_DEVICES_PER_IDENTITY = 22;
+
+// collapseLabel renders the device count for an identity node, appending +N when the
+// cap hid some of them, so the operator can tell a small group from a truncated one.
+function collapseLabel(total: number, hidden: number): string {
+  return hidden > 0 ? `${total} (+${hidden})` : String(total);
+}
+
+// detailLevelForZoom decides how much text a node shows at a given zoom.
+//
+// Zoomed out, labels overlap into an unreadable smear and cost a redraw per node for
+// information nobody can read; zoomed in, hiding them wastes the space. Three levels
+// rather than a continuous fade keeps the node renderer from re-rendering on every
+// wheel tick.
+export function detailLevelForZoom(zoom: number): 0 | 1 | 2 {
+  if (zoom < 0.55)
+    return 0;
+  if (zoom < 0.9)
+    return 1;
+  return 2;
+}
+
+// nodeTexts returns the name and meta line a node should render at a detail level.
+//
+// Kept pure so the three-way rule is testable without a canvas: level 0 shows only
+// the icon, level 1 adds the name, level 2 adds the meta line as well.
+export function nodeTexts(detailLevel: number, name: string, meta: string): { name: string; meta: string } {
+  if (detailLevel <= 0)
+    return { name: '', meta: '' };
+  if (detailLevel === 1)
+    return { name, meta: '' };
+  return { name, meta };
+}
+
+export function buildGraphData(data: TopologyData, alwaysVisible?: Set<string>): GraphData {
+  const visibleDeviceIds = new Set<string>();
+  const hiddenByDevice = new Map<string, number>();
+
   const ringRankByDevice = new Map<string, number>();
   data.identities.forEach((identity) => {
-    data.devices
-      .filter((device) => device.userId === identity.id)
-      .forEach((device, index) => ringRankByDevice.set(device.id, deviceRingRank(index)));
+    const owned = data.devices.filter((device) => device.userId === identity.id);
+    // A device the operator is searching for or has selected stays visible even when
+    // it falls outside the visible window; hiding the thing they asked about would
+    // make the cap feel like a bug.
+    const pinned = owned.filter((device) => alwaysVisible?.has(device.id));
+    const rest = owned.filter((device) => !alwaysVisible?.has(device.id));
+    const room = Math.max(0, MAX_DEVICES_PER_IDENTITY - pinned.length);
+    const shown = [...pinned, ...rest.slice(0, room)];
+    hiddenByDevice.set(identity.id, owned.length - shown.length);
+
+    shown.forEach((device, index) => {
+      visibleDeviceIds.add(device.id);
+      ringRankByDevice.set(device.id, deviceRingRank(index));
+    });
   });
 
   return {
@@ -271,13 +336,13 @@ export function buildGraphData(data: TopologyData): GraphData {
           kind: 'identity',
           identityKind: identity.kind,
           name: identity.name,
-          meta: `${identity.deviceCount}`,
+          meta: collapseLabel(identity.deviceCount, hiddenByDevice.get(identity.id) || 0),
           online: identity.online,
           accent: identityColor(identity.colorIndex),
           ringRank: 100,
         },
       })),
-      ...data.devices.map((device) => ({
+      ...data.devices.filter((device) => visibleDeviceIds.has(device.id)).map((device) => ({
         id: device.id,
         type: 'topology-node',
         combo: `identity:${device.userId}`,
@@ -298,6 +363,8 @@ export function buildGraphData(data: TopologyData): GraphData {
         kind: identity.kind,
         name: identity.name,
         count: identity.deviceCount,
+        visibleCount: data.devices.filter((device) => device.userId === identity.id && visibleDeviceIds.has(device.id)).length,
+        hiddenCount: identity.deviceCount - data.devices.filter((device) => device.userId === identity.id && visibleDeviceIds.has(device.id)).length,
         online: identity.online,
         accent: identityColor(identity.colorIndex),
       },

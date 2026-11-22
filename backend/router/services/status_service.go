@@ -1,4 +1,4 @@
-// Copyright (C) 2026 
+// Copyright (C) 2026
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as
@@ -16,9 +16,9 @@
 package services
 
 import (
-	"headscale-panel/model"
-	"headscale-panel/pkg/constants"
-	"headscale-panel/pkg/headscale"
+	"context"
+
+	"headscale-panel/pkg/hslifecycle"
 )
 
 type statusService struct{}
@@ -56,16 +56,15 @@ func (s *statusService) GetSystemStatus(userID uint) (*SystemStatus, error) {
 		setupStateStr = string(state.State)
 	}
 
-	// OIDC enabled: check headscale config
-	oidcEnabled := false
-	if cfg, err := HeadscaleConfigService.GetConfig(); err == nil {
-		oidcEnabled = cfg.OIDC.Issuer != ""
-	}
+	// OIDC enabled: the headscale config is the only place that records it
+	oidcEnabled := HeadscaleConfigService.OIDCIssuer() != ""
 
-	// DinD mode
-	dindMode := headscale.IsDinDEnabled()
+	// Lifecycle control: whether the panel may act on the container at all.
+	// Reported from the lifecycle package so the UI's banner and the restart path
+	// can never disagree about whether an automatic restart is possible.
+	dindMode := hslifecycle.Inspect(context.Background()).Available
 
-	// HS connected: lightweight gRPC probe (reuses HeadscaleStatusService logic)
+	// HS connected: authenticated health check
 	hsStatus := HeadscaleStatusService.GetHeadscaleServerStatus()
 
 	status := &SystemStatus{
@@ -75,20 +74,15 @@ func (s *statusService) GetSystemStatus(userID uint) (*SystemStatus, error) {
 		SetupState:  setupStateStr,
 	}
 
-	// Current user info
+	// Current account info
 	if userID > 0 {
-		var user model.User
-		if err := model.DB.First(&user, userID).Error; err == nil {
-			role := constants.ROLE_USER
-			if user.IsAdmin {
-				role = constants.ROLE_ADMIN
-			}
+		if acc, err := Accounts.Get(userID); err == nil {
 			status.CurrentUser = &StatusUser{
-				ID:          user.ID,
-				Username:    user.Username,
-				Email:       user.Email,
-				DisplayName: user.DisplayName,
-				Role:        role,
+				ID:          acc.ID,
+				Username:    acc.Username,
+				Email:       acc.Email,
+				DisplayName: acc.DisplayName,
+				Role:        acc.Role.Name,
 			}
 		}
 	}

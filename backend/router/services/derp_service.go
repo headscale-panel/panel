@@ -1,4 +1,4 @@
-// Copyright (C) 2026 
+// Copyright (C) 2026
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as
@@ -19,7 +19,7 @@ import (
 	"context"
 	"fmt"
 	"headscale-panel/pkg/constants"
-	"headscale-panel/pkg/headscale"
+	"headscale-panel/pkg/hslifecycle"
 	"headscale-panel/pkg/unifyerror"
 	"os"
 	"path/filepath"
@@ -58,7 +58,7 @@ type DERPNode struct {
 
 // GetDERPMap reads the DERP map from the YAML file
 func (s *derpService) GetDERPMap(actorUserID uint) (*DERPMapFile, error) {
-	if err := RequirePermission(actorUserID, "headscale:derp:view"); err != nil {
+	if err := RequirePermission(actorUserID, constants.PermSystemDerpRead); err != nil {
 		return nil, err
 	}
 
@@ -88,10 +88,11 @@ func (s *derpService) getDERPMap() (*DERPMapFile, error) {
 	return &derpMap, nil
 }
 
-// SaveDERPMap writes the DERP map to the YAML file. When restart is true and
-// DinD mode is enabled the Headscale container will be restarted afterward.
+// SaveDERPMap writes the DERP map to the YAML file. When restart is true the
+// caller is responsible for surfacing the restart outcome, which goes through
+// hslifecycle so there is one code path for every container action.
 func (s *derpService) SaveDERPMap(actorUserID uint, derpMap *DERPMapFile, restart bool) error {
-	if err := RequirePermission(actorUserID, "headscale:derp:update"); err != nil {
+	if err := RequirePermission(actorUserID, constants.PermSystemDerpManage); err != nil {
 		return err
 	}
 
@@ -99,7 +100,7 @@ func (s *derpService) SaveDERPMap(actorUserID uint, derpMap *DERPMapFile, restar
 		return err
 	}
 	if restart {
-		headscale.TryRestartHeadscale(context.Background(), "derp map write")
+		_, _ = hslifecycle.RequestRestart(context.Background(), "derp_saved")
 	}
 	return nil
 }
@@ -124,7 +125,7 @@ func (s *derpService) saveDERPMap(derpMap *DERPMapFile) error {
 
 // AddRegion adds a new DERP region
 func (s *derpService) AddRegion(actorUserID uint, region *DERPRegion) error {
-	if err := RequirePermission(actorUserID, "headscale:derp:update"); err != nil {
+	if err := RequirePermission(actorUserID, constants.PermSystemDerpManage); err != nil {
 		return err
 	}
 
@@ -148,7 +149,7 @@ func (s *derpService) AddRegion(actorUserID uint, region *DERPRegion) error {
 
 // UpdateRegion updates an existing DERP region
 func (s *derpService) UpdateRegion(actorUserID uint, regionID int, region *DERPRegion) error {
-	if err := RequirePermission(actorUserID, "headscale:derp:update"); err != nil {
+	if err := RequirePermission(actorUserID, constants.PermSystemDerpManage); err != nil {
 		return err
 	}
 
@@ -177,7 +178,7 @@ func (s *derpService) UpdateRegion(actorUserID uint, regionID int, region *DERPR
 
 // DeleteRegion deletes a DERP region by its ID
 func (s *derpService) DeleteRegion(actorUserID uint, regionID int) error {
-	if err := RequirePermission(actorUserID, "headscale:derp:update"); err != nil {
+	if err := RequirePermission(actorUserID, constants.PermSystemDerpManage); err != nil {
 		return err
 	}
 
@@ -201,7 +202,7 @@ func (s *derpService) DeleteRegion(actorUserID uint, regionID int) error {
 
 // AddNode adds a new node to a DERP region
 func (s *derpService) AddNode(actorUserID uint, regionID int, node DERPNode) error {
-	if err := RequirePermission(actorUserID, "headscale:derp:update"); err != nil {
+	if err := RequirePermission(actorUserID, constants.PermSystemDerpManage); err != nil {
 		return err
 	}
 
@@ -227,7 +228,7 @@ func (s *derpService) AddNode(actorUserID uint, regionID int, node DERPNode) err
 
 // UpdateNode updates a node in a DERP region by its index
 func (s *derpService) UpdateNode(actorUserID uint, regionID int, nodeIndex int, node DERPNode) error {
-	if err := RequirePermission(actorUserID, "headscale:derp:update"); err != nil {
+	if err := RequirePermission(actorUserID, constants.PermSystemDerpManage); err != nil {
 		return err
 	}
 
@@ -257,7 +258,7 @@ func (s *derpService) UpdateNode(actorUserID uint, regionID int, nodeIndex int, 
 
 // DeleteNode deletes a node from a DERP region by its index
 func (s *derpService) DeleteNode(actorUserID uint, regionID int, nodeIndex int) error {
-	if err := RequirePermission(actorUserID, "headscale:derp:update"); err != nil {
+	if err := RequirePermission(actorUserID, constants.PermSystemDerpManage); err != nil {
 		return err
 	}
 

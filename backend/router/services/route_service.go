@@ -1,4 +1,4 @@
-// Copyright (C) 2026 
+// Copyright (C) 2026
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as
@@ -18,8 +18,14 @@ package services
 import (
 	"context"
 	"fmt"
+	"headscale-panel/pkg/constants"
 	"headscale-panel/pkg/unifyerror"
-	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
+	"net/netip"
+)
+
+const (
+	exitRouteIPv4 = "0.0.0.0/0"
+	exitRouteIPv6 = "::/0"
 )
 
 type routeService struct{}
@@ -44,13 +50,13 @@ func (s *routeService) ListRoutes(actorUserID uint, page, pageSize int, userFilt
 }
 
 func (s *routeService) ListRoutesWithContext(ctx context.Context, actorUserID uint, page, pageSize int, userFilter string, machineIDFilter string) ([]HeadscaleRoute, int64, error) {
-	if err := RequirePermission(actorUserID, "headscale:route:list"); err != nil {
+	if err := RequirePermission(actorUserID, constants.PermNetworkRouteList); err != nil {
 		return nil, 0, err
 	}
 	page, pageSize = normalizePagination(page, pageSize)
-	client, err := headscaleServiceClient()
+	client, err := headscaleRESTClient()
 	if err != nil {
-		return nil, 0, unifyerror.GRPCError(err)
+		return nil, 0, err
 	}
 	scope, err := loadActorScope(actorUserID)
 	if err != nil {
@@ -60,32 +66,32 @@ func (s *routeService) ListRoutesWithContext(ctx context.Context, actorUserID ui
 	queryCtx, cancel := withServiceTimeout(ctx)
 	defer cancel()
 
-	resp, grpcErr := client.ListNodes(queryCtx, &v1.ListNodesRequest{})
-	if grpcErr != nil {
-		return nil, 0, unifyerror.GRPCError(grpcErr)
+	nodes, listErr := client.ListNodes(queryCtx, "")
+	if listErr != nil {
+		return nil, 0, unifyerror.HeadscaleAPIError(listErr)
 	}
 
 	allRoutes := make([]HeadscaleRoute, 0)
-	for _, node := range resp.Nodes {
+	for i := range nodes {
+		node := &nodes[i]
 		if !actorCanAccessNode(scope, node) {
 			continue
 		}
-		userName := ""
-		if node.User != nil {
-			userName = node.User.Name
-		}
+		nodeID := parseHSUserID(node.Id)
+		userName := node.User.Name
 
-		// Build approved set
-		approvedSet := make(map[string]bool)
+		// approvedRoutes is the state the operator controls; availableRoutes is
+		// what the node advertises. A route only matters when both exist, but the
+		// list shows advertised ones so a not-yet-approved route is visible.
+		approvedSet := make(map[string]bool, len(node.ApprovedRoutes))
 		for _, r := range node.ApprovedRoutes {
 			approvedSet[r] = true
 		}
 
-		// available_routes contains all routes the node advertises
 		for _, cidr := range node.AvailableRoutes {
 			route := HeadscaleRoute{
-				ID:          fmt.Sprintf("%d-%s", node.Id, cidr),
-				MachineID:   node.Id,
+				ID:          fmt.Sprintf("%d-%s", nodeID, cidr),
+				MachineID:   nodeID,
 				MachineName: node.GivenName,
 				UserName:    userName,
 				Destination: cidr,
@@ -146,10 +152,13 @@ func (s *routeService) EnableRoute(actorUserID uint, machineID uint64, destinati
 }
 
 func (s *routeService) EnableRouteWithContext(ctx context.Context, actorUserID uint, machineID uint64, destination string) error {
-	if err := RequirePermission(actorUserID, "headscale:route:enable"); err != nil {
+	if err := RequirePermission(actorUserID, constants.PermNetworkRouteUpdate); err != nil {
 		return err
 	}
-	client, err := headscaleServiceClient()
+	if err := validateMaskedCIDR(destination); err != nil {
+		return err
+	}
+	client, err := headscaleRESTClient()
 	if err != nil {
 		return err
 	}
@@ -157,46 +166,29 @@ func (s *routeService) EnableRouteWithContext(ctx context.Context, actorUserID u
 	queryCtx, cancel := withServiceTimeout(ctx)
 	defer cancel()
 
-	// Get current node state
-	node, grpcErr := client.GetNode(queryCtx, &v1.GetNodeRequest{
-		NodeId: machineID,
-	})
-	if grpcErr != nil {
-		return unifyerror.GRPCError(grpcErr)
+	node, getErr := client.GetNode(queryCtx, machineID)
+	if getErr != nil {
+		return unifyerror.HeadscaleAPIError(getErr)
 	}
-	if err := ensureActorCanAccessNode(actorUserID, node.Node); err != nil {
+	if err := ensureActorCanAccessNode(actorUserID, node); err != nil {
 		return err
 	}
 
-	// Determine routes to add
 	routesToAdd := []string{destination}
 	if isExitNodeRoute(destination) {
-		routesToAdd = []string{"0.0.0.0/0", "::/0"}
+		routesToAdd = []string{exitRouteIPv4, exitRouteIPv6}
 	}
 
-	// Add routes to approved routes if not present
-	approvedRoutes := node.Node.ApprovedRoutes
-	for _, newRoute := range routesToAdd {
-		exists := false
-		for _, r := range approvedRoutes {
-			if r == newRoute {
-				exists = true
-				break
-			}
-		}
-		if !exists {
-			approvedRoutes = append(approvedRoutes, newRoute)
+	approved := append([]string(nil), node.ApprovedRoutes...)
+	for _, wanted := range routesToAdd {
+		if !containsString(approved, wanted) {
+			approved = append(approved, wanted)
 		}
 	}
 
-	_, grpcErr = client.SetApprovedRoutes(queryCtx, &v1.SetApprovedRoutesRequest{
-		NodeId: machineID,
-		Routes: approvedRoutes,
-	})
-	if grpcErr != nil {
-		return unifyerror.GRPCError(grpcErr)
+	if _, setErr := client.SetApprovedRoutes(queryCtx, machineID, approved); setErr != nil {
+		return unifyerror.HeadscaleAPIError(setErr)
 	}
-
 	return nil
 }
 
@@ -206,10 +198,10 @@ func (s *routeService) DisableRoute(actorUserID uint, machineID uint64, destinat
 }
 
 func (s *routeService) DisableRouteWithContext(ctx context.Context, actorUserID uint, machineID uint64, destination string) error {
-	if err := RequirePermission(actorUserID, "headscale:route:disable"); err != nil {
+	if err := RequirePermission(actorUserID, constants.PermNetworkRouteUpdate); err != nil {
 		return err
 	}
-	client, err := headscaleServiceClient()
+	client, err := headscaleRESTClient()
 	if err != nil {
 		return err
 	}
@@ -217,43 +209,57 @@ func (s *routeService) DisableRouteWithContext(ctx context.Context, actorUserID 
 	queryCtx, cancel := withServiceTimeout(ctx)
 	defer cancel()
 
-	// Get current node state
-	node, grpcErr := client.GetNode(queryCtx, &v1.GetNodeRequest{
-		NodeId: machineID,
-	})
-	if grpcErr != nil {
-		return unifyerror.GRPCError(grpcErr)
+	node, getErr := client.GetNode(queryCtx, machineID)
+	if getErr != nil {
+		return unifyerror.HeadscaleAPIError(getErr)
 	}
-	if err := ensureActorCanAccessNode(actorUserID, node.Node); err != nil {
+	if err := ensureActorCanAccessNode(actorUserID, node); err != nil {
 		return err
 	}
 
-	// Determine routes to remove
-	routesToRemove := map[string]bool{destination: true}
+	toRemove := map[string]bool{destination: true}
 	if isExitNodeRoute(destination) {
-		routesToRemove = map[string]bool{"0.0.0.0/0": true, "::/0": true}
+		// The exit node is selected as a pair; leaving one half behind would
+		// advertise an unreachable exit.
+		toRemove = map[string]bool{exitRouteIPv4: true, exitRouteIPv6: true}
 	}
 
-	// Remove routes from approved routes
-	approvedRoutes := []string{}
-	for _, r := range node.Node.ApprovedRoutes {
-		if !routesToRemove[r] {
-			approvedRoutes = append(approvedRoutes, r)
+	approved := make([]string, 0, len(node.ApprovedRoutes))
+	for _, r := range node.ApprovedRoutes {
+		if !toRemove[r] {
+			approved = append(approved, r)
 		}
 	}
 
-	_, grpcErr = client.SetApprovedRoutes(queryCtx, &v1.SetApprovedRoutesRequest{
-		NodeId: machineID,
-		Routes: approvedRoutes,
-	})
-	if grpcErr != nil {
-		return unifyerror.GRPCError(grpcErr)
+	if _, setErr := client.SetApprovedRoutes(queryCtx, machineID, approved); setErr != nil {
+		return unifyerror.HeadscaleAPIError(setErr)
 	}
-
 	return nil
 }
 
-// isExitNodeRoute checks if a route is an exit node route
+func containsString(values []string, want string) bool {
+	for _, v := range values {
+		if v == want {
+			return true
+		}
+	}
+	return false
+}
+
+// isExitNodeRoute checks if a route is an exit node route.
 func isExitNodeRoute(destination string) bool {
-	return destination == "::/0" || destination == "0.0.0.0/0"
+	return destination == exitRouteIPv6 || destination == exitRouteIPv4
+}
+
+// validateMaskedCIDR rejects unmasked prefixes before calling Headscale,
+// matching Headscale 0.30's strict util.CheckRouteMasked validation.
+func validateMaskedCIDR(destination string) error {
+	prefix, err := netip.ParsePrefix(destination)
+	if err != nil {
+		return unifyerror.WrongParam("destination")
+	}
+	if prefix != prefix.Masked() {
+		return unifyerror.WrongParam(fmt.Sprintf("destination (%s must be masked as %s)", destination, prefix.Masked().String()))
+	}
+	return nil
 }

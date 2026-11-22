@@ -29,22 +29,22 @@ import { ThemeProvider } from './contexts/ThemeContext';
 import { I18nProvider } from './i18n/I18nProvider';
 import { useI18n } from './i18n/index';
 import { ThemeMode } from './lib/enums';
-import { DASHBOARD_PERMISSIONS, METRICS_PERMISSIONS, SELF_DEVICE_PERMISSIONS } from './lib/permissions';
+import { DASHBOARD_PERMISSIONS, METRICS_PERMISSIONS, PermissionCode, SELF_DEVICE_PERMISSIONS } from './lib/permissions';
 import { useAuthStore, useSystemStatusStore } from './lib/store';
+import Accounts from './pages/Accounts';
 import ACL from './pages/ACL';
 import Dashboard from './pages/Dashboard';
 import Devices from './pages/Devices';
 import DNS from './pages/DNS';
 import Login from './pages/Login';
 import Metrics from './pages/Metrics';
-import PanelAccounts from './pages/PanelAccounts';
+import NetworkIdentities from './pages/NetworkIdentities';
 import Profile from './pages/Profile';
 import Resources from './pages/Resources';
 import Routes from './pages/Routes';
 import Settings from './pages/Settings';
 import SetupWelcome from './pages/SetupWelcome';
 import Unauthorized from './pages/Unauthorized';
-import Users from './pages/Users';
 
 const BASE = '/panel';
 
@@ -139,11 +139,11 @@ function AppRoutes() {
       <Route path="/devices">
         <ProtectedRoute requiredPermissions={[...SELF_DEVICE_PERMISSIONS]}><Devices /></ProtectedRoute>
       </Route>
-      <Route path="/users">
-        <ProtectedRoute requireAdmin><Users /></ProtectedRoute>
+      <Route path="/network-identities">
+        <ProtectedRoute requiredPermissions={[PermissionCode.NetworkIdentityList]}><NetworkIdentities /></ProtectedRoute>
       </Route>
       <Route path="/routes">
-        <ProtectedRoute requiredPermissions={['headscale:route:list']}><Routes /></ProtectedRoute>
+        <ProtectedRoute requiredPermissions={[PermissionCode.NetworkRouteList]}><Routes /></ProtectedRoute>
       </Route>
       <Route path="/resources">
         <ProtectedRoute requireAdmin><Resources /></ProtectedRoute>
@@ -160,8 +160,8 @@ function AppRoutes() {
       <Route path="/dns">
         <ProtectedRoute requireAdmin><DNS /></ProtectedRoute>
       </Route>
-      <Route path="/panel-accounts">
-        <ProtectedRoute requireAdmin><PanelAccounts /></ProtectedRoute>
+      <Route path="/accounts">
+        <ProtectedRoute requiredPermissions={[PermissionCode.AccountList]}><Accounts /></ProtectedRoute>
       </Route>
       <Route path="/profile">
         <ProtectedRoute><Profile /></ProtectedRoute>

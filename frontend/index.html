@@ -7,6 +7,12 @@
       name="viewport"
       content="width=device-width, initial-scale=1.0, maximum-scale=1" />
     <title>Headscale Panel</title>
+    <!--
+      Applies the stored theme before the first paint, so a dark-mode user does not
+      see a white flash while the bundle loads. It is an external file because the
+      panel's CSP is `script-src 'self'`, which blocks inline scripts.
+    -->
+    <script src="/panel/theme-init.js"></script>
   </head>
 
   <body>

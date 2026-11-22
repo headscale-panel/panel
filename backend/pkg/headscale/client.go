@@ -16,25 +16,16 @@
 package headscale
 
 import (
-	"context"
-	"crypto/tls"
-	"crypto/x509"
 	"fmt"
 	"headscale-panel/pkg/conf"
-	"headscale-panel/pkg/constants"
+	"headscale-panel/pkg/hsapi"
 	"sync"
 	"time"
-
-	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
-
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials"
-	"google.golang.org/grpc/credentials/insecure"
 )
 
+// Client is the panel's handle on the Headscale API.
 type Client struct {
-	Conn      *grpc.ClientConn
-	Service   v1.HeadscaleServiceClient
+	REST      *hsapi.Client
 	createdAt time.Time
 }
 
@@ -43,21 +34,18 @@ var (
 	clientMu     sync.Mutex
 )
 
-// GetOrRefreshClient returns the current global gRPC client, reinitialising it
-// if the connection has exceeded GRPCConnectionTTL or has not been created yet.
-// Safe for concurrent use.
+// GetOrRefreshClient returns the current global client, building it from the
+// runtime configuration when it has not been created yet. Safe for concurrent
+// use.
+//
+// The REST transport is stateless, so there is no connection to age out; the
+// client is only rebuilt after the connection settings change (Close + Init).
 func GetOrRefreshClient() (*Client, error) {
 	clientMu.Lock()
 	defer clientMu.Unlock()
 
-	if GlobalClient != nil && time.Since(GlobalClient.createdAt) < constants.GRPCConnectionTTL {
+	if GlobalClient != nil {
 		return GlobalClient, nil
-	}
-
-	// Close stale connection before creating a new one.
-	if GlobalClient != nil && GlobalClient.Conn != nil {
-		_ = GlobalClient.Conn.Close()
-		GlobalClient = nil
 	}
 
 	if err := initLocked(); err != nil {
@@ -72,77 +60,47 @@ func Init() error {
 	return initLocked()
 }
 
-// initLocked creates a new gRPC connection. Must be called with clientMu held.
+// initLocked builds a REST client. Must be called with clientMu held.
 func initLocked() error {
-	addr := conf.Conf.Headscale.GRPCAddr
+	addr := conf.Conf.Headscale.APIAddr
 	apiKey := conf.Conf.Headscale.APIKey
 	if addr == "" {
-		return fmt.Errorf("headscale grpc address is empty; persisted connection settings may not have loaded")
+		return fmt.Errorf("headscale API address is empty; persisted connection settings may not have loaded")
 	}
 	if apiKey == "" {
 		return fmt.Errorf("headscale api key is empty; persisted encrypted secret may not decrypt with the current JWT_SECRET")
 	}
 
-	perRPC := &apiKeyAuth{
-		apiKey:                 apiKey,
-		allowInsecureTransport: conf.Conf.Headscale.Insecure,
-	}
-
-	var creds credentials.TransportCredentials
-	if conf.Conf.Headscale.Insecure {
-		creds = insecure.NewCredentials()
-	} else {
-		tlsCfg := &tls.Config{
-			MinVersion:         tls.VersionTLS12,
-			InsecureSkipVerify: conf.Conf.Headscale.TLSSkipVerify, //nolint:gosec // user-opt-in
-		}
-		if pem := conf.Conf.Headscale.TLSCACert; pem != "" && !conf.Conf.Headscale.TLSSkipVerify {
-			pool := x509.NewCertPool()
-			if pool.AppendCertsFromPEM([]byte(pem)) {
-				tlsCfg.RootCAs = pool
-			}
-		}
-		creds = credentials.NewTLS(tlsCfg)
-	}
-
-	opts := []grpc.DialOption{
-		grpc.WithTransportCredentials(creds),
-		grpc.WithPerRPCCredentials(perRPC),
-	}
-
-	conn, err := grpc.NewClient(addr, opts...)
+	rest, err := hsapi.New(hsapi.Config{
+		BaseURL:       addr,
+		APIKey:        apiKey,
+		Insecure:      conf.Conf.Headscale.Insecure,
+		TLSSkipVerify: conf.Conf.Headscale.TLSSkipVerify,
+		TLSCACert:     conf.Conf.Headscale.TLSCACert,
+		CacheTTL:      2 * time.Second,
+	})
 	if err != nil {
 		return err
 	}
 
 	GlobalClient = &Client{
-		Conn:      conn,
-		Service:   v1.NewHeadscaleServiceClient(conn),
+		REST:      rest,
 		createdAt: time.Now(),
 	}
 	return nil
 }
 
-type apiKeyAuth struct {
-	apiKey                 string
-	allowInsecureTransport bool
-}
-
-func (a *apiKeyAuth) GetRequestMetadata(ctx context.Context, uri ...string) (map[string]string, error) {
-	return map[string]string{
-		"authorization": "Bearer " + a.apiKey,
-	}, nil
-}
-
-func (a *apiKeyAuth) RequireTransportSecurity() bool {
-	return !a.allowInsecureTransport
+// Connected reports whether a client has been built. The REST transport holds
+// no connection handle, so this means "configured", not "reachable"; use
+// hsapi.Probe for reachability.
+func Connected() bool {
+	clientMu.Lock()
+	defer clientMu.Unlock()
+	return GlobalClient != nil
 }
 
 func Close() {
 	clientMu.Lock()
 	defer clientMu.Unlock()
-	if GlobalClient != nil && GlobalClient.Conn != nil {
-		_ = GlobalClient.Conn.Close()
-		GlobalClient = nil
-	}
+	GlobalClient = nil
 }

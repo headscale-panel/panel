@@ -4,6 +4,7 @@ export default antfu(
   {
     react: true,
     typescript: true,
+    test: false,
     stylistic: {
       semi: true,
       quotes: 'single',

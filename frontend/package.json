@@ -5,7 +5,7 @@
   "packageManager": "pnpm@10.33.1",
   "license": "AGPL-3.0-only",
   "engines": {
-    "node": ">=24",
+    "node": ">=26",
     "pnpm": ">=10.33"
   },
   "scripts": {
@@ -14,7 +14,6 @@
     "start": "vite preview --host",
     "preview": "vite preview --host",
     "check": "tsc --noEmit",
-    "test": "vitest run",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix"
   },
@@ -50,8 +49,7 @@
     "tsx": "^4.21.0",
     "typescript": "6.0.3",
     "unocss": "^66.6.8",
-    "vite": "8.0.8",
-    "vitest": "^4.1.4"
+    "vite": "8.0.8"
   },
   "pnpm": {
     "overrides": {

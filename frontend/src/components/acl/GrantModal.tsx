@@ -24,11 +24,13 @@ interface GrantModalProps {
   editingGrant: GrantRuleValue | null;
   editingIndex: number;
   policy: ACLPolicy | null;
+  /* Optimistic-lock token from the read that produced `policy`. */
+  policyUpdatedAt?: string;
   onCancel: () => void;
   onSuccess: () => void;
 }
 
-export default function GrantModal({ open, editingGrant, editingIndex, policy, onCancel, onSuccess }: GrantModalProps) {
+export default function GrantModal({ open, editingGrant, editingIndex, policy, policyUpdatedAt, onCancel, onSuccess }: GrantModalProps) {
   const t = useTranslation();
   const [src, setSrc] = useState<string[]>([]);
   const [dst, setDst] = useState<string[]>([]);
@@ -74,7 +76,7 @@ export default function GrantModal({ open, editingGrant, editingIndex, policy, o
 
     setSaving(true);
     try {
-      await aclApi.updatePolicy({ ...policy, grants });
+      await aclApi.updatePolicy({ ...policy, grants, expectedUpdatedAt: policyUpdatedAt });
       message.success(editingIndex >= 0 ? t.acl.grantUpdated : t.acl.grantAdded);
       onCancel();
       onSuccess();

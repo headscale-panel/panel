@@ -7,7 +7,7 @@
  * License, or (at your option) any later version.
  */
 
-import type { GraphData, GraphOptions, IElementEvent, NodeData } from '@antv/g6';
+import type { GraphData, GraphOptions, IElementEvent, IEvent, NodeData } from '@antv/g6';
 import type {
   DeviceType,
   TopologyData,
@@ -36,6 +36,7 @@ import {
   ExtensionCategory,
   getExtension,
   Graph,
+  GraphEvent,
   NodeEvent,
   register,
 } from '@antv/g6';
@@ -47,8 +48,10 @@ import {
   buildACLIndex,
   buildGraphData,
   canAccess,
+  detailLevelForZoom,
   deviceRingRank,
   identityColor,
+  identityColorIndex,
   normalizeTopology,
 } from './topology/topologyGraph';
 import { TopologyNode } from './topology/TopologyNode';
@@ -321,7 +324,17 @@ export default function NetworkTopology({ data, deviceStatuses }: NetworkTopolog
   );
   topologyRef.current = topologyData;
 
-  const graphData = useMemo(() => topologyData ? buildGraphData(topologyData) : { nodes: [], edges: [], combos: [] }, [topologyData]);
+  // A selected device stays visible even when the per-identity cap would hide it:
+  // collapsing the thing the operator just clicked would look like the click failed.
+  const alwaysVisible = useMemo(
+    () => new Set(selectedDevice ? [selectedDevice.id] : []),
+    [selectedDevice],
+  );
+
+  const graphData = useMemo(
+    () => (topologyData ? buildGraphData(topologyData, alwaysVisible) : { nodes: [], edges: [], combos: [] }),
+    [topologyData, alwaysVisible],
+  );
 
   const dynamicHeight = useMemo(() => {
     const count = topologyData?.devices.length || 0;
@@ -348,7 +361,33 @@ export default function NetworkTopology({ data, deviceStatuses }: NetworkTopolog
     graph.on(ComboEvent.CLICK, (event) => graph.setElementState(String((event as IElementEvent).target.id), ['selected'], true));
     graph.on(CanvasEvent.CLICK, clearSelection);
 
+    // Detail level follows the viewport scale. It is applied as a node-data update
+    // rather than by re-rendering custom shapes, so G6 can diff it.
+    let appliedLevel = -1;
+    let disposed = false;
+    const applyDetailLevel = (event: IEvent) => {
+      const payload = event as { data?: { zoom?: number } };
+      // The zoom comes from the event payload rather than from graph.getZoom():
+      // the event also fires while the viewport controller is still being built or
+      // already torn down, and getZoom() throws in both cases.
+      const zoom = payload.data?.zoom;
+      if (disposed || graph.destroyed || typeof zoom !== 'number')
+        return;
+      const level = detailLevelForZoom(zoom);
+      if (level === appliedLevel)
+        return;
+      appliedLevel = level;
+      graph.updateNodeData(
+        graph.getNodeData().map((node) => ({ id: node.id, data: { detailLevel: level } })),
+      );
+      graph.draw().catch((error) => console.error('Failed to apply detail level', error));
+    };
+    graph.on(GraphEvent.AFTER_TRANSFORM, applyDetailLevel);
+    graph.on(GraphEvent.AFTER_DRAW, () => { appliedLevel = -1; });
+
     return () => {
+      disposed = true;
+      graph.off(GraphEvent.AFTER_TRANSFORM, applyDetailLevel);
       graph.destroy();
       graphRef.current = undefined;
       previousStructureRef.current = '';
@@ -621,10 +660,10 @@ export default function NetworkTopology({ data, deviceStatuses }: NetworkTopolog
                 </Tag>
               </div>
               <div className="max-h-80 overflow-auto pr-1 flex flex-col gap-3">
-                {Object.entries(aclGroups).map(([userName, devices], groupIndex) => (
+                {Object.entries(aclGroups).map(([userName, devices]) => (
                   <div key={userName}>
                     <div className="flex items-center gap-2 mb-2" style={{ fontSize: 12, color: token.colorTextSecondary }}>
-                      <span style={{ width: 20, height: 20, borderRadius: 7, display: 'grid', placeItems: 'center', background: `${identityColor(groupIndex)}20`, color: identityColor(groupIndex), fontWeight: 700 }}>{userName.charAt(0).toUpperCase()}</span>
+                      <span style={{ width: 20, height: 20, borderRadius: 7, display: 'grid', placeItems: 'center', background: `${identityColor(identityColorIndex(devices[0]?.device.userId || userName))}20`, color: identityColor(identityColorIndex(devices[0]?.device.userId || userName)), fontWeight: 700 }}>{userName.charAt(0).toUpperCase()}</span>
                       {userName}
                       <Text type="secondary">
                         (

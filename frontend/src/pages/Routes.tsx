@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2026 
+ * Copyright (C) 2026
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -16,6 +16,7 @@
  */
 
 import type { ColumnsType } from 'antd/es/table';
+import type { Route } from '@/api/entities';
 import { CheckCircleOutlined, CloseCircleOutlined, GlobalOutlined, LaptopOutlined, NodeIndexOutlined, ReloadOutlined, SearchOutlined, UserOutlined } from '@ant-design/icons';
 import { useRequest } from 'ahooks';
 import { Button, Card, Input, message, Select, Switch, Table, Tag, theme, Typography } from 'antd';
@@ -27,17 +28,6 @@ import PageHeaderStatCards from '@/components/PageHeaderStatCards';
 import { useTranslation } from '@/i18n/index';
 
 const { Title, Text } = Typography;
-
-interface Route {
-  id: string;
-  machine_id: number;
-  machine_name: string;
-  user_name: string;
-  destination: string;
-  enabled: boolean;
-  advertised: boolean;
-  is_exit_node: boolean;
-}
 
 function isExitNode(destination: string) {
   return destination === '::/0' || destination === '0.0.0.0/0';
@@ -55,7 +45,7 @@ export default function Routes() {
   const [filterStatus, setFilterStatus] = useState<string>('all');
 
   const { data: listData, loading, refresh } = useRequest(
-    async () => routeApi.list({ all: true }),
+    async () => routeApi.list(),
     {
       onError: (_error: any) => {
         message.error(t.routes.loadFailed);
@@ -63,14 +53,14 @@ export default function Routes() {
     },
   );
 
-  const routes: Route[] = (Array.isArray(listData) ? listData : listData?.list || []) as any;
+  const routes: Route[] = listData ?? [];
 
   const handleToggle = async (route: Route) => {
     try {
       if (route.enabled) {
-        await routeApi.disable({ machine_id: route.machine_id, destination: route.destination });
+        await routeApi.disable({ nodeId: route.machine_id, destination: route.destination });
       } else {
-        await routeApi.enable({ machine_id: route.machine_id, destination: route.destination });
+        await routeApi.enable({ nodeId: route.machine_id, destination: route.destination });
       }
       const isExit = isExitNode(route.destination);
       message.success(isExit ? (route.enabled ? t.routes.exitNodeDisabled : t.routes.exitNodeEnabled) : (route.enabled ? t.routes.routeDisabled : t.routes.routeEnabled));
@@ -180,7 +170,7 @@ export default function Routes() {
             { label: t.routes.totalRoutes, value: stats.total, icon: <NodeIndexOutlined className="stat-icon-primary" />, watermark: 'ALL' },
             { label: t.routes.enabled, value: stats.enabled, icon: <CheckCircleOutlined className="stat-icon-success" />, watermark: 'ON' },
             { label: t.routes.disabled, value: stats.disabled, icon: <CloseCircleOutlined className="stat-icon-muted" />, watermark: 'OFF' },
-            { label: 'Exit Nodes', value: stats.exitNodes, icon: <GlobalOutlined className="stat-icon-accent" />, watermark: 'EXIT' },
+            { label: t.routes.exitNodes, value: stats.exitNodes, icon: <GlobalOutlined className="stat-icon-accent" />, watermark: 'EXIT' },
           ]}
         />
 

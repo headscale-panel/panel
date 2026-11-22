@@ -1,4 +1,4 @@
-// Copyright (C) 2026 
+// Copyright (C) 2026
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as
@@ -16,10 +16,10 @@
 package controllers
 
 import (
-	"net/http"
 	"headscale-panel/pkg/constants"
 	"headscale-panel/pkg/unifyerror"
 	"headscale-panel/router/services"
+	"net/http"
 	"strconv"
 
 	"github.com/gin-gonic/gin"

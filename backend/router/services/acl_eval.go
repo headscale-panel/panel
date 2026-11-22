@@ -18,9 +18,10 @@ package services
 import (
 	"context"
 	"encoding/json"
-	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
+	"errors"
 	"headscale-panel/model"
 	"headscale-panel/pkg/acl"
+	"headscale-panel/pkg/hsapi"
 	"headscale-panel/pkg/unifyerror"
 	"strings"
 )
@@ -36,6 +37,11 @@ func CanActorAccessIP(ctx context.Context, actorUserID uint, targetIP string) (b
 		return true, nil
 	}
 
+	aliases, err := scope.policyUsernames(ctx)
+	if err != nil {
+		return false, nil
+	}
+
 	policy, err := fetchACLPolicyRaw(ctx)
 	if err != nil {
 		return false, nil
@@ -48,14 +54,14 @@ func CanActorAccessIP(ctx context.Context, actorUserID uint, targetIP string) (b
 		if rule.Action != "accept" {
 			continue
 		}
-		for name := range scope.headscaleNames {
+		for name := range aliases {
 			if acl.IsUserInRuleSources(policy, name, rule) && acl.DoesRuleAllowIP(policy, rule, targetIP) {
 				return true, nil
 			}
 		}
 	}
 	for _, grant := range policy.Grants {
-		for name := range scope.headscaleNames {
+		for name := range aliases {
 			if acl.IsUserInGrantSources(policy, name, grant) && acl.DoesGrantAllowIP(policy, grant, targetIP) {
 				return true, nil
 			}
@@ -75,6 +81,11 @@ func FilterResourcesByACL(ctx context.Context, actorUserID uint, resources []mod
 		return resources, nil
 	}
 
+	aliases, err := scope.policyUsernames(ctx)
+	if err != nil {
+		return []model.Resource{}, nil
+	}
+
 	policy, err := fetchACLPolicyRaw(ctx)
 	if err != nil {
 		return []model.Resource{}, nil
@@ -88,7 +99,7 @@ func FilterResourcesByACL(ctx context.Context, actorUserID uint, resources []mod
 		if rule.Action != "accept" {
 			continue
 		}
-		for name := range scope.headscaleNames {
+		for name := range aliases {
 			if acl.IsUserInRuleSources(policy, name, rule) {
 				actorRules = append(actorRules, rule)
 				break
@@ -100,7 +111,7 @@ func FilterResourcesByACL(ctx context.Context, actorUserID uint, resources []mod
 		if !acl.GrantHasNetworkAccess(grant) {
 			continue
 		}
-		for name := range scope.headscaleNames {
+		for name := range aliases {
 			if acl.IsUserInGrantSources(policy, name, grant) {
 				actorGrants = append(actorGrants, grant)
 				break
@@ -135,20 +146,27 @@ func FilterResourcesByACL(ctx context.Context, actorUserID uint, resources []mod
 
 // fetchACLPolicyRaw fetches the current ACL policy from Headscale without permission checks.
 func fetchACLPolicyRaw(ctx context.Context) (*model.ACLPolicyStructure, error) {
-	client, err := headscaleServiceClient()
+	client, err := headscaleRESTClient()
 	if err != nil {
-		return nil, unifyerror.GRPCError(err)
+		return nil, err
 	}
 
 	queryCtx, cancel := withServiceTimeout(ctx)
 	defer cancel()
 
-	resp, grpcErr := client.GetPolicy(queryCtx, &v1.GetPolicyRequest{})
-	if grpcErr != nil {
-		return nil, unifyerror.GRPCError(grpcErr)
+	resp, apiErr := client.GetPolicy(queryCtx)
+	if apiErr != nil {
+		// An unstored policy means nothing is permitted yet, not that the read failed.
+		if errors.Is(apiErr, hsapi.ErrNoPolicy) {
+			return &model.ACLPolicyStructure{}, nil
+		}
+		return nil, unifyerror.HeadscaleAPIError(apiErr)
 	}
 
-	raw := strings.TrimSpace(resp.Policy)
+	raw := ""
+	if resp != nil {
+		raw = strings.TrimSpace(resp.Policy)
+	}
 	if raw == "" || strings.EqualFold(raw, "null") {
 		return &model.ACLPolicyStructure{}, nil
 	}

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2026 
+ * Copyright (C) 2026
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -16,69 +16,77 @@
  */
 
 import type {
+  AuthStatusRes,
+  ChangePasswordReq,
   EnableTOTPReq,
   GenerateTOTPRes,
   LoginReq,
   LoginRes,
-  MarkGuideTourSeenReq,
-  MarkGuideTourSeenRes,
-  OidcCallbackReq,
-  OidcCallbackRes,
-  OidcCreateHeadscaleUserCallbackRes,
-  OidcStatusReq,
-  OidcStatusRes,
+  MeRes,
   RegisterReq,
   RegisterRes,
-  UserInfoReq,
-  UserInfoRes,
 } from './auth.types';
+import type { NetworkIdentity } from './entities';
 import type { RespType } from '@/lib/request';
 import request from '@/lib/request';
 
+/**
+ * The panel's own sign-in endpoints.
+ *
+ * The panel is an OIDC *client* here. The panel acting as a provider for
+ * headscale is a separate surface (idpApi) with its own endpoints.
+ */
 export const authApi = {
   login: (req: LoginReq) =>
-    request<RespType<LoginRes>>({ url: '/login', method: 'POST', data: req }),
+    request<RespType<LoginRes>>({ url: '/auth/login', method: 'POST', data: req }),
 
   register: (req: RegisterReq) =>
-    request<RespType<RegisterRes>>({ url: '/register', method: 'POST', data: req }),
+    request<RespType<RegisterRes>>({ url: '/auth/register', method: 'POST', data: req }),
 
-  getUserInfo: (_req?: UserInfoReq) =>
-    request<RespType<UserInfoRes>>({ url: '/user/info', method: 'GET' }),
+  logout: () =>
+    request<RespType<{ message: string }>>({ url: '/auth/logout', method: 'POST' }),
 
-  markGuideTourSeen: (_req?: MarkGuideTourSeenReq) =>
-    request<RespType<MarkGuideTourSeenRes>>({ url: '/user/guide-tour/seen', method: 'POST' }),
+  status: () =>
+    request<RespType<AuthStatusRes>>({ url: '/auth/status', method: 'GET' }),
 
-  oidcLogin: () =>
-    request<RespType<{ url?: string }>>({ url: '/auth/oidc/login', method: 'GET' }),
+  me: () => request<RespType<MeRes>>({ url: '/me', method: 'GET' }),
 
-  oidcCallback: (req: OidcCallbackReq) =>
-    request<RespType<OidcCallbackRes>>({
-      url: '/auth/oidc/callback',
-      method: 'GET',
-      params: req,
-    }),
+  changePassword: (req: ChangePasswordReq) =>
+    request<RespType<{ message: string }>>({ url: '/me/password', method: 'PUT', data: req }),
 
-  oidcCreateHeadscaleUserLogin: () =>
-    request<RespType<{ url?: string; redirect_url?: string }>>({
-      url: '/auth/oidc/headscale-user/login',
-      method: 'GET',
-    }),
+  markGuideTourSeen: () =>
+    request<RespType<{ message: string }>>({ url: '/me/guide-tour/seen', method: 'POST' }),
 
-  oidcCreateHeadscaleUserCallback: (req: OidcCallbackReq) =>
-    request<RespType<OidcCreateHeadscaleUserCallbackRes>>({
-      url: '/auth/oidc/headscale-user/callback',
-      method: 'GET',
-      params: req,
-    }),
+  resetGuideTour: () =>
+    request<RespType<{ message: string }>>({ url: '/me/guide-tour/reset', method: 'POST' }),
 
   generateTOTP: () =>
-    request<RespType<GenerateTOTPRes>>({ url: '/user/totp/generate', method: 'POST' }),
+    request<RespType<GenerateTOTPRes>>({ url: '/me/totp/generate', method: 'POST' }),
 
   enableTOTP: (req: EnableTOTPReq) =>
-    request<RespType<void>>({ url: '/user/totp/enable', method: 'POST', data: req }),
+    request<RespType<{ message: string }>>({ url: '/me/totp/enable', method: 'POST', data: req }),
+
+  disableTOTP: () =>
+    request<RespType<{ message: string }>>({ url: '/me/totp', method: 'DELETE' }),
+
+  /**
+   * Absolute URL that starts the panel SSO flow.
+   *
+   * A full navigation is required: the browser has to leave the app, visit the
+   * external identity provider, and come back. On return the backend redirects to
+   * the app with the token in the URL fragment.
+   */
+  panelSSOLoginURL: () => `${apiBase()}/auth/panel-sso/login`,
+
+  /** The tailnet identities owned by the signed-in account. */
+  meNetworkIdentities: () =>
+    request<RespType<NetworkIdentity[]>>({ url: '/me/network-identities', method: 'GET' }),
 };
 
-export const publicAuthApi = {
-  oidcStatus: (_req?: OidcStatusReq) =>
-    request<RespType<OidcStatusRes>>({ url: '/auth/oidc-status', method: 'GET' }),
-};
+/** Base URL of the panel API, honouring a deployment under a path prefix. */
+function apiBase(): string {
+  const configured = import.meta.env.VITE_API_URL || '/panel/api/v1';
+  if (/^https?:\/\//.test(configured))
+    return configured.replace(/\/+$/, '');
+  return `${window.location.origin}${configured}`.replace(/\/+$/, '');
+}

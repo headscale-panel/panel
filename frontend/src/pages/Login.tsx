@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2026 
+ * Copyright (C) 2026
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -20,14 +20,9 @@ import { useRequest } from 'ahooks';
 import { Button, Card, Divider, Input, message, Space, Spin, theme, Typography } from 'antd';
 import { useCallback, useEffect, useState } from 'react';
 import { useLocation, useSearch } from 'wouter';
-import { authApi, publicAuthApi } from '@/api';
+import { authApi } from '@/api';
 import { availableLocales, locales, useI18n, useTranslation } from '@/i18n/index';
-import {
-  clearOidcCreateHeadscaleUserIntent,
-  consumeAuthNotice,
-  hasOidcCreateHeadscaleUserIntent,
-  normalizeLoginReturnUrl,
-} from '@/lib/auth';
+import { consumeAuthNotice, normalizeLoginReturnUrl } from '@/lib/auth';
 import { UserRole } from '@/lib/enums';
 import { getDefaultRouteForUser } from '@/lib/permissions';
 import { useAuthStore } from '@/lib/store';
@@ -47,7 +42,7 @@ export default function Login() {
   const [totpRequired, setTotpRequired] = useState(false);
   const [totpCode, setTotpCode] = useState('');
   const [oidcLoading, setOidcLoading] = useState(false);
-  const [oidcStatus, setOidcStatus] = useState<{ enabled: boolean; provider_name: string } | null>(null);
+  const [ssoStatus, setSsoStatus] = useState<{ enabled: boolean } | null>(null);
 
   useEffect(() => {
     if (isAuthenticated)
@@ -64,14 +59,13 @@ export default function Login() {
   }, [t]);
 
   useRequest(
-    async () => publicAuthApi.oidcStatus(),
+    async () => authApi.status(),
     {
-      onSuccess: (data: any) => {
-        if (data?.enabled)
-          setOidcStatus(data);
+      onSuccess: (data) => {
+        setSsoStatus({ enabled: Boolean(data?.panel_sso) });
       },
       onError: () => {
-        // Ignore status load failure on login page to avoid noisy UX.
+        // A failed status probe must not break the password form.
       },
     },
   );
@@ -82,63 +76,56 @@ export default function Login() {
     { manual: true },
   );
 
-  useEffect(() => {
-    const params = new URLSearchParams(search);
-    const code = params.get('code');
-    const state = params.get('state');
-    if (code && state)
-      handleOIDCCallback(code, state);
-  }, [search]);
-
-  const parseUserAuth = useCallback((data: any) => {
-    const u = data.user;
+  const parseUserAuth = useCallback((data: { token: string; account: any; permissions: string[] }) => {
+    const account = data.account;
     const nextUser = {
-      id: u.id,
-      username: u.username,
-      email: u.email || '',
-      role: u.role === UserRole.Admin || u.group?.name?.toLowerCase() === UserRole.Admin ? UserRole.Admin : UserRole.User,
-      headscale_name: u.headscale_name || u.username,
-      display_name: u.display_name,
+      id: account.id,
+      username: account.username,
+      email: account.email || '',
+      // Administrator status is a role flag, not a role name: roles are renameable.
+      role: account.is_system_admin ? UserRole.Admin : UserRole.User,
+      headscale_name: account.username,
+      display_name: account.display_name,
       permissions: data.permissions,
-      guide_tour_seen_at: u.guide_tour_seen_at ?? null,
-      totp_enabled: u.totp_enabled ?? false,
+      guide_tour_seen_at: account.guide_tour_seen ? '' : null,
+      totp_enabled: account.totp_enabled ?? false,
     };
     setAuth(data.token, nextUser);
     return nextUser;
   }, [setAuth]);
 
-  const handleOIDCCallback = useCallback(async (code: string, state: string) => {
-    setOidcLoading(true);
-    try {
-      const isCreateHeadscaleUserFlow = hasOidcCreateHeadscaleUserIntent();
-      if (isCreateHeadscaleUserFlow) {
-        const data: any = await authApi.oidcCreateHeadscaleUserCallback({ code, state });
-        if (data?.user) {
-          const username = data.user.name || data.user.display_name || 'OIDC';
-          const notice = data.updated_existing ? t.users.updateUserSuccess : t.users.createUserSuccess.replace('{username}', username);
-          message.success(notice);
-          setLocation('/users');
-        } else {
-          message.error(t.login.oidcVerifyFailed);
-        }
-      } else {
-        const data: any = await authApi.oidcCallback({ code, state });
-        if (data?.token && data?.user) {
-          const nextUser = parseUserAuth(data);
-          message.success(t.login.oidcLoginSuccess);
-          setLocation(getDefaultRouteForUser(nextUser));
-        } else {
-          message.error(t.login.oidcVerifyFailed);
-        }
-      }
-    } catch {
-      message.error(t.login.oidcLoginFailed);
-    } finally {
-      clearOidcCreateHeadscaleUserIntent();
-      setOidcLoading(false);
-      window.history.replaceState({}, '', window.location.pathname);
-    }
-  }, [parseUserAuth, setLocation, t]);
+  // The SSO round trip ends with the backend redirecting here and putting the
+  // token in the URL fragment. Read it once, store it, then scrub the address bar
+  // so a screenshot or a shared link cannot leak it.
+  useEffect(() => {
+    const match = /(?:^#|&)sso_token=([^&]+)/.exec(window.location.hash);
+    if (!match)
+      return;
+
+    const token = decodeURIComponent(match[1]);
+    window.history.replaceState(null, '', window.location.pathname + window.location.search);
+
+    authApi.me().then((me) => {
+      if (!me)
+        return;
+      const nextUser = {
+        id: me.id,
+        username: me.username,
+        email: me.email || '',
+        role: me.is_system_admin ? UserRole.Admin : UserRole.User,
+        headscale_name: me.username,
+        display_name: me.display_name,
+        permissions: me.permissions,
+        guide_tour_seen_at: me.guide_tour_seen ? '' : null,
+        totp_enabled: me.totp_enabled ?? false,
+      };
+      setAuth(token, nextUser);
+      message.success(t.login.oidcLoginSuccess);
+      setLocation(getDefaultRouteForUser(nextUser));
+    }).catch(() => {
+      message.error(t.login.oidcVerifyFailed);
+    });
+  }, [setAuth, setLocation, t]);
 
   const handleLogin = async () => {
     if (!username.trim() || !password.trim()) {
@@ -155,13 +142,20 @@ export default function Login() {
         password,
         totp_code: totpRequired ? totpCode.trim() : undefined,
       });
-      if (data?.token && data?.user) {
-        const nextUser = parseUserAuth(data);
-        message.success(t.login.loginSuccess);
-        const params = new URLSearchParams(search);
-        const returnUrl = normalizeLoginReturnUrl(params.get('return_url'));
-        returnUrl ? window.location.assign(returnUrl) : setLocation(getDefaultRouteForUser(nextUser));
+      if (!data?.token || !data?.account) {
+        message.error(t.login.oidcVerifyFailed);
+        return;
       }
+
+      const nextUser = parseUserAuth(data);
+      message.success(t.login.loginSuccess);
+      const params = new URLSearchParams(search);
+      const returnUrl = normalizeLoginReturnUrl(params.get('return_url'));
+      if (returnUrl) {
+        window.location.assign(returnUrl);
+        return;
+      }
+      setLocation(getDefaultRouteForUser(nextUser));
     } catch (err: any) {
       const errorMessage = String(err?.response?.data?.msg || err?.message || '').toLowerCase();
       const isTotpError = errorMessage.includes('totp');
@@ -175,13 +169,7 @@ export default function Login() {
   const handleOIDCLogin = async () => {
     setOidcLoading(true);
     try {
-      const data: any = await authApi.oidcLogin();
-      if (data?.url || data?.redirect_url) {
-        window.location.href = data.url || data.redirect_url;
-      } else {
-        message.error(t.login.oidcRedirectFailed);
-        setOidcLoading(false);
-      }
+      window.location.href = authApi.panelSSOLoginURL();
     } catch {
       message.error(t.login.oidcConfigError);
       setOidcLoading(false);
@@ -288,11 +276,11 @@ export default function Login() {
             </Space>
           </form>
 
-          {oidcStatus?.enabled && (
+          {ssoStatus?.enabled && (
             <>
               <Divider plain className="text-12px">{t.login.or}</Divider>
               <Button block onClick={handleOIDCLogin} size="large">
-                {t.login.oidcLogin.replace('{provider}', oidcStatus.provider_name || 'OIDC')}
+                {t.login.oidcLogin.replace('{provider}', 'SSO')}
               </Button>
             </>
           )}
